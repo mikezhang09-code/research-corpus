@@ -642,6 +642,13 @@ class TestAuthCheckCommand:
 class TestLoginLanguageSync:
     """Tests for syncing server language setting to local config after login."""
 
+    @pytest.fixture(autouse=True)
+    def _language_module(self):
+        """Get the actual language module, bypassing Click group shadowing on Python 3.10."""
+        import importlib
+
+        self.language_mod = importlib.import_module("notebooklm.cli.language")
+
     def test_sync_persists_server_language(self, tmp_path):
         """After login, server language setting is fetched and saved to local config."""
         from notebooklm.cli.session import _sync_server_language_to_config
@@ -650,8 +657,8 @@ class TestLoginLanguageSync:
 
         with (
             patch("notebooklm.cli.session.NotebookLMClient") as mock_client_cls,
-            patch("notebooklm.cli.language.get_config_path", return_value=config_path),
-            patch("notebooklm.cli.language.get_home_dir"),
+            patch.object(self.language_mod, "get_config_path", return_value=config_path),
+            patch.object(self.language_mod, "get_home_dir"),
         ):
             mock_client = create_mock_client()
             mock_client.settings = MagicMock()
@@ -672,7 +679,7 @@ class TestLoginLanguageSync:
 
         with (
             patch("notebooklm.cli.session.NotebookLMClient") as mock_client_cls,
-            patch("notebooklm.cli.language.get_config_path", return_value=config_path),
+            patch.object(self.language_mod, "get_config_path", return_value=config_path),
         ):
             mock_client = create_mock_client()
             mock_client.settings = MagicMock()
