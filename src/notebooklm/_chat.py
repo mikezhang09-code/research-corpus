@@ -346,10 +346,20 @@ class ChatAPI:
                 i += 1
 
         # Prefer marked answers; fall back to longest unmarked text
-        longest_answer = best_marked_answer or best_unmarked_answer
+        if best_marked_answer:
+            longest_answer = best_marked_answer
+        elif best_unmarked_answer:
+            logger.warning(
+                "No marked answer found; falling back to longest unmarked "
+                "text (%d chars). The API response format may have changed.",
+                len(best_unmarked_answer),
+            )
+            longest_answer = best_unmarked_answer
+        else:
+            longest_answer = ""
 
         if not longest_answer:
-            logger.debug(
+            logger.warning(
                 "No answer extracted from response (%d lines parsed)",
                 len(lines),
             )
@@ -411,16 +421,14 @@ class ChatAPI:
                         if not isinstance(text, str) or not text:
                             continue
 
-                        is_answer = False
-                        if len(first) > 4 and isinstance(first[4], list):
-                            type_info = first[4]
-                            if len(type_info) > 0 and type_info[-1] == 1:
-                                is_answer = True
+                        is_answer = (
+                            len(first) > 4
+                            and isinstance(first[4], list)
+                            and len(first[4]) > 0
+                            and first[4][-1] == 1
+                        )
 
-                        # Extract references from first[4][3] - the detailed citation array
-                        # Each citation contains chunk ID, parent source ID, and cited text
                         refs = self._parse_citations(first)
-
                         return text, is_answer, refs
             except json.JSONDecodeError:
                 continue

@@ -245,42 +245,43 @@ class TestAnswerExtraction:
     - Short answers below the minimum length threshold
     """
 
+    @staticmethod
+    def _build_response(*chunks: list) -> str:
+        """Build a streaming response string from one or more inner_data chunks."""
+        parts = [")]}'"]
+        for chunk in chunks:
+            inner_json = json.dumps(chunk)
+            chunk_json = json.dumps([["wrb.fr", None, inner_json]])
+            parts.append(f"\n{len(chunk_json)}\n{chunk_json}")
+        parts.append("\n")
+        return "".join(parts)
+
     def test_extract_answer_without_answer_marker(self, auth_tokens):
         """Test that answers are extracted even when type_info[-1] != 1.
 
         Google's API may change the answer marker. The parser should
         still extract valid text content as the answer.
         """
-        client = NotebookLMClient(auth_tokens)
-        chat_api = client.chat
+        chat_api = NotebookLMClient(auth_tokens).chat
 
-        # Response where type_info[-1] is NOT 1 (marker changed/missing)
         inner_data = [
             [
                 "This is a valid answer from NotebookLM about the topic.",
                 None,
                 ["chunk-id", 12345],
                 None,
-                [
-                    [],
-                    None,
-                    None,
-                    [],
-                    # No trailing 1 marker
-                ],
+                [[], None, None, []],  # No trailing 1 marker
             ]
         ]
-        inner_json = json.dumps(inner_data)
-        chunk_json = json.dumps([["wrb.fr", None, inner_json]])
-        response_text = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = chat_api._parse_ask_response_with_references(response_text)
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(inner_data)
+        )
         assert answer == "This is a valid answer from NotebookLM about the topic."
 
     def test_extract_answer_with_different_marker_value(self, auth_tokens):
         """Test extraction when marker value changes from 1 to something else."""
-        client = NotebookLMClient(auth_tokens)
-        chat_api = client.chat
+        chat_api = NotebookLMClient(auth_tokens).chat
 
         inner_data = [
             [
@@ -288,20 +289,13 @@ class TestAnswerExtraction:
                 None,
                 ["chunk-id", 12345],
                 None,
-                [
-                    [],
-                    None,
-                    None,
-                    [],
-                    2,  # Different marker value
-                ],
+                [[], None, None, [], 2],  # Different marker value
             ]
         ]
-        inner_json = json.dumps(inner_data)
-        chunk_json = json.dumps([["wrb.fr", None, inner_json]])
-        response_text = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = chat_api._parse_ask_response_with_references(response_text)
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(inner_data)
+        )
         assert answer == "The answer text that should be extracted regardless of marker."
 
     def test_extract_short_answer(self, auth_tokens):
@@ -309,8 +303,7 @@ class TestAnswerExtraction:
 
         The user may ask 'Respond with exactly: OK' and get a short answer.
         """
-        client = NotebookLMClient(auth_tokens)
-        chat_api = client.chat
+        chat_api = NotebookLMClient(auth_tokens).chat
 
         inner_data = [
             [
@@ -321,17 +314,15 @@ class TestAnswerExtraction:
                 [[], None, None, [], 1],
             ]
         ]
-        inner_json = json.dumps(inner_data)
-        chunk_json = json.dumps([["wrb.fr", None, inner_json]])
-        response_text = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = chat_api._parse_ask_response_with_references(response_text)
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(inner_data)
+        )
         assert answer == "OK"
 
     def test_extract_answer_no_type_info_at_all(self, auth_tokens):
         """Test extraction when first[4] is entirely missing."""
-        client = NotebookLMClient(auth_tokens)
-        chat_api = client.chat
+        chat_api = NotebookLMClient(auth_tokens).chat
 
         inner_data = [
             [
@@ -342,19 +333,96 @@ class TestAnswerExtraction:
                 # No first[4]
             ]
         ]
-        inner_json = json.dumps(inner_data)
-        chunk_json = json.dumps([["wrb.fr", None, inner_json]])
-        response_text = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = chat_api._parse_ask_response_with_references(response_text)
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(inner_data)
+        )
         assert answer == "An answer with no type_info metadata at all in the response."
+
+    def test_shorter_marked_answer_beats_longer_unmarked(self, auth_tokens):
+        """Shorter marked answer should win over longer unmarked text."""
+        chat_api = NotebookLMClient(auth_tokens).chat
+
+        # Unmarked chunk is much longer
+        unmarked_data = [
+            [
+                "This is a very long status message or streaming preamble that contains lots of text but is not the actual answer to the question.",
+                None,
+                ["chunk-1", 11111],
+                None,
+                [[], None, None, []],  # No marker
+            ]
+        ]
+        # Marked chunk is shorter but is the real answer
+        marked_data = [
+            [
+                "The actual short answer.",
+                None,
+                ["chunk-2", 22222],
+                None,
+                [[], None, None, [], 1],  # Has marker
+            ]
+        ]
+
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(unmarked_data, marked_data)
+        )
+        assert answer == "The actual short answer."
+
+    def test_skips_empty_and_non_string_text(self, auth_tokens):
+        """Empty strings, None, and non-string first[0] values are skipped."""
+        chat_api = NotebookLMClient(auth_tokens).chat
+
+        # Chunk with empty string text
+        empty_data = [
+            [
+                "",
+                None,
+                ["chunk-1", 11111],
+                None,
+                [[], None, None, [], 1],
+            ]
+        ]
+        # Chunk with None text
+        none_data = [
+            [
+                None,
+                None,
+                ["chunk-2", 22222],
+                None,
+                [[], None, None, [], 1],
+            ]
+        ]
+        # Chunk with integer text
+        int_data = [
+            [
+                42,
+                None,
+                ["chunk-3", 33333],
+                None,
+                [[], None, None, [], 1],
+            ]
+        ]
+        # Valid chunk that should be selected
+        valid_data = [
+            [
+                "The valid answer after invalid chunks.",
+                None,
+                ["chunk-4", 44444],
+                None,
+                [[], None, None, [], 1],
+            ]
+        ]
+
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(empty_data, none_data, int_data, valid_data)
+        )
+        assert answer == "The valid answer after invalid chunks."
 
     def test_prefers_marked_answer_over_unmarked(self, auth_tokens):
         """When both marked and unmarked answers exist, prefer the marked one."""
-        client = NotebookLMClient(auth_tokens)
-        chat_api = client.chat
+        chat_api = NotebookLMClient(auth_tokens).chat
 
-        # Two chunks: one with marker, one without
         unmarked_data = [
             [
                 "This is a status message or partial streaming chunk text.",
@@ -374,17 +442,9 @@ class TestAnswerExtraction:
             ]
         ]
 
-        unmarked_json = json.dumps(unmarked_data)
-        unmarked_chunk = json.dumps([["wrb.fr", None, unmarked_json]])
-
-        marked_json = json.dumps(marked_data)
-        marked_chunk = json.dumps([["wrb.fr", None, marked_json]])
-
-        response_text = (
-            f")]}}'\n{len(unmarked_chunk)}\n{unmarked_chunk}\n{len(marked_chunk)}\n{marked_chunk}\n"
+        answer, refs = chat_api._parse_ask_response_with_references(
+            self._build_response(unmarked_data, marked_data)
         )
-
-        answer, refs = chat_api._parse_ask_response_with_references(response_text)
         assert answer == "This is the real answer with proper marker."
 
 
