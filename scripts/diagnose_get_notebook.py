@@ -142,7 +142,7 @@ async def run_diagnosis(notebook_id: str | None = None) -> None:
     auth = AuthTokens(cookies=cookies, csrf_token=csrf_token, session_id=session_id)
     print(f"Auth OK (CSRF length: {len(auth.csrf_token)})")
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=60.0)) as client:
         # 1. LIST_NOTEBOOKS
         print("\n--- LIST_NOTEBOOKS ---")
         list_raw = await make_rpc_request(client, auth, RPCMethod.LIST_NOTEBOOKS, [])
@@ -161,7 +161,7 @@ async def run_diagnosis(notebook_id: str | None = None) -> None:
                             notebook_id = first_nb[0][2] if len(first_nb[0]) > 2 else None
                         else:
                             notebook_id = first_nb[2] if len(first_nb) > 2 else None
-            except Exception:
+            except (IndexError, TypeError):
                 pass
 
             if not notebook_id:
