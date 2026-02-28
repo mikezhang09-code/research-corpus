@@ -18,6 +18,3 @@ def check_python_version():
             f"You are using Python {sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}.\n"
             f"Please upgrade: https://www.python.org/downloads/"
         )
-
-
-check_python_version()
