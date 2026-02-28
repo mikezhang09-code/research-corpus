@@ -20,6 +20,12 @@ def auth_tokens():
     )
 
 
+@pytest.fixture
+def chat_api(auth_tokens):
+    """Provides a ChatAPI instance for testing."""
+    return NotebookLMClient(auth_tokens).chat
+
+
 class TestParseCitations:
     """Unit tests for the _parse_citations method."""
 
@@ -256,14 +262,12 @@ class TestAnswerExtraction:
         parts.append("\n")
         return "".join(parts)
 
-    def test_extract_answer_without_answer_marker(self, auth_tokens):
+    def test_extract_answer_without_answer_marker(self, chat_api):
         """Test that answers are extracted even when type_info[-1] != 1.
 
         Google's API may change the answer marker. The parser should
         still extract valid text content as the answer.
         """
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         inner_data = [
             [
                 "This is a valid answer from NotebookLM about the topic.",
@@ -279,10 +283,8 @@ class TestAnswerExtraction:
         )
         assert answer == "This is a valid answer from NotebookLM about the topic."
 
-    def test_extract_answer_with_different_marker_value(self, auth_tokens):
+    def test_extract_answer_with_different_marker_value(self, chat_api):
         """Test extraction when marker value changes from 1 to something else."""
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         inner_data = [
             [
                 "The answer text that should be extracted regardless of marker.",
@@ -298,13 +300,11 @@ class TestAnswerExtraction:
         )
         assert answer == "The answer text that should be extracted regardless of marker."
 
-    def test_extract_short_answer(self, auth_tokens):
+    def test_extract_short_answer(self, chat_api):
         """Test that short answers (< 20 chars) are extracted.
 
         The user may ask 'Respond with exactly: OK' and get a short answer.
         """
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         inner_data = [
             [
                 "OK",
@@ -320,10 +320,8 @@ class TestAnswerExtraction:
         )
         assert answer == "OK"
 
-    def test_extract_answer_no_type_info_at_all(self, auth_tokens):
+    def test_extract_answer_no_type_info_at_all(self, chat_api):
         """Test extraction when first[4] is entirely missing."""
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         inner_data = [
             [
                 "An answer with no type_info metadata at all in the response.",
@@ -339,10 +337,8 @@ class TestAnswerExtraction:
         )
         assert answer == "An answer with no type_info metadata at all in the response."
 
-    def test_shorter_marked_answer_beats_longer_unmarked(self, auth_tokens):
+    def test_shorter_marked_answer_beats_longer_unmarked(self, chat_api):
         """Shorter marked answer should win over longer unmarked text."""
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         # Unmarked chunk is much longer
         unmarked_data = [
             [
@@ -369,10 +365,8 @@ class TestAnswerExtraction:
         )
         assert answer == "The actual short answer."
 
-    def test_skips_empty_and_non_string_text(self, auth_tokens):
+    def test_skips_empty_and_non_string_text(self, chat_api):
         """Empty strings, None, and non-string first[0] values are skipped."""
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         # Chunk with empty string text
         empty_data = [
             [
@@ -419,10 +413,8 @@ class TestAnswerExtraction:
         )
         assert answer == "The valid answer after invalid chunks."
 
-    def test_prefers_marked_answer_over_unmarked(self, auth_tokens):
+    def test_prefers_marked_answer_over_unmarked(self, chat_api):
         """When both marked and unmarked answers exist, prefer the marked one."""
-        chat_api = NotebookLMClient(auth_tokens).chat
-
         unmarked_data = [
             [
                 "This is a status message or partial streaming chunk text.",
