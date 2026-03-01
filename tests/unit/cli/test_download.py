@@ -662,7 +662,15 @@ class TestDownloadArtifactFlag:
 
             result = runner.invoke(
                 cli,
-                ["download", "audio", str(output_file), "-a", "audio_bbb222ccc333ddd444", "-n", "nb_123"],
+                [
+                    "download",
+                    "audio",
+                    str(output_file),
+                    "-a",
+                    "audio_bbb222ccc333ddd444",
+                    "-n",
+                    "nb_123",
+                ],
             )
 
         assert result.exit_code == 0
