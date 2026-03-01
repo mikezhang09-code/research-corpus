@@ -21,7 +21,12 @@ import click
 from ..auth import AuthTokens, fetch_tokens, load_auth_from_storage
 from ..client import NotebookLMClient
 from ..types import Artifact, ArtifactType
-from .download_helpers import ArtifactDict, artifact_title_to_filename, select_artifact
+from .download_helpers import (
+    ArtifactDict,
+    artifact_title_to_filename,
+    resolve_partial_artifact_id,
+    select_artifact,
+)
 from .helpers import (
     console,
     handle_error,
@@ -308,12 +313,17 @@ async def _download_artifacts_generic(
 
             # Single artifact selection
             try:
+                resolved_artifact_id = (
+                    resolve_partial_artifact_id(type_artifacts, artifact_id)
+                    if artifact_id
+                    else None
+                )
                 selected, reason = select_artifact(
                     type_artifacts,
                     latest=latest,
                     earliest=earliest,
                     name=name,
-                    artifact_id=artifact_id,
+                    artifact_id=resolved_artifact_id,
                 )
             except ValueError as e:
                 return {"error": str(e)}
