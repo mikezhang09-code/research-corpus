@@ -778,8 +778,22 @@ class TestArtifactErrorPaths:
         pdf_url = "https://example.com/slides.pdf"
         pptx_url = "https://example.com/slides.pptx"
         slide_art = [
-            "artifact_456", "Slide Deck", 8, None, 3,  # COMPLETED
-            None, None, None, None, None, None, None, None, None, None, None,
+            "artifact_456",
+            "Slide Deck",
+            8,
+            None,
+            3,  # COMPLETED
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             [None, "Title", [], pdf_url, pptx_url],  # art[16] with PPTX at [4]
         ]
         response = build_rpc_response(RPCMethod.LIST_ARTIFACTS, [[slide_art]])
@@ -788,9 +802,7 @@ class TestArtifactErrorPaths:
 
         output = str(tmp_path / "slides.pptx")
         async with NotebookLMClient(auth_tokens) as client:
-            result = await client.artifacts.download_slide_deck(
-                "nb_123", output, format="pptx"
-            )
+            result = await client.artifacts.download_slide_deck("nb_123", output, format="pptx")
         assert result == output
 
     @pytest.mark.asyncio

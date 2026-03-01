@@ -629,7 +629,9 @@ def generate_revise_slide(
                     prompt=description,
                 )
 
-            result = await generate_with_retry(_generate, max_retries, "slide revision", json_output)
+            result = await generate_with_retry(
+                _generate, max_retries, "slide revision", json_output
+            )
             await handle_generation_result(
                 client, nb_id_resolved, result, "slide revision", wait, json_output
             )
