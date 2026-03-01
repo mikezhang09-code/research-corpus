@@ -85,6 +85,22 @@ def download():
     pass
 
 
+async def _get_completed_artifacts_as_dicts(
+    client: NotebookLMClient, notebook_id: str, artifact_kind: ArtifactType
+) -> list[ArtifactDict]:
+    """Fetch all artifacts, filter by kind and completion, and return as dicts."""
+    all_artifacts = await client.artifacts.list(notebook_id)
+    return [
+        {
+            "id": a.id,
+            "title": a.title,
+            "created_at": int(a.created_at.timestamp()) if a.created_at else 0,
+        }
+        for a in all_artifacts
+        if isinstance(a, Artifact) and a.kind == artifact_kind and a.is_completed
+    ]
+
+
 async def _download_artifacts_generic(
     ctx,
     artifact_type_name: str,
@@ -163,31 +179,16 @@ async def _download_artifacts_generic(
             if not download_fn:
                 raise ValueError(f"Unknown artifact type: {artifact_type_name}")
 
-            # Fetch artifacts
-            all_artifacts = await client.artifacts.list(nb_id_resolved)
+            # Fetch and filter artifacts by type and completed status
+            type_artifacts = await _get_completed_artifacts_as_dicts(
+                client, nb_id_resolved, artifact_kind
+            )
 
-            # Filter by type and completed status
-            completed_artifacts = [
-                a
-                for a in all_artifacts
-                if isinstance(a, Artifact) and a.kind == artifact_kind and a.is_completed
-            ]
-
-            if not completed_artifacts:
+            if not type_artifacts:
                 return {
                     "error": f"No completed {artifact_type_name} artifacts found",
                     "suggestion": f"Generate one with: notebooklm generate {artifact_type_name}",
                 }
-
-            # Convert to dict format for selection logic
-            type_artifacts: list[ArtifactDict] = [
-                {
-                    "id": a.id,
-                    "title": a.title,
-                    "created_at": int(a.created_at.timestamp()) if a.created_at else 0,
-                }
-                for a in completed_artifacts
-            ]
 
             # Helper for file conflict resolution
             def _resolve_conflict(path: Path) -> tuple[Path | None, dict | None]:
@@ -768,16 +769,7 @@ async def _download_interactive(
         resolved_artifact_id = artifact_id
         if artifact_id:
             kind = ArtifactType.QUIZ if artifact_type == "quiz" else ArtifactType.FLASHCARDS
-            all_artifacts = await client.artifacts.list(nb_id_resolved)
-            type_artifacts: list[ArtifactDict] = [
-                {
-                    "id": a.id,
-                    "title": a.title,
-                    "created_at": int(a.created_at.timestamp()) if a.created_at else 0,
-                }
-                for a in all_artifacts
-                if isinstance(a, Artifact) and a.kind == kind and a.is_completed
-            ]
+            type_artifacts = await _get_completed_artifacts_as_dicts(client, nb_id_resolved, kind)
             resolved_artifact_id = resolve_partial_artifact_id(type_artifacts, artifact_id)
 
         if artifact_type == "quiz":
