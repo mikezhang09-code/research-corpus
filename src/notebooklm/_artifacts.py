@@ -821,6 +821,9 @@ class ArtifactsAPI:
         Returns:
             GenerationStatus with task_id for polling.
         """
+        if slide_index < 0:
+            raise ValidationError(f"slide_index must be >= 0, got {slide_index}")
+
         params = [
             [2],
             artifact_id,
@@ -833,6 +836,8 @@ class ArtifactsAPI:
                 source_path=f"/notebook/{notebook_id}",
                 allow_null=True,
             )
+            if result is None:
+                logger.warning("REVISE_SLIDE returned null result for artifact %s", artifact_id)
             return self._parse_generation_result(result)
         except RPCError as e:
             if e.rpc_code == "USER_DISPLAYABLE_ERROR":
@@ -1201,7 +1206,7 @@ class ArtifactsAPI:
         notebook_id: str,
         output_path: str,
         artifact_id: str | None = None,
-        format: str = "pdf",
+        output_format: str = "pdf",
     ) -> str:
         """Download a slide deck as PDF or PPTX.
 
@@ -1209,13 +1214,13 @@ class ArtifactsAPI:
             notebook_id: The notebook ID.
             output_path: Path to save the file.
             artifact_id: Specific artifact ID, or uses first completed slide deck.
-            format: Download format: "pdf" (default) or "pptx".
+            output_format: Download format: "pdf" (default) or "pptx".
 
         Returns:
             The output path.
         """
-        if format not in ("pdf", "pptx"):
-            raise ValidationError(f"Invalid format '{format}'. Must be 'pdf' or 'pptx'.")
+        if output_format not in ("pdf", "pptx"):
+            raise ValidationError(f"Invalid format '{output_format}'. Must be 'pdf' or 'pptx'.")
 
         artifacts_data = await self._list_raw(notebook_id)
 
@@ -1249,7 +1254,7 @@ class ArtifactsAPI:
             if not isinstance(metadata, list):
                 raise ArtifactParseError("slide_deck_metadata", details="Invalid structure")
 
-            if format == "pptx":
+            if output_format == "pptx":
                 if len(metadata) < 5:
                     raise ArtifactDownloadError(
                         "slide_deck", details="PPTX URL not available in artifact data"
@@ -1263,15 +1268,15 @@ class ArtifactsAPI:
             if not isinstance(url, str) or not url.startswith("http"):
                 raise ArtifactDownloadError(
                     "slide_deck",
-                    details=f"Could not find {format.upper()} download URL",
+                    details=f"Could not find {output_format.upper()} download URL",
                 )
-
-            return await self._download_url(url, output_path)
 
         except (IndexError, TypeError) as e:
             raise ArtifactParseError(
                 "slide_deck", details=f"Failed to parse structure: {e}", cause=e
             ) from e
+
+        return await self._download_url(url, output_path)
 
     async def _get_artifact_content(self, notebook_id: str, artifact_id: str) -> str | None:
         """Fetch artifact HTML content for quiz/flashcard types."""

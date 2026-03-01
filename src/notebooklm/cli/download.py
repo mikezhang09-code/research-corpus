@@ -144,6 +144,12 @@ async def _download_artifacts_generic(
     # Adjust extension for PPTX format (must be outside _download() to avoid UnboundLocalError)
     if artifact_type_name == "slide-deck" and slide_format == "pptx":
         file_extension = ".pptx"
+        if output_path and not output_path.endswith(".pptx"):
+            click.echo(
+                f"Warning: output path '{output_path}' does not end with .pptx "
+                "but --format pptx was requested.",
+                err=True,
+            )
 
     async def _download() -> dict[str, Any]:
         async with NotebookLMClient(auth) as client:
@@ -170,7 +176,7 @@ async def _download_artifacts_generic(
                     nb_id: str, path: str, artifact_id: str | None = None
                 ) -> str:
                     return await client.artifacts.download_slide_deck(
-                        nb_id, path, artifact_id=artifact_id, format="pptx"
+                        nb_id, path, artifact_id=artifact_id, output_format="pptx"
                     )
 
                 download_fn = _download_pptx

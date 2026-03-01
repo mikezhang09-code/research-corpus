@@ -802,7 +802,9 @@ class TestArtifactErrorPaths:
 
         output = str(tmp_path / "slides.pptx")
         async with NotebookLMClient(auth_tokens) as client:
-            result = await client.artifacts.download_slide_deck("nb_123", output, format="pptx")
+            result = await client.artifacts.download_slide_deck(
+                "nb_123", output, output_format="pptx"
+            )
         assert result == output
 
     @pytest.mark.asyncio
