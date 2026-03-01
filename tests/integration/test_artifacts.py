@@ -157,6 +157,31 @@ class TestStudioContent:
         assert result.task_id == "artifact_456"
 
     @pytest.mark.asyncio
+    async def test_revise_slide(
+        self,
+        auth_tokens,
+        httpx_mock: HTTPXMock,
+        build_rpc_response,
+    ):
+        """Test revise_slide calls REVISE_SLIDE RPC with correct params."""
+        revise_response = build_rpc_response(
+            RPCMethod.REVISE_SLIDE,
+            [["artifact_456", "Slide Deck", "2024-01-05", None, 1]],
+        )
+        httpx_mock.add_response(content=revise_response.encode())
+
+        async with NotebookLMClient(auth_tokens) as client:
+            result = await client.artifacts.revise_slide(
+                notebook_id="nb_123",
+                artifact_id="artifact_456",
+                slide_index=0,
+                prompt="Move the title up a bit",
+            )
+
+        assert result is not None
+        assert result.task_id == "artifact_456"
+
+    @pytest.mark.asyncio
     async def test_poll_studio_status(
         self,
         auth_tokens,

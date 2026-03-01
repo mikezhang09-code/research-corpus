@@ -799,6 +799,51 @@ class ArtifactsAPI:
         ]
         return await self._call_generate(notebook_id, params)
 
+    async def revise_slide(
+        self,
+        notebook_id: str,
+        artifact_id: str,
+        slide_index: int,
+        prompt: str,
+    ) -> GenerationStatus:
+        """Revise an individual slide in a completed slide deck using a prompt.
+
+        The slide deck must already be generated (status=COMPLETED) before
+        calling this method. Use poll_status() to wait for the revision to complete.
+
+        Args:
+            notebook_id: The notebook ID.
+            artifact_id: The slide deck artifact ID to revise.
+            slide_index: Zero-based index of the slide to revise.
+            prompt: Natural language instruction for the revision
+                    (e.g. "Move the title up", "Remove taxonomy section").
+
+        Returns:
+            GenerationStatus with task_id for polling.
+        """
+        params = [
+            [2],
+            artifact_id,
+            [[[slide_index, prompt]]],
+        ]
+        try:
+            result = await self._core.rpc_call(
+                RPCMethod.REVISE_SLIDE,
+                params,
+                source_path=f"/notebook/{notebook_id}",
+                allow_null=True,
+            )
+            return self._parse_generation_result(result)
+        except RPCError as e:
+            if e.rpc_code == "USER_DISPLAYABLE_ERROR":
+                return GenerationStatus(
+                    task_id="",
+                    status="failed",
+                    error=str(e),
+                    error_code=str(e.rpc_code) if e.rpc_code is not None else None,
+                )
+            raise
+
     async def generate_data_table(
         self,
         notebook_id: str,
