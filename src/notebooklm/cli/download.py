@@ -13,8 +13,13 @@ Commands:
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, TypedDict
+
+# Common signature shared by all artifact download functions.
+# Each function accepts (notebook_id, output_path, *, artifact_id=None, **kwargs).
+_DownloadFn = Callable[..., Awaitable[str]]
 
 import click
 
@@ -156,7 +161,7 @@ async def _download_artifacts_generic(
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
 
             # Setup download method dispatch
-            download_methods = {
+            download_methods: dict[str, _DownloadFn] = {
                 "audio": client.artifacts.download_audio,
                 "video": client.artifacts.download_video,
                 "infographic": client.artifacts.download_infographic,
@@ -165,7 +170,7 @@ async def _download_artifacts_generic(
                 "mind-map": client.artifacts.download_mind_map,
                 "data-table": client.artifacts.download_data_table,
             }
-            download_fn = download_methods.get(artifact_type_name)
+            download_fn: _DownloadFn | None = download_methods.get(artifact_type_name)
             if not download_fn:
                 raise ValueError(f"Unknown artifact type: {artifact_type_name}")
 
