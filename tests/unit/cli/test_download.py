@@ -640,7 +640,7 @@ class TestDownloadArtifactFlag:
     """Test -a / --artifact flag for selecting by artifact ID."""
 
     def test_download_by_full_artifact_id(self, runner, mock_auth, mock_fetch_tokens, tmp_path):
-        """Full artifact ID selects the correct artifact."""
+        """Full artifact ID (20+ chars) bypasses prefix search and selects correctly."""
         with patch_client_for_module("download") as mock_client_cls:
             mock_client = create_mock_client()
             output_file = tmp_path / "audio.mp3"
@@ -653,8 +653,8 @@ class TestDownloadArtifactFlag:
 
             mock_client.artifacts.list = AsyncMock(
                 return_value=[
-                    make_artifact("audio_aaa111", "First", 1),
-                    make_artifact("audio_bbb222", "Second", 1),
+                    make_artifact("audio_aaa111bbb222ccc333", "First", 1),
+                    make_artifact("audio_bbb222ccc333ddd444", "Second", 1),
                 ]
             )
             mock_client.artifacts.download_audio = mock_download_audio
@@ -662,11 +662,31 @@ class TestDownloadArtifactFlag:
 
             result = runner.invoke(
                 cli,
-                ["download", "audio", str(output_file), "-a", "audio_bbb222", "-n", "nb_123"],
+                ["download", "audio", str(output_file), "-a", "audio_bbb222ccc333ddd444", "-n", "nb_123"],
             )
 
         assert result.exit_code == 0
-        assert downloaded_ids == ["audio_bbb222"]
+        assert downloaded_ids == ["audio_bbb222ccc333ddd444"]
+
+    def test_download_full_id_not_in_list_errors(
+        self, runner, mock_auth, mock_fetch_tokens, tmp_path
+    ):
+        """Full-length ID (20+ chars) that doesn't exist in the artifact list should error."""
+        with patch_client_for_module("download") as mock_client_cls:
+            mock_client = create_mock_client()
+
+            mock_client.artifacts.list = AsyncMock(
+                return_value=[make_artifact("audio_aaa111bbb222ccc333", "Only", 1)]
+            )
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(
+                cli,
+                ["download", "audio", "-a", "nonexistentidtwentyplus1", "-n", "nb_123"],
+            )
+
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
 
     def test_download_by_partial_artifact_id(self, runner, mock_auth, mock_fetch_tokens, tmp_path):
         """Partial artifact ID prefix resolves and selects the correct artifact."""
@@ -718,7 +738,7 @@ class TestDownloadArtifactFlag:
             )
 
         assert result.exit_code != 0
-        assert "mbiguous" in result.output
+        assert "Ambiguous" in result.output
 
     def test_download_partial_id_not_found_errors(
         self, runner, mock_auth, mock_fetch_tokens, tmp_path

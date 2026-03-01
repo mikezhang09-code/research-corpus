@@ -177,6 +177,24 @@ class TestResolvePartialArtifactId:
         with pytest.raises(ValueError, match="not found"):
             resolve_partial_artifact_id(artifacts, "abc")
 
+    def test_empty_list_raises(self):
+        """Should raise ValueError for any input when artifact list is empty."""
+        with pytest.raises(ValueError, match="not found"):
+            resolve_partial_artifact_id([], "abc")
+
+    def test_ambiguous_error_includes_titles(self):
+        """Ambiguous error message should include artifact titles to help the user."""
+        artifacts = [
+            {"id": "abc111", "title": "Meeting Notes", "created_at": 1000},
+            {"id": "abc222", "title": "Debate Session", "created_at": 2000},
+        ]
+
+        with pytest.raises(ValueError) as exc_info:
+            resolve_partial_artifact_id(artifacts, "abc")
+
+        assert "Meeting Notes" in str(exc_info.value)
+        assert "Debate Session" in str(exc_info.value)
+
 
 class TestArtifactTitleToFilename:
     def test_simple_title(self):

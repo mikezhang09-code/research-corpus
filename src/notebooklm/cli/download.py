@@ -765,12 +765,27 @@ async def _download_interactive(
         ext = FORMAT_EXTENSIONS[output_format]
         path = output_path or f"{artifact_type}{ext}"
 
+        resolved_artifact_id = artifact_id
+        if artifact_id:
+            kind = ArtifactType.QUIZ if artifact_type == "quiz" else ArtifactType.FLASHCARDS
+            all_artifacts = await client.artifacts.list(nb_id_resolved)
+            type_artifacts: list[ArtifactDict] = [
+                {
+                    "id": a.id,
+                    "title": a.title,
+                    "created_at": int(a.created_at.timestamp()) if a.created_at else 0,
+                }
+                for a in all_artifacts
+                if isinstance(a, Artifact) and a.kind == kind and a.is_completed
+            ]
+            resolved_artifact_id = resolve_partial_artifact_id(type_artifacts, artifact_id)
+
         if artifact_type == "quiz":
             return await client.artifacts.download_quiz(
-                nb_id_resolved, path, artifact_id=artifact_id, output_format=output_format
+                nb_id_resolved, path, artifact_id=resolved_artifact_id, output_format=output_format
             )
         return await client.artifacts.download_flashcards(
-            nb_id_resolved, path, artifact_id=artifact_id, output_format=output_format
+            nb_id_resolved, path, artifact_id=resolved_artifact_id, output_format=output_format
         )
 
 
