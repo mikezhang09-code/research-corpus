@@ -17,10 +17,6 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, TypedDict
 
-# Common signature shared by all artifact download functions.
-# Each function accepts (notebook_id, output_path, *, artifact_id=None, **kwargs).
-_DownloadFn = Callable[..., Awaitable[str]]
-
 import click
 
 from ..auth import AuthTokens, fetch_tokens, load_auth_from_storage
@@ -34,6 +30,10 @@ from .helpers import (
     resolve_notebook_id,
     run_async,
 )
+
+# Common signature shared by all artifact download functions.
+# Each function accepts (notebook_id, output_path, *, artifact_id=None, **kwargs).
+_DownloadFn = Callable[..., Awaitable[str]]
 
 
 class ArtifactConfig(TypedDict):
