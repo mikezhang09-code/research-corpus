@@ -767,6 +767,33 @@ class TestArtifactErrorPaths:
                 await client.artifacts.download_slide_deck("nb_123", "/tmp/slides")
 
     @pytest.mark.asyncio
+    async def test_download_slide_deck_pptx(
+        self,
+        auth_tokens,
+        httpx_mock: HTTPXMock,
+        build_rpc_response,
+        tmp_path,
+    ):
+        """Test download_slide_deck with format='pptx' downloads PPTX URL."""
+        pdf_url = "https://example.com/slides.pdf"
+        pptx_url = "https://example.com/slides.pptx"
+        slide_art = [
+            "artifact_456", "Slide Deck", 8, None, 3,  # COMPLETED
+            None, None, None, None, None, None, None, None, None, None, None,
+            [None, "Title", [], pdf_url, pptx_url],  # art[16] with PPTX at [4]
+        ]
+        response = build_rpc_response(RPCMethod.LIST_ARTIFACTS, [[slide_art]])
+        httpx_mock.add_response(content=response.encode())
+        httpx_mock.add_response(content=b"pptx-content")
+
+        output = str(tmp_path / "slides.pptx")
+        async with NotebookLMClient(auth_tokens) as client:
+            result = await client.artifacts.download_slide_deck(
+                "nb_123", output, format="pptx"
+            )
+        assert result == output
+
+    @pytest.mark.asyncio
     async def test_poll_status_in_progress(
         self,
         auth_tokens,
