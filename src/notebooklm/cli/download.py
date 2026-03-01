@@ -97,6 +97,7 @@ async def _download_artifacts_generic(
     dry_run: bool,
     force: bool,
     no_clobber: bool,
+    slide_format: str = "pdf",
 ) -> dict:
     """
     Generic artifact download implementation.
@@ -140,6 +141,10 @@ async def _download_artifacts_generic(
     csrf, session_id = await fetch_tokens(cookies)
     auth = AuthTokens(cookies=cookies, csrf_token=csrf, session_id=session_id)
 
+    # Adjust extension for PPTX format (must be outside _download() to avoid UnboundLocalError)
+    if artifact_type_name == "slide-deck" and slide_format == "pptx":
+        file_extension = ".pptx"
+
     async def _download() -> dict[str, Any]:
         async with NotebookLMClient(auth) as client:
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
@@ -157,6 +162,18 @@ async def _download_artifacts_generic(
             download_fn = download_methods.get(artifact_type_name)
             if not download_fn:
                 raise ValueError(f"Unknown artifact type: {artifact_type_name}")
+
+            # For slide-deck with PPTX format, use PPTX-specific download function
+            if artifact_type_name == "slide-deck" and slide_format == "pptx":
+
+                async def _download_pptx(
+                    nb_id: str, path: str, artifact_id: str | None = None
+                ) -> str:
+                    return await client.artifacts.download_slide_deck(
+                        nb_id, path, artifact_id=artifact_id, format="pptx"
+                    )
+
+                download_fn = _download_pptx
 
             # Fetch artifacts
             all_artifacts = await client.artifacts.list(nb_id_resolved)
@@ -519,14 +536,24 @@ def download_video(ctx, **kwargs):
 @click.option("--dry-run", is_flag=True, help="Preview without downloading")
 @click.option("--force", is_flag=True, help="Overwrite existing files")
 @click.option("--no-clobber", is_flag=True, help="Skip if file exists")
+@click.option(
+    "--format",
+    "slide_format",
+    type=click.Choice(["pdf", "pptx"]),
+    default="pdf",
+    help="Download format: pdf (default) or pptx",
+)
 @click.pass_context
 def download_slide_deck(ctx, **kwargs):
-    """Download slide deck(s) as PDF files.
+    """Download slide deck(s) as PDF or PPTX.
 
     \b
     Examples:
       # Download latest slide deck to default filename
       notebooklm download slide-deck
+
+      # Download as PPTX
+      notebooklm download slide-deck --format pptx
 
       # Download to specific path
       notebooklm download slide-deck my-slides.pdf
