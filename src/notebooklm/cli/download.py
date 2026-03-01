@@ -14,6 +14,7 @@ Commands:
 
 import json
 from collections.abc import Awaitable, Callable
+from functools import partial
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -174,17 +175,9 @@ async def _download_artifacts_generic(
             if not download_fn:
                 raise ValueError(f"Unknown artifact type: {artifact_type_name}")
 
-            # For slide-deck with PPTX format, use PPTX-specific download function
+            # For slide-deck with PPTX format, bind output_format="pptx"
             if artifact_type_name == "slide-deck" and slide_format == "pptx":
-
-                async def _download_pptx(
-                    nb_id: str, path: str, artifact_id: str | None = None
-                ) -> str:
-                    return await client.artifacts.download_slide_deck(
-                        nb_id, path, artifact_id=artifact_id, output_format="pptx"
-                    )
-
-                download_fn = _download_pptx
+                download_fn = partial(client.artifacts.download_slide_deck, output_format="pptx")
 
             # Fetch artifacts
             all_artifacts = await client.artifacts.list(nb_id_resolved)

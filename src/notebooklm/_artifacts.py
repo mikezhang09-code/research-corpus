@@ -14,6 +14,7 @@ import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -2022,6 +2023,18 @@ class ArtifactsAPI:
         Raises:
             ArtifactDownloadError: If download fails or authentication expired.
         """
+        # Validate URL scheme and domain before sending auth cookies.
+        # httpx sends cookies to every request made by the client regardless of
+        # domain, so we must ensure the URL belongs to a trusted Google domain.
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            raise ArtifactDownloadError("media", details=f"Download URL must use HTTPS: {url[:80]}")
+        trusted = (".google.com", ".googleusercontent.com", ".googleapis.com")
+        if not any(parsed.netloc == d.lstrip(".") or parsed.netloc.endswith(d) for d in trusted):
+            raise ArtifactDownloadError(
+                "media", details=f"Untrusted download domain: {parsed.netloc}"
+            )
+
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 

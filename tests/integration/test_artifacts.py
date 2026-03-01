@@ -775,8 +775,8 @@ class TestArtifactErrorPaths:
         tmp_path,
     ):
         """Test download_slide_deck with format='pptx' downloads PPTX URL."""
-        pdf_url = "https://example.com/slides.pdf"
-        pptx_url = "https://example.com/slides.pptx"
+        pdf_url = "https://docs.googleusercontent.com/slides.pdf"
+        pptx_url = "https://docs.googleusercontent.com/slides.pptx"
         slide_art = [
             "artifact_456",
             "Slide Deck",
