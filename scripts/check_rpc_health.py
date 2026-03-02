@@ -434,7 +434,7 @@ def get_test_params(method: RPCMethod, notebook_id: str | None) -> list[Any] | N
 
     # Methods that take [[notebook_id]] as the only param
     if method in (
-        RPCMethod.GET_CONVERSATION_HISTORY,
+        RPCMethod.LIST_CONVERSATIONS,
         RPCMethod.GET_NOTES_AND_MIND_MAPS,
         RPCMethod.DISCOVER_SOURCES,
     ):

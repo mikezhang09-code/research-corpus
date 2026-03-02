@@ -214,7 +214,7 @@ class ChatAPI:
         logger.debug("Getting conversation history for notebook %s (limit=%d)", notebook_id, limit)
         params: list[Any] = [[], None, notebook_id, limit]
         return await self._core.rpc_call(
-            RPCMethod.GET_CONVERSATION_HISTORY,
+            RPCMethod.LIST_CONVERSATIONS,
             params,
             source_path=f"/notebook/{notebook_id}",
         )

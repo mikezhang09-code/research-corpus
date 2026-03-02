@@ -149,6 +149,83 @@ class TestChatE2E:
 
 @pytest.mark.e2e
 @requires_auth
+class TestChatHistoryE2E:
+    """E2E tests for chat history and conversation turns API."""
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_turns_returns_qa(self, client, multi_source_notebook_id):
+        """Test that get_conversation_turns returns Q&A turns for a conversation."""
+        # Ask a question to create a conversation with at least one turn
+        ask_result = await client.chat.ask(
+            multi_source_notebook_id,
+            "What is the main topic of these sources?",
+        )
+        assert ask_result.conversation_id
+
+        # Fetch turns for that conversation
+        turns_data = await client.chat.get_conversation_turns(
+            multi_source_notebook_id,
+            ask_result.conversation_id,
+            limit=2,
+        )
+
+        assert turns_data is not None
+        assert isinstance(turns_data[0], list)
+        turns = turns_data[0]
+        assert len(turns) >= 1
+
+        # Turns have: turn[2] = type (1=question, 2=answer)
+        turn_types = [turn[2] for turn in turns if isinstance(turn, list) and len(turn) > 2]
+        assert any(t in (1, 2) for t in turn_types), "Expected question or answer turns"
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_turns_question_text(self, client, multi_source_notebook_id):
+        """Test that conversation turns include the original question text."""
+        question = "What topics are covered in detail?"
+        ask_result = await client.chat.ask(multi_source_notebook_id, question)
+        assert ask_result.conversation_id
+
+        turns_data = await client.chat.get_conversation_turns(
+            multi_source_notebook_id,
+            ask_result.conversation_id,
+            limit=2,
+        )
+
+        assert turns_data is not None
+        turns = turns_data[0]
+        # Find the question turn (type=1, text at turn[3])
+        question_turns = [t for t in turns if isinstance(t, list) and len(t) > 3 and t[2] == 1]
+        assert question_turns, "No question turn found in response"
+        assert question_turns[0][3] == question
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_turns_answer_text(self, client, multi_source_notebook_id):
+        """Test that conversation turns include the AI answer text."""
+        ask_result = await client.chat.ask(
+            multi_source_notebook_id,
+            "Briefly describe what you know about this notebook.",
+        )
+        assert ask_result.conversation_id
+        assert ask_result.answer
+
+        turns_data = await client.chat.get_conversation_turns(
+            multi_source_notebook_id,
+            ask_result.conversation_id,
+            limit=2,
+        )
+
+        assert turns_data is not None
+        turns = turns_data[0]
+        # Find the answer turn (type=2, text at turn[4][0][0])
+        answer_turns = [t for t in turns if isinstance(t, list) and len(t) > 4 and t[2] == 2]
+        assert answer_turns, "No answer turn found in response"
+        answer_text = answer_turns[0][4][0][0]
+        assert isinstance(answer_text, str)
+        assert len(answer_text) > 0
+
+
+@pytest.mark.e2e
+@requires_auth
 class TestChatReferencesE2E:
     """E2E tests specifically for chat references and citations."""
 
