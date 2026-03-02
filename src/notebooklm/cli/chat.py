@@ -6,6 +6,7 @@ Commands:
     history    Get conversation history or clear local cache
 """
 
+import asyncio
 import logging
 
 import click
@@ -68,9 +69,9 @@ async def _get_latest_conversation_from_history(
     """
     try:
         history = await client.chat.get_history(notebook_id, limit=1)
-        if history and history[0]:
-            last_conv = history[0][-1]
-            conv_id = last_conv[0] if isinstance(last_conv, list) else str(last_conv)
+        conversations = _extract_conversations(history)
+        if conversations:
+            conv_id = str(conversations[0][0])
             if not json_output:
                 console.print(f"[dim]Continuing conversation {conv_id[:8]}...[/dim]")
             return conv_id
@@ -338,13 +339,24 @@ def register_chat_commands(cli):
                 # When saving, fetch a large history to avoid truncating with the display limit
                 fetch_limit = 1000 if save_as_note else limit
                 history = await client.chat.get_history(nb_id_resolved, limit=fetch_limit)
-                conversations = history[0] if history and isinstance(history[0], list) else []
+                conversations = _extract_conversations(history)
+
+                async def _fetch_qa(conv_id: str) -> tuple[str, str]:
+                    try:
+                        turns_data = await client.chat.get_conversation_turns(
+                            nb_id_resolved, conv_id, limit=2
+                        )
+                        return _extract_qa_from_turns(turns_data)
+                    except Exception as e:
+                        logger.debug("Failed to fetch turns for %s: %s", conv_id, e)
+                        return "", ""
 
                 if save_as_note:
                     if not conversations:
                         raise click.ClickException(
                             "No conversation history found for this notebook."
                         )
+
                     if conversation_id:
                         conv = _find_conversation(conversations, conversation_id)
                         if conv is None:
@@ -352,13 +364,15 @@ def register_chat_commands(cli):
                                 f"Conversation '{conversation_id}' not found. "
                                 "Run 'notebooklm history' to see available IDs."
                             )
-                        content = _format_single_conversation(conv)
+                        question, answer = await _fetch_qa(str(conv[0]))
+                        content = _format_single_qa(question, answer)
                         title = (
-                            note_title
-                            or f"Chat: {str(conv[1])[:50] if len(conv) > 1 and conv[1] else 'Conversation'}"
+                            note_title or f"Chat: {question[:50] if question else 'Conversation'}"
                         )
                     else:
-                        content = _format_all_conversations(conversations)
+                        conv_ids = [str(c[0]) for c in conversations]
+                        qa_results = await asyncio.gather(*[_fetch_qa(cid) for cid in conv_ids])
+                        content = _format_all_qa(qa_results)
                         title = note_title or "Chat History"
                     note = await client.notes.create(nb_id_resolved, title, content)
                     console.print(f"[green]Saved as note: {note.title} ({note.id[:8]}...)[/green]")
@@ -374,30 +388,13 @@ def register_chat_commands(cli):
                 table.add_column("Conversation ID", style="cyan")
                 table.add_column("Question", style="white", max_width=40)
                 table.add_column("Answer preview", style="dim", max_width=40)
-                for i, conv in enumerate(conversations, 1):
-                    if not isinstance(conv, list) or len(conv) < 1:
-                        continue
-                    conv_id = str(conv[0])
-                    question = ""
-                    answer = ""
-                    try:
-                        turns_data = await client.chat.get_conversation_turns(
-                            nb_id_resolved, conv_id, limit=2
-                        )
-                        if turns_data and isinstance(turns_data[0], list):
-                            for turn in turns_data[0]:
-                                if not isinstance(turn, list) or len(turn) < 3:
-                                    continue
-                                if turn[2] == 1 and not question and len(turn) > 3:
-                                    question = str(turn[3] or "")[:40]
-                                elif turn[2] == 2 and not answer and len(turn) > 4:
-                                    try:
-                                        answer = str(turn[4][0][0] or "")[:40]
-                                    except (IndexError, TypeError):
-                                        pass
-                    except Exception as e:
-                        logger.debug("Failed to fetch turns for %s: %s", conv_id, e)
-                    table.add_row(str(i), conv_id, question, answer)
+                indexed_convs = [(i, str(conv[0])) for i, conv in enumerate(conversations, 1)]
+
+                qa_results = await asyncio.gather(
+                    *[_fetch_qa(conv_id) for _, conv_id in indexed_convs]
+                )
+                for (i, conv_id), (question, answer) in zip(indexed_convs, qa_results, strict=True):
+                    table.add_row(str(i), conv_id, question[:40], answer[:40])
                 console.print(table)
                 console.print(
                     "\n[dim]Use 'notebooklm ask -c <id>' to continue a conversation. "
@@ -405,6 +402,51 @@ def register_chat_commands(cli):
                 )
 
         return _run()
+
+
+def _extract_conversations(history: list | None) -> list:
+    """Extract conversation entries from API response.
+
+    Handles both response structures returned by LIST_CONVERSATIONS:
+      - Single group: [[[conv_1], [conv_2], ...]]
+      - Multiple groups: [[[conv_1]], [[conv_2]], ...]
+    """
+    conversations: list = []
+    if not history or not isinstance(history, list):
+        return conversations
+    for group in history:
+        if isinstance(group, list):
+            for conv in group:
+                if isinstance(conv, list) and conv:
+                    conversations.append(conv)
+    return conversations
+
+
+def _extract_qa_from_turns(turns_data) -> tuple[str, str]:
+    """Extract question and answer text from raw turn data.
+
+    Turn structure (from GET_CONVERSATION_TURNS / khqZz RPC):
+      turn[2] == 1: user question, text at turn[3]
+      turn[2] == 2: AI answer, text at turn[4][0][0]
+    """
+    question = ""
+    answer = ""
+    if not turns_data or not isinstance(turns_data, list):
+        return question, answer
+    first = turns_data[0]
+    if not isinstance(first, list):
+        return question, answer
+    for turn in first:
+        if not isinstance(turn, list) or len(turn) < 3:
+            continue
+        if turn[2] == 1 and not question and len(turn) > 3:
+            question = str(turn[3] or "")
+        elif turn[2] == 2 and not answer and len(turn) > 4:
+            try:
+                answer = str(turn[4][0][0] or "")
+            except (IndexError, TypeError):
+                pass
+    return question, answer
 
 
 def _find_conversation(conversations: list, conversation_id: str) -> list | None:
@@ -415,10 +457,8 @@ def _find_conversation(conversations: list, conversation_id: str) -> list | None
     return None
 
 
-def _format_single_conversation(conv: list) -> str:
-    """Format one conversation as note content."""
-    question = str(conv[1]) if len(conv) > 1 and conv[1] else ""
-    answer = str(conv[2]) if len(conv) > 2 and conv[2] else ""
+def _format_single_qa(question: str, answer: str) -> str:
+    """Format one Q&A pair as note content."""
     parts = []
     if question:
         parts.append(f"**Q:** {question}")
@@ -427,12 +467,10 @@ def _format_single_conversation(conv: list) -> str:
     return "\n\n".join(parts)
 
 
-def _format_all_conversations(conversations: list) -> str:
-    """Format all conversations as note content."""
+def _format_all_qa(qa_results: list[tuple[str, str]]) -> str:
+    """Format multiple Q&A pairs as note content."""
     sections = []
-    for i, conv in enumerate(conversations, 1):
-        if not isinstance(conv, list) or not conv:
-            continue
-        section = f"## Conversation {i}\n\n{_format_single_conversation(conv)}"
+    for i, (question, answer) in enumerate(qa_results, 1):
+        section = f"## Conversation {i}\n\n{_format_single_qa(question, answer)}"
         sections.append(section)
     return "\n\n---\n\n".join(sections)
