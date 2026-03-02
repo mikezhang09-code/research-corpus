@@ -130,7 +130,15 @@ def _get_context_value(key: str) -> str | None:
     try:
         data = json.loads(context_file.read_text(encoding="utf-8"))
         return data.get(key)
-    except (OSError, json.JSONDecodeError):
+    except json.JSONDecodeError:
+        logger.warning(
+            "Context file %s is corrupted; cannot read '%s'. Run 'notebooklm clear' to reset.",
+            context_file,
+            key,
+        )
+        return None
+    except OSError as e:
+        logger.warning("Cannot read context file %s: %s", context_file, e)
         return None
 
 
@@ -141,13 +149,19 @@ def _set_context_value(key: str, value: str | None) -> None:
         return
     try:
         data = json.loads(context_file.read_text(encoding="utf-8"))
-        if value:
+        if value is not None:
             data[key] = value
         elif key in data:
             del data[key]
         context_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    except (OSError, json.JSONDecodeError):
-        pass
+    except json.JSONDecodeError:
+        logger.warning(
+            "Context file %s is corrupted; cannot update '%s'. Run 'notebooklm clear' to reset.",
+            context_file,
+            key,
+        )
+    except OSError as e:
+        logger.warning("Failed to write context file %s for key '%s': %s", context_file, key, e)
 
 
 def get_current_notebook() -> str | None:

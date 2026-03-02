@@ -101,7 +101,7 @@ class TestAsk:
 
 class TestParseExchangeId:
     def test_extracts_exchange_id_from_response(self):
-        """first[2][1] in response is the server-assigned exchange UUID."""
+        """_parse_ask_response_with_references returns exchange_id from first[2][1]."""
         inner_json = json.dumps(
             [
                 [
@@ -124,7 +124,7 @@ class TestParseExchangeId:
         core = ClientCore(auth)
         api = ChatAPI(core)
 
-        exchange_id = api._parse_exchange_id_from_response(response_body)
+        _, _, exchange_id = api._parse_ask_response_with_references(response_body)
         assert exchange_id == "exchange-uuid-222"
 
     def test_returns_none_when_first2_missing(self):
@@ -141,7 +141,7 @@ class TestParseExchangeId:
         core = ClientCore(auth)
         api = ChatAPI(core)
 
-        exchange_id = api._parse_exchange_id_from_response(response_body)
+        _, _, exchange_id = api._parse_ask_response_with_references(response_body)
         assert exchange_id is None
 
 

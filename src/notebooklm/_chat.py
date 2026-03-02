@@ -113,7 +113,7 @@ class ChatAPI:
             [2, None, [1], [1]],
             conversation_id,
         ]
-        if exchange_id:
+        if exchange_id is not None:
             params += [None, None, exchange_id, 1]
 
         params_json = json.dumps(params, separators=(",", ":"))
@@ -403,63 +403,6 @@ class ChatAPI:
     # =========================================================================
     # Private Helpers
     # =========================================================================
-
-    def _parse_exchange_id_from_response(self, response_text: str) -> str | None:
-        """Extract the server-assigned exchange UUID from the streaming response.
-
-        The exchange UUID is at first[2][1] in each chunk. It's constant across
-        all chunks in a single response. Returns the first one found.
-
-        This UUID is what the Web UI sends back as params[7] in follow-up
-        requests, enabling server-side context lookup without replaying history.
-        """
-        if response_text.startswith(")]}'"):
-            response_text = response_text[4:]
-
-        lines = response_text.strip().split("\n")
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            if not line:
-                i += 1
-                continue
-            try:
-                int(line)
-                i += 1
-                json_line = lines[i].strip() if i < len(lines) else ""
-            except ValueError:
-                json_line = line
-            i += 1
-
-            if not json_line:
-                continue
-            try:
-                data = json.loads(json_line)
-            except json.JSONDecodeError:
-                continue
-
-            if not isinstance(data, list):
-                continue
-            for item in data:
-                if not isinstance(item, list) or len(item) < 3 or item[0] != "wrb.fr":
-                    continue
-                inner_json = item[2]
-                if not isinstance(inner_json, str):
-                    continue
-                try:
-                    inner_data = json.loads(inner_json)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(inner_data, list) or not inner_data:
-                    continue
-                first = inner_data[0]
-                if not isinstance(first, list) or len(first) < 3:
-                    continue
-                ids = first[2]
-                if isinstance(ids, list) and len(ids) >= 2 and isinstance(ids[1], str):
-                    return ids[1]
-
-        return None
 
     def _build_conversation_history(self, conversation_id: str) -> list | None:
         """Build conversation history for follow-up requests."""

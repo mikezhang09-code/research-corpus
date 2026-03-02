@@ -155,9 +155,9 @@ def register_chat_commands(cli):
                 # Only use stored exchange_id when conv_id came from local cache
                 # (not from explicit --conversation-id flag, which may not match)
                 effective_exchange_id: str | None = None
-                if effective_conv_id:
+                if effective_conv_id and not conversation_id:
                     effective_exchange_id = get_current_exchange_id()
-                else:
+                elif not effective_conv_id:
                     # If no conversation ID yet, try to get the most recent one from server
                     if not new_conversation:
                         effective_conv_id = await _get_latest_conversation_from_server(
