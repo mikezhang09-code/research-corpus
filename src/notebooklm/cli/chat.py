@@ -176,7 +176,9 @@ def register_chat_commands(cli):
 
                 if result.conversation_id:
                     set_current_conversation(result.conversation_id)
-                set_current_exchange_id(result.exchange_id)
+                    set_current_exchange_id(result.exchange_id)
+                else:
+                    set_current_exchange_id(None)
 
                 if json_output:
                     from dataclasses import asdict
