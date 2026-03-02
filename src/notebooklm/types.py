@@ -1044,6 +1044,7 @@ class AskResult:
     is_follow_up: bool
     references: list["ChatReference"] = field(default_factory=list)
     raw_response: str = ""
+    exchange_id: str | None = None
 
 
 # =============================================================================
