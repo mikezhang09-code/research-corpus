@@ -359,12 +359,11 @@ def register_chat_commands(cli):
                 conversations = await client.chat.get_history(nb_id_resolved, limit=limit)
 
                 if save_as_note:
-                    all_pairs = [pair for _, pairs in conversations for pair in pairs]
-                    if not all_pairs:
+                    if not conversations:
                         raise click.ClickException(
                             "No conversation history found for this notebook."
                         )
-                    content = _format_all_qa(all_pairs)
+                    content = _format_conversations(conversations)
                     title = note_title or "Chat History"
                     note = await client.notes.create(nb_id_resolved, title, content)
                     console.print(f"[green]Saved as note: {note.title} ({note.id[:8]}...)[/green]")
@@ -404,7 +403,7 @@ def register_chat_commands(cli):
 
                 for conv_id, qa_pairs in conversations:
                     console.print(f"\n[dim]── {conv_id} ──[/dim]")
-                    table = Table(show_header=True)
+                    table = Table()
                     table.add_column("#", style="dim", width=4)
                     table.add_column("Question", style="white", max_width=50)
                     table.add_column("Answer preview", style="dim", max_width=50)
@@ -433,3 +432,14 @@ def _format_all_qa(qa_results: list[tuple[str, str]]) -> str:
         section = f"## Turn {i}\n\n{_format_single_qa(question, answer)}"
         sections.append(section)
     return "\n\n---\n\n".join(sections)
+
+
+def _format_conversations(conversations: list[tuple[str, list[tuple[str, str]]]]) -> str:
+    """Format conversation history preserving conversation boundaries."""
+    conv_sections = []
+    for conv_id, qa_pairs in conversations:
+        turns = []
+        for i, (question, answer) in enumerate(qa_pairs, 1):
+            turns.append(f"### Turn {i}\n\n{_format_single_qa(question, answer)}")
+        conv_sections.append(f"## Conversation {conv_id}\n\n" + "\n\n---\n\n".join(turns))
+    return "\n\n===\n\n".join(conv_sections)

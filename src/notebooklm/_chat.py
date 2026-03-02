@@ -4,6 +4,7 @@ Provides operations for asking questions, managing conversations, and
 retrieving conversation history.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -234,9 +235,7 @@ class ChatAPI:
         Returns:
             List of conversation ID strings, most recent first.
         """
-        logger.debug(
-            "Getting conversation IDs for notebook %s (limit=%d)", notebook_id, limit
-        )
+        logger.debug("Getting conversation IDs for notebook %s (limit=%d)", notebook_id, limit)
         params: list[Any] = [[], None, notebook_id, limit]
         raw = await self._core.rpc_call(
             RPCMethod.GET_LAST_CONVERSATION_ID,
@@ -274,9 +273,18 @@ class ChatAPI:
         if not conv_ids:
             return []
 
+        all_turns = await asyncio.gather(
+            *[
+                self.get_conversation_turns(notebook_id, conv_id, limit=limit)
+                for conv_id in conv_ids
+            ],
+            return_exceptions=True,
+        )
         result: list[tuple[str, list[tuple[str, str]]]] = []
-        for conv_id in conv_ids:
-            turns_data = await self.get_conversation_turns(notebook_id, conv_id, limit=limit)
+        for conv_id, turns_data in zip(conv_ids, all_turns, strict=True):
+            if isinstance(turns_data, Exception):
+                logger.warning("Failed to fetch turns for conversation %s: %s", conv_id, turns_data)
+                continue
             # API returns individual turns newest-first: [A2, Q2, A1, Q1, ...]
             # Reverse to chronological order [Q1, A1, Q2, A2, ...] so the
             # Q→A forward-pairing parser works correctly.
@@ -287,8 +295,7 @@ class ChatAPI:
                 and isinstance(turns_data[0], list)
             ):
                 turns_data = [list(reversed(turns_data[0]))]
-            qa_pairs = self._parse_turns_to_qa_pairs(turns_data)
-            result.append((conv_id, qa_pairs))
+            result.append((conv_id, self._parse_turns_to_qa_pairs(turns_data)))
         return result
 
     @staticmethod
