@@ -374,7 +374,9 @@ class TestNotebookHistory:
     def test_notebook_history(self, runner, mock_auth):
         with patch_main_cli_client() as mock_client_cls:
             mock_client = create_mock_client()
-            mock_client.chat.get_history = AsyncMock(return_value=[("conv_001", [("Q1?", "A1"), ("Q2?", "A2")])])
+            mock_client.chat.get_history = AsyncMock(
+                return_value=[("conv_001", [("Q1?", "A1"), ("Q2?", "A2")])]
+            )
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
