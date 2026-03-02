@@ -201,10 +201,9 @@ def set_current_notebook(
 
     # Preserve conversation_id and exchange_id only if staying in the same notebook
     if current_context.get("notebook_id") == notebook_id:
-        if "conversation_id" in current_context:
-            data["conversation_id"] = current_context["conversation_id"]
-        if "exchange_id" in current_context:
-            data["exchange_id"] = current_context["exchange_id"]
+        for key in ("conversation_id", "exchange_id"):
+            if key in current_context:
+                data[key] = current_context[key]
 
     context_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
