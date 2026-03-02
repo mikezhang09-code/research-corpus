@@ -378,8 +378,25 @@ def register_chat_commands(cli):
                     if not isinstance(conv, list) or len(conv) < 1:
                         continue
                     conv_id = str(conv[0])
-                    question = str(conv[1])[:40] if len(conv) > 1 and conv[1] else ""
-                    answer = str(conv[2])[:40] if len(conv) > 2 and conv[2] else ""
+                    question = ""
+                    answer = ""
+                    try:
+                        turns_data = await client.chat.get_conversation_turns(
+                            nb_id_resolved, conv_id, limit=2
+                        )
+                        if turns_data and isinstance(turns_data[0], list):
+                            for turn in turns_data[0]:
+                                if not isinstance(turn, list) or len(turn) < 3:
+                                    continue
+                                if turn[2] == 1 and not question and len(turn) > 3:
+                                    question = str(turn[3] or "")[:40]
+                                elif turn[2] == 2 and not answer and len(turn) > 4:
+                                    try:
+                                        answer = str(turn[4][0][0] or "")[:40]
+                                    except (IndexError, TypeError):
+                                        pass
+                    except Exception as e:
+                        logger.debug("Failed to fetch turns for %s: %s", conv_id, e)
                     table.add_row(str(i), conv_id, question, answer)
                 console.print(table)
                 console.print(

@@ -26,11 +26,28 @@ def make_ask_result(answer="The answer is 42.") -> AskResult:
     )
 
 
-# Realistic history: history[0] = list of conversations
+# Realistic history: history[0] = list of conversations, each entry is [conv_id]
+# (The real API only returns conversation IDs; Q&A content comes from get_conversation_turns)
 MOCK_HISTORY = [
     [
-        ["conv_001", "What is ML?", "ML is a type of AI.", 1704067200],
-        ["conv_002", "Explain AI", "AI stands for Artificial Intelligence.", 1704153600],
+        ["conv_001"],
+        ["conv_002"],
+    ]
+]
+
+# Mock turn data returned by get_conversation_turns
+# turn[2] == 1: user question, text at turn[3]
+# turn[2] == 2: AI answer, text at turn[4][0][0]
+MOCK_TURNS_CONV_001 = [
+    [
+        [None, None, 1, "What is ML?"],
+        [None, None, 2, None, [["ML is a type of AI."]]],
+    ]
+]
+MOCK_TURNS_CONV_002 = [
+    [
+        [None, None, 1, "Explain AI"],
+        [None, None, 2, None, [["AI stands for Artificial Intelligence."]]],
     ]
 ]
 
@@ -123,6 +140,11 @@ class TestHistoryCommand:
         with patch_client_for_module("chat") as mock_client_cls:
             mock_client = create_mock_client()
             mock_client.chat.get_history = AsyncMock(return_value=MOCK_HISTORY)
+            mock_client.chat.get_conversation_turns = AsyncMock(
+                side_effect=lambda nb_id, conv_id, **kw: (
+                    MOCK_TURNS_CONV_001 if conv_id == "conv_001" else MOCK_TURNS_CONV_002
+                )
+            )
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:

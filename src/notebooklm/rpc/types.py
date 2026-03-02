@@ -65,6 +65,7 @@ class RPCMethod(str, Enum):
 
     # Conversation
     GET_CONVERSATION_HISTORY = "hPTbtc"
+    GET_CONVERSATION_TURNS = "khqZz"
 
     # Sharing operations (notebook-level)
     SHARE_NOTEBOOK = "QDyure"  # Set notebook visibility (restricted/anyone with link)

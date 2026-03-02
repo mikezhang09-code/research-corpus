@@ -172,6 +172,35 @@ class ChatAPI:
             raw_response=response.text[:1000],
         )
 
+    async def get_conversation_turns(
+        self, notebook_id: str, conversation_id: str, limit: int = 2
+    ) -> Any:
+        """Get turns (individual messages) for a specific conversation.
+
+        Args:
+            notebook_id: The notebook ID.
+            conversation_id: The conversation ID to fetch turns for.
+            limit: Maximum number of turns to retrieve. Turns are returned
+                newest-first, so limit=2 gives the latest Q&A pair.
+
+        Returns:
+            Raw turn data from API. Each turn has:
+              turn[2] == 1: user question, text at turn[3]
+              turn[2] == 2: AI answer, text at turn[4][0][0]
+        """
+        logger.debug(
+            "Getting conversation turns for %s (conversation=%s, limit=%d)",
+            notebook_id,
+            conversation_id,
+            limit,
+        )
+        params: list[Any] = [[], None, None, conversation_id, limit]
+        return await self._core.rpc_call(
+            RPCMethod.GET_CONVERSATION_TURNS,
+            params,
+            source_path=f"/notebook/{notebook_id}",
+        )
+
     async def get_history(self, notebook_id: str, limit: int = 20) -> Any:
         """Get conversation history from the API.
 
