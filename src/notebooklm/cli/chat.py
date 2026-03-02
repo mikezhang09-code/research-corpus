@@ -386,12 +386,10 @@ def register_chat_commands(cli):
                     console.print("[yellow]No conversation history[/yellow]")
                     return
 
+                header = "[bold cyan]Conversation History:[/bold cyan]"
                 if conv_id:
-                    console.print(
-                        f"[bold cyan]Conversation History:[/bold cyan] [dim]{conv_id}[/dim]"
-                    )
-                else:
-                    console.print("[bold cyan]Conversation History:[/bold cyan]")
+                    header += f" [dim]{conv_id}[/dim]"
+                console.print(header)
 
                 if show_all:
                     for i, (question, answer) in enumerate(qa_pairs, 1):
