@@ -606,6 +606,81 @@ class TestListMindMaps:
 
 
 # =============================================================================
+# save_chat_as_note() tests
+# =============================================================================
+
+
+class TestSaveChatAsNote:
+    """Tests for save_chat_as_note() method."""
+
+    @pytest.mark.asyncio
+    async def test_save_chat_as_note_returns_note(self, notes_api, mock_core):
+        """Test that save_chat_as_note() returns a Note with content."""
+        mock_core.rpc_call.return_value = [["new_note_abc"]]
+
+        result = await notes_api.save_chat_as_note("nb_123", "Chat response text")
+
+        assert result.id == "new_note_abc"
+        assert result.notebook_id == "nb_123"
+        assert result.content == "Chat response text"
+        assert result.title == "New Saved Note"
+
+    @pytest.mark.asyncio
+    async def test_save_chat_as_note_custom_title(self, notes_api, mock_core):
+        """Test save_chat_as_note() with a custom title."""
+        mock_core.rpc_call.return_value = [["note_xyz"]]
+
+        result = await notes_api.save_chat_as_note("nb_123", "Content", title="My Custom Title")
+
+        assert result.title == "My Custom Title"
+        assert result.content == "Content"
+
+    @pytest.mark.asyncio
+    async def test_save_chat_as_note_uses_mode_2(self, notes_api, mock_core):
+        """Test that save_chat_as_note() uses mode [2] in RPC params."""
+        mock_core.rpc_call.return_value = [["note_123"]]
+
+        await notes_api.save_chat_as_note("nb_456", "Content")
+
+        call_args = mock_core.rpc_call.call_args
+        params = call_args[0][1]
+
+        assert params[0] == "nb_456"
+        assert params[1] == "Content"
+        assert params[2] == [2]
+        assert params[3] is None
+        assert params[4] == "New Saved Note"
+
+    @pytest.mark.asyncio
+    async def test_save_chat_as_note_flat_result(self, notes_api, mock_core):
+        """Test save_chat_as_note() with flat string result."""
+        mock_core.rpc_call.return_value = ["note_flat_id"]
+
+        result = await notes_api.save_chat_as_note("nb_123", "Content")
+
+        assert result.id == "note_flat_id"
+
+    @pytest.mark.asyncio
+    async def test_save_chat_as_note_null_result(self, notes_api, mock_core):
+        """Test save_chat_as_note() when RPC returns None."""
+        mock_core.rpc_call.return_value = None
+
+        result = await notes_api.save_chat_as_note("nb_123", "Content")
+
+        assert result.id == ""
+        assert result.content == "Content"
+
+    @pytest.mark.asyncio
+    async def test_save_chat_as_note_single_rpc_call(self, notes_api, mock_core):
+        """Test that save_chat_as_note() makes only one RPC call (no separate update)."""
+        mock_core.rpc_call.return_value = [["note_123"]]
+
+        await notes_api.save_chat_as_note("nb_123", "Content")
+
+        assert mock_core.rpc_call.call_count == 1
+
+
+# =============================================================================
 # delete_mind_map() tests
 # =============================================================================
 

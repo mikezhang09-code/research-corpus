@@ -210,6 +210,48 @@ class NotesAPI:
 
         return mind_maps
 
+    async def save_chat_as_note(
+        self,
+        notebook_id: str,
+        content: str,
+        title: str = "New Saved Note",
+    ) -> Note:
+        """Save a chat response as a note in the notebook.
+
+        Uses the same RPC endpoint as create() but with mode flag [2] instead
+        of [1], which signals NotebookLM to store this as a chat-sourced note
+        with the content set directly (no separate update call needed).
+
+        Args:
+            notebook_id: The notebook ID.
+            content: The chat response text to save as a note.
+            title: The note title. Defaults to "New Saved Note".
+
+        Returns:
+            The created Note object.
+        """
+        logger.debug("Saving chat as note in notebook %s", notebook_id)
+        params = [notebook_id, content, [2], None, title]
+        result = await self._core.rpc_call(
+            RPCMethod.CREATE_NOTE,
+            params,
+            source_path=f"/notebook/{notebook_id}",
+        )
+
+        note_id = None
+        if result and isinstance(result, list) and len(result) > 0:
+            if isinstance(result[0], list) and len(result[0]) > 0:
+                note_id = result[0][0]
+            elif isinstance(result[0], str):
+                note_id = result[0]
+
+        return Note(
+            id=note_id or "",
+            notebook_id=notebook_id,
+            title=title,
+            content=content,
+        )
+
     async def delete_mind_map(self, notebook_id: str, mind_map_id: str) -> bool:
         """Delete a mind map from the notebook.
 

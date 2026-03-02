@@ -300,6 +300,81 @@ class TestNoteDelete:
 
 
 # =============================================================================
+# NOTE SAVE-FROM-CHAT TESTS
+# =============================================================================
+
+
+class TestNoteSaveFromChat:
+    def test_save_from_chat_with_content_arg(self, runner, mock_auth):
+        with patch_client_for_module("note") as mock_client_cls:
+            mock_client = create_mock_client()
+            mock_client.notes.save_chat_as_note = AsyncMock(
+                return_value=make_note("note_new", "New Saved Note", "AI response text")
+            )
+            mock_client_cls.return_value = mock_client
+
+            with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(
+                    cli,
+                    ["note", "save-from-chat", "AI response text", "-n", "nb_123"],
+                )
+
+            assert result.exit_code == 0
+            assert "Chat saved as note" in result.output
+
+    def test_save_from_chat_with_custom_title(self, runner, mock_auth):
+        with patch_client_for_module("note") as mock_client_cls:
+            mock_client = create_mock_client()
+            mock_client.notes.save_chat_as_note = AsyncMock(
+                return_value=make_note("note_new", "My Title", "Content")
+            )
+            mock_client_cls.return_value = mock_client
+
+            with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(
+                    cli,
+                    ["note", "save-from-chat", "Content", "-t", "My Title", "-n", "nb_123"],
+                )
+
+            assert result.exit_code == 0
+            assert "Chat saved as note" in result.output
+
+    def test_save_from_chat_no_content(self, runner, mock_auth):
+        """Should show message when no content provided and stdin is a tty."""
+        with patch_client_for_module("note") as mock_client_cls:
+            mock_client = create_mock_client()
+            mock_client_cls.return_value = mock_client
+
+            with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(cli, ["note", "save-from-chat", "-n", "nb_123"])
+
+            assert "Provide content as argument or via stdin" in result.output
+
+    def test_save_from_chat_stdin(self, runner, mock_auth):
+        """Should read content from stdin."""
+        with patch_client_for_module("note") as mock_client_cls:
+            mock_client = create_mock_client()
+            mock_client.notes.save_chat_as_note = AsyncMock(
+                return_value=make_note("note_new", "New Saved Note", "stdin content")
+            )
+            mock_client_cls.return_value = mock_client
+
+            with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(
+                    cli,
+                    ["note", "save-from-chat", "-n", "nb_123"],
+                    input="stdin content",
+                )
+
+            assert result.exit_code == 0
+            assert "Chat saved as note" in result.output
+
+
+# =============================================================================
 # COMMAND EXISTENCE TESTS
 # =============================================================================
 
@@ -312,6 +387,7 @@ class TestNoteCommandsExist:
         assert "create" in result.output
         assert "rename" in result.output
         assert "delete" in result.output
+        assert "save-from-chat" in result.output
 
     def test_note_create_command_exists(self, runner):
         result = runner.invoke(cli, ["note", "create", "--help"])

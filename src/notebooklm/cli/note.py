@@ -1,13 +1,16 @@
 """Note management CLI commands.
 
 Commands:
-    list    List all notes
-    create  Create a new note
-    get     Get note content
-    save    Update note content
-    rename  Rename a note
-    delete  Delete a note
+    list           List all notes
+    create         Create a new note
+    get            Get note content
+    save           Update note content
+    rename         Rename a note
+    delete         Delete a note
+    save-from-chat Save chat response text as a note
 """
+
+import sys
 
 import click
 from rich.table import Table
@@ -29,11 +32,12 @@ def note():
 
     \b
     Commands:
-      list    List all notes
-      create  Create a new note
-      get     Get note content
-      save    Update note content
-      delete  Delete a note
+      list           List all notes
+      create         Create a new note
+      get            Get note content
+      save           Update note content
+      delete         Delete a note
+      save-from-chat Save chat response text as a note
 
     \b
     Partial ID Support:
@@ -218,6 +222,51 @@ def note_rename(ctx, note_id, new_title, notebook_id, client_auth):
                 nb_id_resolved, resolved_id, content=n.content or "", title=new_title
             )
             console.print(f"[green]Note renamed:[/green] {new_title}")
+
+    return _run()
+
+
+@note.command("save-from-chat")
+@click.argument("content", default="", required=False)
+@click.option(
+    "-n",
+    "--notebook",
+    "notebook_id",
+    default=None,
+    help="Notebook ID (uses current if not set)",
+)
+@click.option("-t", "--title", default="New Saved Note", help="Note title")
+@with_client
+def note_save_from_chat(ctx, content, notebook_id, title, client_auth):
+    """Save chat response text as a note.
+
+    Content can be provided as an argument or piped via stdin.
+
+    \b
+    Examples:
+      notebooklm note save-from-chat "AI response text"
+      echo "AI response text" | notebooklm note save-from-chat
+      notebooklm note save-from-chat "Content" -t "My Title" -n <notebook_id>
+    """
+    if not content and not sys.stdin.isatty():
+        content = sys.stdin.read().strip()
+
+    if not content:
+        console.print("[yellow]Provide content as argument or via stdin[/yellow]")
+        return
+
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        async with NotebookLMClient(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id)
+            result = await client.notes.save_chat_as_note(nb_id_resolved, content, title)
+
+            if result:
+                console.print("[green]Chat saved as note[/green]")
+                console.print(result)
+            else:
+                console.print("[yellow]Save may have failed[/yellow]")
 
     return _run()
 
