@@ -531,7 +531,7 @@ class ArtifactsAPI:
 
         config = format_configs[report_format]
         if extra_instructions and report_format != ReportFormat.CUSTOM:
-            config["prompt"] = f"{config['prompt']}\n\n{extra_instructions}"
+            config = {**config, "prompt": f"{config['prompt']}\n\n{extra_instructions}"}
         source_ids_triple = [[[sid]] for sid in source_ids] if source_ids else []
         source_ids_double = [[sid] for sid in source_ids] if source_ids else []
 
