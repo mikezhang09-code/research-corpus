@@ -40,7 +40,7 @@ class TestHistoryCommand:
 
     @notebooklm_vcr.use_cassette("chat_get_history.yaml")
     def test_history(self, runner, mock_auth_for_vcr, mock_context):
-        """History command shows conversation list (IDs only via LIST_CONVERSATIONS RPC)."""
+        """History command shows Q&A turns from last conversation."""
         result = runner.invoke(cli, ["history"])
         assert_command_success(result)
 
@@ -53,7 +53,7 @@ class TestGetConversationTurnsCommand:
     Conversation: b1556695-010e-4fe3-a841-a6efa7fe0697
 
     The cassette captures two sequential batchexecute calls:
-      1. hPTbtc (LIST_CONVERSATIONS) → returns one conversation ID
+      1. hPTbtc (GET_LAST_CONVERSATION_ID) → returns one conversation ID
       2. khqZz (GET_CONVERSATION_TURNS) → returns Q&A turns for that conversation
     """
 
@@ -73,27 +73,14 @@ class TestGetConversationTurnsCommand:
         reason=(
             "Cassette not yet recorded. To record: set NOTEBOOKLM_VCR_RECORD=1 and run "
             "'notebooklm history --save' against real API. "
-            "Cassette must capture LIST_CONVERSATIONS + CREATE_NOTE + UPDATE_NOTE."
+            "Cassette must capture GET_LAST_CONVERSATION_ID + GET_CONVERSATION_TURNS "
+            "+ CREATE_NOTE + UPDATE_NOTE."
         )
     )
     def test_history_save(self, runner, mock_auth_for_vcr, mock_context):
         """'history --save' saves all conversation history as a note."""
         with notebooklm_vcr.use_cassette("chat_history_save.yaml"):
             result = runner.invoke(cli, ["history", "--save"])
-            assert result.exit_code == 0
-            assert "Saved as note" in result.output
-
-    @pytest.mark.skip(
-        reason=(
-            "Cassette not yet recorded. To record: set NOTEBOOKLM_VCR_RECORD=1 and run "
-            "'notebooklm history --save -c <id>' against real API. "
-            "Cassette must capture LIST_CONVERSATIONS + CREATE_NOTE + UPDATE_NOTE."
-        )
-    )
-    def test_history_save_single_conversation(self, runner, mock_auth_for_vcr, mock_context):
-        """'history --save -c <id>' saves one conversation as a note."""
-        with notebooklm_vcr.use_cassette("chat_history_save_single.yaml"):
-            result = runner.invoke(cli, ["history", "--save", "-c", "conv_001"])
             assert result.exit_code == 0
             assert "Saved as note" in result.output
 

@@ -64,7 +64,7 @@ class RPCMethod(str, Enum):
     DELETE_NOTE = "AH0mwd"
 
     # Conversation
-    LIST_CONVERSATIONS = "hPTbtc"  # Returns conversation IDs only (no Q&A content)
+    GET_LAST_CONVERSATION_ID = "hPTbtc"  # Returns only the most recent conversation ID
     GET_CONVERSATION_TURNS = "khqZz"  # Returns full Q&A turns for a conversation
 
     # Sharing operations (notebook-level)

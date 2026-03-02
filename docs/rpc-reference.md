@@ -29,7 +29,7 @@
 | `R7cb6c` | CREATE_ARTIFACT | Unified artifact generation | `_artifacts.py` |
 | `gArtLc` | LIST_ARTIFACTS | List artifacts in a notebook | `_artifacts.py` |
 | `V5N4be` | DELETE_ARTIFACT | Delete artifact | `_artifacts.py` |
-| `hPTbtc` | LIST_CONVERSATIONS | List conversation IDs (no Q&A content) | `_chat.py` |
+| `hPTbtc` | GET_LAST_CONVERSATION_ID | Get most recent conversation ID | `_chat.py` |
 | `khqZz` | GET_CONVERSATION_TURNS | Get Q&A turns for a conversation | `_chat.py` |
 | `CYK0Xb` | CREATE_NOTE | Create a note (placeholder) | `_notes.py` |
 | `cYAfTb` | UPDATE_NOTE | Update note content/title | `_notes.py` |
@@ -396,12 +396,12 @@ params = [
 ]
 ```
 
-### RPC: LIST_CONVERSATIONS (hPTbtc)
+### RPC: GET_LAST_CONVERSATION_ID (hPTbtc)
 
-**Source:** `_chat.py::get_history()`
+**Source:** `_chat.py::get_last_conversation_id()`
 
-Returns a list of conversation IDs only — no Q&A content. Use `GET_CONVERSATION_TURNS`
-to fetch the actual messages for a given conversation.
+Returns only the most recent conversation ID — not a full history list. Use
+`GET_CONVERSATION_TURNS` to fetch the actual messages for a given conversation.
 
 ```python
 params = [
