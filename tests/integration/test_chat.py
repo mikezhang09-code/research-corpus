@@ -62,12 +62,15 @@ class TestChatAPI:
         httpx_mock.add_response(content=turns_response.encode())
 
         async with NotebookLMClient(auth_tokens) as client:
-            result = await client.chat.get_history("nb_123")
+            conversations = await client.chat.get_history("nb_123")
 
+        assert len(conversations) == 1
+        conv_id, qa_pairs = conversations[0]
+        assert conv_id == "conv_001"
         # get_history reverses API order to return oldest-first
-        assert len(result) == 2
-        assert result[0] == ("First question?", "Answer to first question.")
-        assert result[1] == ("Second question?", "Answer to second question.")
+        assert len(qa_pairs) == 2
+        assert qa_pairs[0] == ("First question?", "Answer to first question.")
+        assert qa_pairs[1] == ("Second question?", "Answer to second question.")
 
     @pytest.mark.asyncio
     async def test_get_conversation_turns(
@@ -168,8 +171,9 @@ class TestChatAPI:
         httpx_mock.add_response(content=update_response.encode())
 
         async with NotebookLMClient(auth_tokens) as client:
-            qa_pairs = await client.chat.get_history("nb_123")
-            content = _format_all_qa(qa_pairs)
+            conversations = await client.chat.get_history("nb_123")
+            all_pairs = [pair for _, pairs in conversations for pair in pairs]
+            content = _format_all_qa(all_pairs)
             note = await client.notes.create("nb_123", "Chat History", content)
 
         assert note.id == "new_note_id"

@@ -221,51 +221,75 @@ class ChatAPI:
         Returns:
             The most recent conversation ID, or None if no conversations exist.
         """
-        logger.debug("Getting last conversation ID for notebook %s", notebook_id)
-        params: list[Any] = [[], None, notebook_id, 1]
+        ids = await self._get_conversation_ids(notebook_id, limit=1)
+        return ids[0] if ids else None
+
+    async def _get_conversation_ids(self, notebook_id: str, limit: int = 20) -> list[str]:
+        """Fetch up to ``limit`` conversation IDs for a notebook (newest-first).
+
+        Args:
+            notebook_id: The notebook ID.
+            limit: Maximum number of conversation IDs to retrieve.
+
+        Returns:
+            List of conversation ID strings, most recent first.
+        """
+        logger.debug(
+            "Getting conversation IDs for notebook %s (limit=%d)", notebook_id, limit
+        )
+        params: list[Any] = [[], None, notebook_id, limit]
         raw = await self._core.rpc_call(
             RPCMethod.GET_LAST_CONVERSATION_ID,
             params,
             source_path=f"/notebook/{notebook_id}",
         )
-        # Response structure: [[[conv_id]]]
+        # Response structure: [[[conv_id_1], [conv_id_2], ...]]
+        ids: list[str] = []
         if raw and isinstance(raw, list):
             for group in raw:
                 if isinstance(group, list):
                     for conv in group:
-                        if isinstance(conv, list) and conv:
-                            return str(conv[0])
-        return None
+                        if isinstance(conv, list) and conv and isinstance(conv[0], str):
+                            ids.append(conv[0])
+        return ids
 
-    async def get_history(self, notebook_id: str, limit: int = 100) -> list[tuple[str, str]]:
-        """Get conversation history (all Q&A turns) from the server.
+    async def get_history(
+        self, notebook_id: str, limit: int = 100
+    ) -> list[tuple[str, list[tuple[str, str]]]]:
+        """Get conversation history grouped by conversation, newest-first.
 
-        Fetches the most recent conversation and retrieves all turns.
+        Fetches all available conversations and their Q&A turns.
 
         Args:
             notebook_id: The notebook ID.
-            limit: Maximum number of turns to retrieve.
+            limit: Maximum number of Q&A turns to retrieve per conversation.
 
         Returns:
-            List of (question, answer) tuples, ordered oldest-first.
+            List of (conversation_id, qa_pairs) tuples, newest conversation first.
+            Each qa_pairs list is ordered oldest-first within the conversation.
+            Returns an empty list if no conversations exist.
         """
         logger.debug("Getting conversation history for notebook %s (limit=%d)", notebook_id, limit)
-        conv_id = await self.get_last_conversation_id(notebook_id)
-        if not conv_id:
+        conv_ids = await self._get_conversation_ids(notebook_id)
+        if not conv_ids:
             return []
 
-        turns_data = await self.get_conversation_turns(notebook_id, conv_id, limit=limit)
-        # API returns individual turns newest-first: [A2, Q2, A1, Q1, ...]
-        # Reverse to chronological order [Q1, A1, Q2, A2, ...] so the
-        # Q→A forward-pairing parser works correctly.
-        if (
-            turns_data
-            and isinstance(turns_data, list)
-            and turns_data[0]
-            and isinstance(turns_data[0], list)
-        ):
-            turns_data = [list(reversed(turns_data[0]))]
-        return self._parse_turns_to_qa_pairs(turns_data)
+        result: list[tuple[str, list[tuple[str, str]]]] = []
+        for conv_id in conv_ids:
+            turns_data = await self.get_conversation_turns(notebook_id, conv_id, limit=limit)
+            # API returns individual turns newest-first: [A2, Q2, A1, Q1, ...]
+            # Reverse to chronological order [Q1, A1, Q2, A2, ...] so the
+            # Q→A forward-pairing parser works correctly.
+            if (
+                turns_data
+                and isinstance(turns_data, list)
+                and turns_data[0]
+                and isinstance(turns_data[0], list)
+            ):
+                turns_data = [list(reversed(turns_data[0]))]
+            qa_pairs = self._parse_turns_to_qa_pairs(turns_data)
+            result.append((conv_id, qa_pairs))
+        return result
 
     @staticmethod
     def _parse_turns_to_qa_pairs(turns_data: Any) -> list[tuple[str, str]]:
