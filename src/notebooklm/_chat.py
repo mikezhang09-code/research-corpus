@@ -21,6 +21,8 @@ from .types import AskResult, ChatReference, ConversationTurn
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_BL = "boq_labs-tailwind-frontend_20260301.03_p0"
+
 # UUID pattern for validating source IDs (compiled once at module level)
 _UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -133,7 +135,7 @@ class ChatAPI:
 
         self._core._reqid_counter += 100000
         url_params = {
-            "bl": os.environ.get("NOTEBOOKLM_BL", "boq_labs-tailwind-frontend_20260301.03_p0"),
+            "bl": os.environ.get("NOTEBOOKLM_BL", _DEFAULT_BL),
             "hl": "en",
             "_reqid": str(self._core._reqid_counter),
             "rt": "c",
