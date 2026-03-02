@@ -150,19 +150,17 @@ class TestChatE2E:
 @pytest.mark.e2e
 @requires_auth
 class TestChatHistoryE2E:
-    """E2E tests for chat history and conversation turns API."""
+    """E2E tests for chat history and conversation turns API (khqZz RPC)."""
 
     @pytest.mark.asyncio
     async def test_get_conversation_turns_returns_qa(self, client, multi_source_notebook_id):
-        """Test that get_conversation_turns returns Q&A turns for a conversation."""
-        # Ask a question to create a conversation with at least one turn
+        """get_conversation_turns returns Q&A turns for a conversation."""
         ask_result = await client.chat.ask(
             multi_source_notebook_id,
             "What is the main topic of these sources?",
         )
         assert ask_result.conversation_id
 
-        # Fetch turns for that conversation
         turns_data = await client.chat.get_conversation_turns(
             multi_source_notebook_id,
             ask_result.conversation_id,
@@ -174,13 +172,12 @@ class TestChatHistoryE2E:
         turns = turns_data[0]
         assert len(turns) >= 1
 
-        # Turns have: turn[2] = type (1=question, 2=answer)
         turn_types = [turn[2] for turn in turns if isinstance(turn, list) and len(turn) > 2]
         assert any(t in (1, 2) for t in turn_types), "Expected question or answer turns"
 
     @pytest.mark.asyncio
     async def test_get_conversation_turns_question_text(self, client, multi_source_notebook_id):
-        """Test that conversation turns include the original question text."""
+        """get_conversation_turns includes the original question text."""
         question = "What topics are covered in detail?"
         ask_result = await client.chat.ask(multi_source_notebook_id, question)
         assert ask_result.conversation_id
@@ -193,14 +190,13 @@ class TestChatHistoryE2E:
 
         assert turns_data is not None
         turns = turns_data[0]
-        # Find the question turn (type=1, text at turn[3])
         question_turns = [t for t in turns if isinstance(t, list) and len(t) > 3 and t[2] == 1]
         assert question_turns, "No question turn found in response"
         assert question_turns[0][3] == question
 
     @pytest.mark.asyncio
     async def test_get_conversation_turns_answer_text(self, client, multi_source_notebook_id):
-        """Test that conversation turns include the AI answer text."""
+        """get_conversation_turns includes the AI answer text."""
         ask_result = await client.chat.ask(
             multi_source_notebook_id,
             "Briefly describe what you know about this notebook.",
@@ -216,12 +212,64 @@ class TestChatHistoryE2E:
 
         assert turns_data is not None
         turns = turns_data[0]
-        # Find the answer turn (type=2, text at turn[4][0][0])
         answer_turns = [t for t in turns if isinstance(t, list) and len(t) > 4 and t[2] == 2]
         assert answer_turns, "No answer turn found in response"
         answer_text = answer_turns[0][4][0][0]
         assert isinstance(answer_text, str)
         assert len(answer_text) > 0
+
+    @pytest.mark.asyncio
+    async def test_history_flow_lists_conversation(self, client, multi_source_notebook_id):
+        """get_history (LIST_CONVERSATIONS) returns the conversation created by ask."""
+        ask_result = await client.chat.ask(
+            multi_source_notebook_id,
+            "What is one key concept in these sources?",
+        )
+        assert ask_result.conversation_id
+
+        history = await client.chat.get_history(multi_source_notebook_id)
+        assert history is not None
+        # Response is a nested list: [[[conv_id], ...], ...]
+        assert isinstance(history[0], list), "Expected list of conversations"
+        conv_ids = [c[0] for c in history[0] if isinstance(c, list) and c]
+        assert ask_result.conversation_id in conv_ids, (
+            f"Expected conversation {ask_result.conversation_id} in history, got: {conv_ids}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_history_flow_get_turns_from_history(self, client, multi_source_notebook_id):
+        """Full flow: ask → list conversations → get turns for first conversation."""
+        question = "List one important topic from the sources."
+        ask_result = await client.chat.ask(multi_source_notebook_id, question)
+        assert ask_result.conversation_id
+
+        # Step 1: List conversations (hPTbtc)
+        history = await client.chat.get_history(multi_source_notebook_id)
+        assert history is not None
+        assert isinstance(history[0], list)
+        conv_ids = [c[0] for c in history[0] if isinstance(c, list) and c]
+        assert conv_ids, "No conversations returned by get_history"
+
+        # Step 2: Get turns for the first conversation (khqZz)
+        first_conv_id = conv_ids[0]
+        turns_data = await client.chat.get_conversation_turns(
+            multi_source_notebook_id,
+            first_conv_id,
+            limit=2,
+        )
+
+        assert turns_data is not None
+        turns = turns_data[0]
+        assert isinstance(turns, list)
+        assert len(turns) >= 1
+
+        # Verify Q&A structure
+        question_turns = [t for t in turns if isinstance(t, list) and len(t) > 3 and t[2] == 1]
+        answer_turns = [t for t in turns if isinstance(t, list) and len(t) > 4 and t[2] == 2]
+        assert question_turns, "No question turn in history conversation"
+        assert answer_turns, "No answer turn in history conversation"
+        assert isinstance(question_turns[0][3], str) and question_turns[0][3]
+        assert isinstance(answer_turns[0][4][0][0], str) and answer_turns[0][4][0][0]
 
 
 @pytest.mark.e2e

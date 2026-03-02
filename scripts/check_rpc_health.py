@@ -440,6 +440,10 @@ def get_test_params(method: RPCMethod, notebook_id: str | None) -> list[Any] | N
     ):
         return [[notebook_id]]
 
+    # GET_CONVERSATION_TURNS: placeholder conv ID - API echoes RPC ID even in error response
+    if method == RPCMethod.GET_CONVERSATION_TURNS:
+        return [[], None, None, "placeholder_conv_id", 2]
+
     # LIST_ARTIFACTS has special params
     if method == RPCMethod.LIST_ARTIFACTS:
         return [[2], notebook_id, 'NOT artifact.status = "ARTIFACT_STATUS_SUGGESTED"']
