@@ -217,58 +217,6 @@ class TestChatAPI:
         assert result[0] == []
 
     @pytest.mark.asyncio
-    async def test_history_save_as_note(
-        self,
-        auth_tokens,
-        httpx_mock: HTTPXMock,
-        build_rpc_response,
-    ):
-        """Test the combined get_history + notes.create flow for 'history --save'."""
-        from notebooklm.cli.chat import _format_all_qa
-
-        # get_last_conversation_id
-        id_response = build_rpc_response(
-            RPCMethod.GET_LAST_CONVERSATION_ID,
-            [[["conv_001"]]],
-        )
-        # get_conversation_turns (chronological: Q, A, Q, A)
-        turns_response = build_rpc_response(
-            RPCMethod.GET_CONVERSATION_TURNS,
-            [
-                [
-                    [None, None, 1, "What is ML?"],
-                    [None, None, 2, None, [["Machine learning is a type of AI."]]],
-                    [None, None, 1, "Explain AI"],
-                    [None, None, 2, None, [["AI stands for Artificial Intelligence."]]],
-                ]
-            ],
-        )
-        create_response = build_rpc_response(RPCMethod.CREATE_NOTE, [["new_note_id"]])
-        update_response = build_rpc_response(RPCMethod.UPDATE_NOTE, None)
-
-        httpx_mock.add_response(content=id_response.encode())
-        httpx_mock.add_response(content=turns_response.encode())
-        httpx_mock.add_response(content=create_response.encode())
-        httpx_mock.add_response(content=update_response.encode())
-
-        async with NotebookLMClient(auth_tokens) as client:
-            conversations = await client.chat.get_history("nb_123")
-            all_pairs = [pair for _, pairs in conversations for pair in pairs]
-            content = _format_all_qa(all_pairs)
-            note = await client.notes.create("nb_123", "Chat History", content)
-
-        assert note.id == "new_note_id"
-        assert note.title == "Chat History"
-        assert "What is ML?" in note.content
-        assert "Machine learning" in note.content
-        assert "Explain AI" in note.content
-
-        requests = httpx_mock.get_requests()
-        assert RPCMethod.GET_LAST_CONVERSATION_ID in str(requests[0].url)
-        assert RPCMethod.GET_CONVERSATION_TURNS in str(requests[1].url)
-        assert RPCMethod.CREATE_NOTE in str(requests[2].url)
-
-    @pytest.mark.asyncio
     async def test_get_history_empty(
         self,
         auth_tokens,

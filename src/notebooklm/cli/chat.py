@@ -425,15 +425,6 @@ def _format_single_qa(question: str, answer: str) -> str:
     return "\n\n".join(parts)
 
 
-def _format_all_qa(qa_results: list[tuple[str, str]]) -> str:
-    """Format multiple Q&A pairs as note content."""
-    sections = []
-    for i, (question, answer) in enumerate(qa_results, 1):
-        section = f"## Turn {i}\n\n{_format_single_qa(question, answer)}"
-        sections.append(section)
-    return "\n\n---\n\n".join(sections)
-
-
 def _format_conversations(conversations: list[tuple[str, list[tuple[str, str]]]]) -> str:
     """Format conversation history preserving conversation boundaries."""
     conv_sections = []
