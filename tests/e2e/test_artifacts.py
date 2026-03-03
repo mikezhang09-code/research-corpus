@@ -12,6 +12,7 @@ import asyncio
 import pytest
 
 from notebooklm import Artifact, ArtifactType, ReportSuggestion
+from notebooklm.exceptions import RPCTimeoutError
 
 from .conftest import assert_generation_started, requires_auth
 
@@ -144,7 +145,10 @@ class TestReportSuggestions:
     @pytest.mark.readonly
     async def test_suggest_reports(self, client, read_only_notebook_id):
         """Read-only test - gets suggestions without generating."""
-        suggestions = await client.artifacts.suggest_reports(read_only_notebook_id)
+        try:
+            suggestions = await client.artifacts.suggest_reports(read_only_notebook_id)
+        except RPCTimeoutError:
+            pytest.skip("GET_SUGGESTED_REPORTS timed out - API may be rate limited")
 
         assert isinstance(suggestions, list)
         if suggestions:

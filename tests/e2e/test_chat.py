@@ -11,13 +11,16 @@ from notebooklm.exceptions import ChatError
 
 from .conftest import requires_auth
 
+_RATE_LIMIT_PHRASES = ("rate limit", "rate limited", "rejected by the api")
+
 
 @pytest.fixture(autouse=True)
 async def _skip_on_chat_rate_limit(client):
-    """Auto-skip any test that hits a chat API rate limit (ChatError).
+    """Auto-skip any test that hits a chat API rate limit.
 
-    Mirrors the pattern used in generation tests, where rate-limited
-    results call pytest.skip() rather than failing the suite.
+    Only skips on actual rate limit errors (ChatError with rate-limit message).
+    Other ChatErrors (HTTP failures, auth errors, etc.) are re-raised so they
+    show as failures rather than silently skipping.
     """
     original_ask = client.chat.ask
 
@@ -25,7 +28,10 @@ async def _skip_on_chat_rate_limit(client):
         try:
             return await original_ask(*args, **kwargs)
         except ChatError as e:
-            pytest.skip(str(e))
+            msg = str(e).lower()
+            if any(phrase in msg for phrase in _RATE_LIMIT_PHRASES):
+                pytest.skip(str(e))
+            raise
 
     client.chat.ask = _ask_with_skip
 
