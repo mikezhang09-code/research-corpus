@@ -250,6 +250,7 @@ class ChatAPI:
             notebook_id: The notebook ID.
             limit: Maximum number of Q&A turns to retrieve.
             conversation_id: Use this conversation ID instead of fetching it.
+                Defaults to the most recent conversation if not provided.
 
         Returns:
             List of (question, answer) pairs, oldest-first.
@@ -260,7 +261,11 @@ class ChatAPI:
         if not conv_id:
             return []
 
-        turns_data = await self.get_conversation_turns(notebook_id, conv_id, limit=limit)
+        try:
+            turns_data = await self.get_conversation_turns(notebook_id, conv_id, limit=limit)
+        except Exception as e:
+            logger.warning("Failed to fetch conversation turns for %s: %s", notebook_id, e)
+            return []
         # API returns individual turns newest-first: [A2, Q2, A1, Q1, ...]
         # Reverse to chronological order [Q1, A1, Q2, A2, ...] so the
         # Q→A forward-pairing parser works correctly.
@@ -501,7 +506,7 @@ class ChatAPI:
         Response structure (discovered via reverse engineering):
         - first[0]: answer text
         - first[1]: None
-        - first[2]: [conversation_id, exchange_id, numeric_hash]
+        - first[2]: [conversation_id, numeric_hash]
         - first[3]: None
         - first[4]: Citation metadata
           - first[4][0]: Per-source citation positions with text spans
