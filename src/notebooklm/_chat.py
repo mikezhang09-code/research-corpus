@@ -263,7 +263,7 @@ class ChatAPI:
 
         try:
             turns_data = await self.get_conversation_turns(notebook_id, conv_id, limit=limit)
-        except Exception as e:
+        except (ChatError, NetworkError) as e:
             logger.warning("Failed to fetch conversation turns for %s: %s", notebook_id, e)
             return []
         # API returns individual turns newest-first: [A2, Q2, A1, Q1, ...]
