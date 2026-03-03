@@ -232,6 +232,10 @@ class ChatAPI:
                     for conv in group:
                         if isinstance(conv, list) and conv and isinstance(conv[0], str):
                             return conv[0]
+            logger.debug(
+                "No conversation ID found in response (API structure may have changed): %s",
+                raw,
+            )
         return None
 
     async def get_history(

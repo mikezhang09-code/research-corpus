@@ -177,8 +177,8 @@ def set_current_notebook(
 ):
     """Set the current notebook context.
 
-    If switching to a different notebook, the cached conversation_id is cleared
-    since conversations are notebook-specific.
+    conversation_id is never preserved — the server owns the canonical ID per
+    notebook, and a stale local value would silently use the wrong UUID.
     """
     context_file = get_context_path()
     context_file.parent.mkdir(parents=True, exist_ok=True)
@@ -190,10 +190,6 @@ def set_current_notebook(
         data["is_owner"] = is_owner
     if created_at:
         data["created_at"] = created_at
-
-    # Never preserve conversation_id across use — the server owns the canonical
-    # conversation ID per notebook, and a stale local value will silently use
-    # the wrong (possibly unpersisted) UUID.
 
     context_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
