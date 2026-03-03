@@ -1054,7 +1054,7 @@ class TestParseAskResponseEdgeCases:
         chunk_json = json.dumps([["wrb.fr", None, inner_json]])
         response_body = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         assert answer == "Answer text."
 
     def test_parse_response_without_prefix(self, auth_tokens):
@@ -1067,13 +1067,13 @@ class TestParseAskResponseEdgeCases:
         chunk_json = json.dumps([["wrb.fr", None, inner_json]])
         response_body = f"{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         assert answer == "Answer without prefix."
 
     def test_parse_empty_response_returns_empty_string(self, auth_tokens):
         """Test that completely empty response returns empty string (line 489)."""
         client = NotebookLMClient(auth_tokens)
-        answer, refs = client.chat._parse_ask_response_with_references(")]}'\n")
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(")]}'\n")
         assert answer == ""
         assert refs == []
 
@@ -1096,7 +1096,7 @@ class TestParseAskResponseEdgeCases:
         chunk_json = json.dumps([["wrb.fr", None, inner_json]])
         response_body = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         assert answer == "This is unmarked text content."
 
     def test_parse_response_assigns_citation_numbers(self, auth_tokens):
@@ -1136,7 +1136,7 @@ class TestParseAskResponseEdgeCases:
         chunk_json = json.dumps([["wrb.fr", None, inner_json]])
         response_body = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         assert len(refs) == 1
         assert refs[0].citation_number == 1
 
@@ -1147,7 +1147,9 @@ class TestExtractAnswerAndRefsFromChunk:
     def test_invalid_json_returns_none(self, auth_tokens):
         """Test that invalid JSON input returns (None, False, []) (line 496-527)."""
         client = NotebookLMClient(auth_tokens)
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk("not-valid-json")
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            "not-valid-json"
+        )
         assert text is None
         assert is_answer is False
         assert refs == []
@@ -1157,7 +1159,7 @@ class TestExtractAnswerAndRefsFromChunk:
         import json
 
         client = NotebookLMClient(auth_tokens)
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
             json.dumps("a string value")
         )
         assert text is None
@@ -1170,7 +1172,9 @@ class TestExtractAnswerAndRefsFromChunk:
 
         client = NotebookLMClient(auth_tokens)
         data = [["other.fr", "method_id", json.dumps([[["answer"]]])]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
 
     def test_inner_json_not_string_is_skipped(self, auth_tokens):
@@ -1180,7 +1184,9 @@ class TestExtractAnswerAndRefsFromChunk:
         client = NotebookLMClient(auth_tokens)
         # item[2] is an integer, not a string
         data = [["wrb.fr", "method_id", 42, None, None]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
 
     def test_inner_data_first_not_list_is_skipped(self, auth_tokens):
@@ -1191,7 +1197,9 @@ class TestExtractAnswerAndRefsFromChunk:
         # inner_data[0] is a string, not a list
         inner_data = ["not a list"]
         data = [["wrb.fr", "method_id", json.dumps(inner_data)]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
 
     def test_inner_data_first_text_not_string_is_skipped(self, auth_tokens):
@@ -1202,7 +1210,9 @@ class TestExtractAnswerAndRefsFromChunk:
         # first[0] is None, not a string
         inner_data = [[[None, None, [12345]]]]
         data = [["wrb.fr", "method_id", json.dumps(inner_data)]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
 
     def test_inner_json_invalid_json_continues(self, auth_tokens):
@@ -1212,7 +1222,9 @@ class TestExtractAnswerAndRefsFromChunk:
         client = NotebookLMClient(auth_tokens)
         # item[2] is a string but not valid JSON
         data = [["wrb.fr", "method_id", "{not valid json}"]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
         assert refs == []
 
@@ -1221,7 +1233,9 @@ class TestExtractAnswerAndRefsFromChunk:
         import json
 
         client = NotebookLMClient(auth_tokens)
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps([]))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps([])
+        )
         assert text is None
         assert is_answer is False
         assert refs == []
@@ -1232,7 +1246,9 @@ class TestExtractAnswerAndRefsFromChunk:
 
         client = NotebookLMClient(auth_tokens)
         data = [["wrb.fr", "only_two"]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
 
 
@@ -1556,7 +1572,7 @@ class TestParseAskResponseNumericLengthPrefix:
         # Append a dangling numeric line at the end with no content following
         response_body = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n99\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         # The valid chunk should still be parsed
         assert answer == "Valid answer."
 
@@ -1572,7 +1588,7 @@ class TestParseAskResponseNumericLengthPrefix:
         # No length prefix - just direct JSON
         response_body = f")]}}'\n{chunk_json}\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         assert answer == "Direct JSON answer."
 
 
@@ -1587,7 +1603,9 @@ class TestExtractAnswerEmptyInnerData:
         # inner_data is an empty list -> len(inner_data) == 0, skips the processing
         inner_data: list = []
         data = [["wrb.fr", "method_id", json.dumps(inner_data)]]
-        text, is_answer, refs = client.chat._extract_answer_and_refs_from_chunk(json.dumps(data))
+        text, is_answer, refs, _conv_id = client.chat._extract_answer_and_refs_from_chunk(
+            json.dumps(data)
+        )
         assert text is None
         assert is_answer is False
 
@@ -1690,7 +1708,7 @@ class TestParseAskResponseBranchCoverage:
         # Both chunks with marked answers
         response_body = f")]}}'\n{make_chunk(longer_json)}\n{make_chunk(shorter_json)}\n"
 
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         # Longer marked answer wins
         assert answer == "This is the longer marked answer text."
 
@@ -1747,7 +1765,7 @@ class TestParseAskResponseBranchCoverage:
         # this arc may not be reachable in normal flow - it's a defensive check.
         # Let's verify the assignment logic works correctly with multiple refs.
         response_body = f")]}}'\n{len(chunk_json)}\n{chunk_json}\n"
-        answer, refs = client.chat._parse_ask_response_with_references(response_body)
+        answer, refs, _conv_id = client.chat._parse_ask_response_with_references(response_body)
         assert len(refs) == 1
         assert refs[0].citation_number == 1
 
