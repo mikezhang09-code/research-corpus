@@ -139,11 +139,8 @@ class NotebooksAPI:
         # Summary is at result[0][0][0]
         try:
             if result and isinstance(result, list):
-                outer = result[0]
-                if isinstance(outer, list) and len(outer) > 0:
-                    summary_list = outer[0]
-                    if isinstance(summary_list, list) and len(summary_list) > 0:
-                        return str(summary_list[0]) if summary_list[0] else ""
+                summary = result[0][0][0]
+                return str(summary) if summary else ""
         except (IndexError, TypeError):
             pass
         return ""
@@ -180,28 +177,27 @@ class NotebooksAPI:
         # Response structure: [[[summary_string], [[topics]], ...]]
         # Summary is at result[0][0][0], topics at result[0][1][0]
         if result and isinstance(result, list):
-            outer = result[0]
-            if isinstance(outer, list):
+            try:
+                outer = result[0]
+
                 # Summary at outer[0][0]
-                if len(outer) > 0 and isinstance(outer[0], list) and len(outer[0]) > 0:
-                    summary = outer[0][0] if isinstance(outer[0][0], str) else ""
+                summary_val = outer[0][0]
+                summary = str(summary_val) if summary_val else ""
 
                 # Suggested topics at outer[1][0]
-                if (
-                    len(outer) > 1
-                    and isinstance(outer[1], list)
-                    and len(outer[1]) > 0
-                    and isinstance(outer[1][0], list)
-                ):
-                    topics_list = outer[1][0]
+                topics_list = outer[1][0]
+                if isinstance(topics_list, list):
                     for topic in topics_list:
                         if isinstance(topic, list) and len(topic) >= 2:
                             suggested_topics.append(
                                 SuggestedTopic(
-                                    question=topic[0] if isinstance(topic[0], str) else "",
-                                    prompt=topic[1] if isinstance(topic[1], str) else "",
+                                    question=str(topic[0]) if topic[0] else "",
+                                    prompt=str(topic[1]) if topic[1] else "",
                                 )
                             )
+            except (IndexError, TypeError):
+                # A partial result (e.g. summary but no topics) is possible.
+                pass
 
         return NotebookDescription(summary=summary, suggested_topics=suggested_topics)
 
