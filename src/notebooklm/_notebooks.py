@@ -135,8 +135,17 @@ class NotebooksAPI:
             params,
             source_path=f"/notebook/{notebook_id}",
         )
-        if result and isinstance(result, list) and len(result) > 0:
-            return str(result[0]) if result[0] else ""
+        # Response structure: [[[summary_string, ...], topics, ...]]
+        # Summary is at result[0][0][0]
+        try:
+            if result and isinstance(result, list):
+                outer = result[0]
+                if isinstance(outer, list) and len(outer) > 0:
+                    summary_list = outer[0]
+                    if isinstance(summary_list, list) and len(summary_list) > 0:
+                        return str(summary_list[0]) if summary_list[0] else ""
+        except (IndexError, TypeError):
+            pass
         return ""
 
     async def get_description(self, notebook_id: str) -> NotebookDescription:
@@ -168,22 +177,31 @@ class NotebooksAPI:
         summary = ""
         suggested_topics: list[SuggestedTopic] = []
 
+        # Response structure: [[[summary_string], [[topics]], ...]]
+        # Summary is at result[0][0][0], topics at result[0][1][0]
         if result and isinstance(result, list):
-            # Summary at [0][0]
-            if len(result) > 0 and isinstance(result[0], list) and len(result[0]) > 0:
-                summary = result[0][0] if isinstance(result[0][0], str) else ""
+            outer = result[0]
+            if isinstance(outer, list):
+                # Summary at outer[0][0]
+                if len(outer) > 0 and isinstance(outer[0], list) and len(outer[0]) > 0:
+                    summary = outer[0][0] if isinstance(outer[0][0], str) else ""
 
-            # Suggested topics at [1][0]
-            if len(result) > 1 and isinstance(result[1], list) and len(result[1]) > 0:
-                topics_list = result[1][0] if isinstance(result[1][0], list) else []
-                for topic in topics_list:
-                    if isinstance(topic, list) and len(topic) >= 2:
-                        suggested_topics.append(
-                            SuggestedTopic(
-                                question=topic[0] if isinstance(topic[0], str) else "",
-                                prompt=topic[1] if isinstance(topic[1], str) else "",
+                # Suggested topics at outer[1][0]
+                if (
+                    len(outer) > 1
+                    and isinstance(outer[1], list)
+                    and len(outer[1]) > 0
+                    and isinstance(outer[1][0], list)
+                ):
+                    topics_list = outer[1][0]
+                    for topic in topics_list:
+                        if isinstance(topic, list) and len(topic) >= 2:
+                            suggested_topics.append(
+                                SuggestedTopic(
+                                    question=topic[0] if isinstance(topic[0], str) else "",
+                                    prompt=topic[1] if isinstance(topic[1], str) else "",
+                                )
                             )
-                        )
 
         return NotebookDescription(summary=summary, suggested_topics=suggested_topics)
 
