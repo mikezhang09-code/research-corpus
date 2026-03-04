@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -104,6 +105,28 @@ def _windows_playwright_event_loop() -> Iterator[None]:
         asyncio.set_event_loop_policy(original_policy)
 
 
+def _resolve_playwright_path() -> str:
+    """Resolve the absolute path to the playwright CLI.
+
+    Uses shutil.which() to avoid PATH hijacking via relative or
+    injected paths in subprocess calls.
+
+    Returns:
+        Absolute path to the playwright executable.
+
+    Raises:
+        SystemExit: If playwright CLI is not found on PATH.
+    """
+    path = shutil.which("playwright")
+    if not path:
+        console.print(
+            "[red]Playwright CLI not found on PATH.[/red]\n"
+            "Install it with: pip install playwright && playwright install chromium"
+        )
+        raise SystemExit(1)
+    return path
+
+
 def _ensure_chromium_installed() -> None:
     """Check if Chromium is installed and install if needed.
 
@@ -113,8 +136,9 @@ def _ensure_chromium_installed() -> None:
     Silently proceeds on any errors - Playwright will handle them during launch.
     """
     try:
+        playwright_bin = _resolve_playwright_path()
         result = subprocess.run(
-            ["playwright", "install", "--dry-run", "chromium"],
+            [playwright_bin, "install", "--dry-run", "chromium"],
             capture_output=True,
             text=True,
         )
@@ -125,7 +149,7 @@ def _ensure_chromium_installed() -> None:
 
         console.print("[yellow]Chromium browser not installed. Installing now...[/yellow]")
         install_result = subprocess.run(
-            ["playwright", "install", "chromium"],
+            [playwright_bin, "install", "chromium"],
             capture_output=True,
             text=True,
         )
@@ -205,10 +229,8 @@ def register_session_commands(cli):
                 user_data_dir=str(browser_profile),
                 headless=False,
                 args=[
-                    "--disable-blink-features=AutomationControlled",
                     "--password-store=basic",  # Avoid macOS keychain encryption for headless compatibility
                 ],
-                ignore_default_args=["--enable-automation"],
             )
 
             page = context.pages[0] if context.pages else context.new_page()

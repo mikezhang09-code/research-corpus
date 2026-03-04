@@ -28,6 +28,9 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
+# Allowed file extensions for upload (matches NotebookLM supported types)
+ALLOWED_FILE_EXTENSIONS = frozenset({".pdf", ".txt", ".md", ".docx", ".csv"})
+
 
 class SourcesAPI:
     """Operations on NotebookLM sources.
@@ -427,6 +430,13 @@ class SourcesAPI:
 
         if not file_path.is_file():
             raise ValidationError(f"Not a regular file: {file_path}")
+
+        ext = file_path.suffix.lower()
+        if ext not in ALLOWED_FILE_EXTENSIONS:
+            raise ValidationError(
+                f"Unsupported file type '{ext}'. "
+                f"Allowed: {', '.join(sorted(ALLOWED_FILE_EXTENSIONS))}"
+            )
 
         filename = file_path.name
         # Get file size without loading into memory

@@ -13,8 +13,10 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 import time
 from functools import wraps
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
@@ -122,6 +124,29 @@ def get_auth_tokens(ctx) -> AuthTokens:
 # =============================================================================
 
 
+def _atomic_write_json(filepath: Path, data: dict) -> None:
+    """Write JSON atomically using tempfile + rename.
+
+    Prevents corruption if the process is interrupted mid-write.
+    """
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(filepath.parent), suffix=".tmp", prefix=".context-"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        Path(tmp_path).replace(filepath)
+    except BaseException:
+        # Clean up temp file on any error
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def _get_context_value(key: str) -> str | None:
     """Read a single value from context.json."""
     context_file = get_context_path()
@@ -143,7 +168,7 @@ def _get_context_value(key: str) -> str | None:
 
 
 def _set_context_value(key: str, value: str | None) -> None:
-    """Set or clear a single value in context.json."""
+    """Set or clear a single value in context.json (atomic write)."""
     context_file = get_context_path()
     if not context_file.exists():
         return
@@ -153,7 +178,7 @@ def _set_context_value(key: str, value: str | None) -> None:
             data[key] = value
         elif key in data:
             del data[key]
-        context_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        _atomic_write_json(context_file, data)
     except json.JSONDecodeError:
         logger.warning(
             "Context file %s is corrupted; cannot update '%s'. Run 'notebooklm clear' to reset.",
@@ -175,13 +200,12 @@ def set_current_notebook(
     is_owner: bool | None = None,
     created_at: str | None = None,
 ):
-    """Set the current notebook context.
+    """Set the current notebook context (atomic write).
 
     conversation_id is never preserved — the server owns the canonical ID per
     notebook, and a stale local value would silently use the wrong UUID.
     """
     context_file = get_context_path()
-    context_file.parent.mkdir(parents=True, exist_ok=True)
 
     data: dict[str, str | bool] = {"notebook_id": notebook_id}
     if title:
@@ -191,7 +215,7 @@ def set_current_notebook(
     if created_at:
         data["created_at"] = created_at
 
-    context_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_json(context_file, data)
 
 
 def clear_context():

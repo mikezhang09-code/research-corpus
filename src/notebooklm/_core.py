@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Coroutine
@@ -28,8 +29,38 @@ from .rpc import (
 
 logger = logging.getLogger(__name__)
 
+# Entity ID validation: alphanumeric, hyphens, underscores, 1-128 chars
+_ENTITY_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def validate_entity_id(entity_id: str) -> str:
+    """Validate that an entity ID (notebook, source, conversation) is safe.
+
+    Entity IDs are interpolated into URL paths (e.g. /notebook/{id}).
+    This prevents path traversal and injection via malformed IDs.
+
+    Args:
+        entity_id: The ID to validate.
+
+    Returns:
+        The validated ID (unchanged).
+
+    Raises:
+        ValueError: If the ID contains invalid characters or is too long.
+    """
+    if not _ENTITY_ID_RE.match(entity_id):
+        raise ValueError(
+            f"Invalid entity ID: {entity_id!r} — "
+            "must match [A-Za-z0-9_-]{{1,128}}"
+        )
+    return entity_id
+
+
 # Maximum number of conversations to cache (FIFO eviction)
 MAX_CONVERSATION_CACHE_SIZE = 100
+
+# Maximum turns per conversation (oldest dropped when exceeded)
+MAX_TURNS_PER_CONVERSATION = 50
 
 # Default HTTP timeouts in seconds
 DEFAULT_TIMEOUT = 30.0
@@ -173,13 +204,28 @@ class ClientCore:
     def _build_url(self, rpc_method: RPCMethod, source_path: str = "/") -> str:
         """Build the batchexecute URL for an RPC call.
 
+        Validates any entity IDs embedded in source_path to prevent
+        path traversal or injection.
+
         Args:
             rpc_method: The RPC method to call.
             source_path: The source path parameter (usually notebook path).
 
         Returns:
             Full URL with query parameters.
+
+        Raises:
+            ValueError: If source_path contains invalid entity IDs.
         """
+        # Validate entity IDs in source_path (e.g. "/notebook/{id}")
+        if source_path != "/":
+            parts = source_path.strip("/").split("/")
+            for part in parts:
+                # Skip static path segments like "notebook"
+                if part.isalpha():
+                    continue
+                validate_entity_id(part)
+
         params = {
             "rpcids": rpc_method.value,
             "source-path": source_path,
@@ -454,13 +500,17 @@ class ClientCore:
                 self._conversation_cache.popitem(last=False)
             self._conversation_cache[conversation_id] = []
 
-        self._conversation_cache[conversation_id].append(
+        turns = self._conversation_cache[conversation_id]
+        turns.append(
             {
                 "query": query,
                 "answer": answer,
                 "turn_number": turn_number,
             }
         )
+        # Cap turns per conversation to bound memory usage
+        if len(turns) > MAX_TURNS_PER_CONVERSATION:
+            self._conversation_cache[conversation_id] = turns[-MAX_TURNS_PER_CONVERSATION:]
 
     def get_cached_conversation(self, conversation_id: str) -> list[dict[str, Any]]:
         """Get cached conversation turns.

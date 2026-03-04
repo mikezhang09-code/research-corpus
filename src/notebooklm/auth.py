@@ -45,6 +45,22 @@ logger = logging.getLogger(__name__)
 # Minimum required cookies (must have at least SID for basic auth)
 MINIMUM_REQUIRED_COOKIES = {"SID"}
 
+# Cookie name whitelist — only extract cookies NotebookLM actually needs.
+# Reduces exposure of the full Google session to the minimum required set.
+# Determined empirically: these cookies are sent in successful API requests.
+NOTEBOOKLM_REQUIRED_COOKIES = frozenset({
+    # Core session cookies
+    "SID", "HSID", "SSID", "APISID", "SAPISID",
+    # Secure variants (sent over HTTPS only)
+    "__Secure-1PSID", "__Secure-3PSID",
+    "__Secure-1PAPISID", "__Secure-3PAPISID",
+    # Session integrity
+    "SIDCC", "__Secure-1PSIDCC", "__Secure-3PSIDCC",
+    # Timestamp cookies (paired with session cookies)
+    "__Secure-1PSIDTS", "__Secure-3PSIDTS",
+    "SAPISID_TS", "APISID_TS", "HSID_TS", "SSID_TS", "SID_TS",
+})
+
 # Cookie domains to extract from storage state
 # Includes googleusercontent.com for authenticated media downloads
 ALLOWED_COOKIE_DOMAINS = {
@@ -293,6 +309,9 @@ def extract_cookies_from_storage(storage_state: dict[str, Any]) -> dict[str, str
         name = cookie.get("name")
         if not _is_allowed_auth_domain(domain) or not name:
             continue
+        # Only extract cookies NotebookLM actually needs (reduces exposure)
+        if name not in NOTEBOOKLM_REQUIRED_COOKIES:
+            continue
 
         # Prioritize .google.com cookies over regional domains (e.g., .google.de)
         # to prevent wrong cookie values when the same name exists in multiple domains
@@ -433,20 +452,39 @@ def _load_storage_state(path: Path | None = None) -> dict[str, Any]:
             )
         return json.loads(path.read_text(encoding="utf-8"))
 
-    # 2. Check for inline JSON env var (CI-friendly, no file writes needed)
-    # Note: Use 'in' check instead of walrus to catch empty string case
+    # 2. Check for env var (CI-friendly)
+    # Supports two forms:
+    #   NOTEBOOKLM_AUTH_JSON='{"cookies":[...]}'     — inline JSON
+    #   NOTEBOOKLM_AUTH_JSON=@/path/to/file.json     — read from file (preferred)
     if "NOTEBOOKLM_AUTH_JSON" in os.environ:
-        auth_json = os.environ["NOTEBOOKLM_AUTH_JSON"].strip()
-        if not auth_json:
+        auth_value = os.environ["NOTEBOOKLM_AUTH_JSON"].strip()
+        if not auth_value:
             raise ValueError(
                 "NOTEBOOKLM_AUTH_JSON environment variable is set but empty.\n"
                 "Provide valid Playwright storage state JSON or unset the variable."
             )
+
+        # File reference: @/path/to/file.json
+        if auth_value.startswith("@"):
+            file_path = Path(auth_value[1:])
+            if not file_path.exists():
+                raise FileNotFoundError(
+                    f"NOTEBOOKLM_AUTH_JSON references missing file: {file_path}"
+                )
+            auth_json = file_path.read_text(encoding="utf-8")
+        else:
+            # Inline JSON (legacy) — warn about preferring file reference
+            logger.info(
+                "NOTEBOOKLM_AUTH_JSON contains inline JSON. "
+                "Consider using @/path/to/file.json for better security."
+            )
+            auth_json = auth_value
+
         try:
             storage_state = json.loads(auth_json)
         except json.JSONDecodeError as e:
             raise ValueError(
-                f"Invalid JSON in NOTEBOOKLM_AUTH_JSON environment variable: {e}\n"
+                f"Invalid JSON in NOTEBOOKLM_AUTH_JSON: {e}\n"
                 f"Ensure the value is valid Playwright storage state JSON."
             ) from e
         # Validate structure
