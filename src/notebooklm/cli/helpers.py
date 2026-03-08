@@ -279,8 +279,8 @@ async def _resolve_partial_id(
     # Validate and normalize the ID
     partial_id = validate_id(partial_id, entity_name)
 
-    # Skip resolution for IDs that look complete (20+ chars)
-    if len(partial_id) >= 20:
+    # Skip resolution for IDs that look like complete UUIDs (hex + dashes only, 20+ chars)
+    if len(partial_id) >= 20 and all(c in "0123456789abcdef-" for c in partial_id.lower()):
         return partial_id
 
     items = await list_fn()
@@ -292,8 +292,26 @@ async def _resolve_partial_id(
             console.print(f"[dim]Matched: {matches[0].id[:12]}... ({title})[/dim]")
         return matches[0].id
     elif len(matches) == 0:
+        # Fall back to title matching (case-insensitive, exact then substring)
+        title_exact = [
+            item for item in items if item.title and item.title.lower() == partial_id.lower()
+        ]
+        if len(title_exact) == 1:
+            console.print(
+                f"[dim]Matched by title: {title_exact[0].id[:12]}... ({title_exact[0].title})[/dim]"
+            )
+            return title_exact[0].id
+        if len(title_exact) > 1:
+            lines = [
+                f"Title '{partial_id}' matches {len(title_exact)} {entity_name}s "
+                f"(use ID to disambiguate):"
+            ]
+            for item in title_exact[:5]:
+                lines.append(f"  {item.id[:12]}... {item.title}")
+            raise click.ClickException("\n".join(lines))
+
         raise click.ClickException(
-            f"No {entity_name} found starting with '{partial_id}'. "
+            f"No {entity_name} found matching '{partial_id}' (checked ID prefix and title). "
             f"Run 'notebooklm {list_command}' to see available {entity_name}s."
         )
     else:

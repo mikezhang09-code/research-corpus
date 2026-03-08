@@ -586,3 +586,114 @@ class TestRunAsync:
 
         result = run_async(sample_coro())
         assert result == "result"
+
+
+# =============================================================================
+# RESOLVE PARTIAL ID TESTS
+# =============================================================================
+
+
+class TestResolvePartialId:
+    """Tests for _resolve_partial_id title matching and UUID detection."""
+
+    def _make_item(self, item_id: str, title: str | None = None):
+        """Create a mock item with id and title attributes."""
+        item = MagicMock()
+        item.id = item_id
+        item.title = title
+        return item
+
+    def test_title_match_when_id_prefix_fails(self):
+        """Titles should resolve to the correct ID when no ID prefix matches."""
+        from notebooklm.cli.helpers import _resolve_partial_id
+
+        items = [
+            self._make_item("03abe51c-d8df-43ba-ae2d-0efe02c71c4a", "My Document.txt"),
+            self._make_item("6486682a-cf2d-48f0-8c2b-165841a7cede", "Other File.txt"),
+        ]
+
+        async def _run():
+            result = await _resolve_partial_id(
+                "My Document.txt",
+                list_fn=AsyncMock(return_value=items),
+                entity_name="source",
+                list_command="source list",
+            )
+            assert result == "03abe51c-d8df-43ba-ae2d-0efe02c71c4a"
+
+        run_async(_run())
+
+    def test_title_match_case_insensitive(self):
+        """Title matching should be case-insensitive."""
+        from notebooklm.cli.helpers import _resolve_partial_id
+
+        items = [
+            self._make_item("abc123", "README.md"),
+        ]
+
+        async def _run():
+            result = await _resolve_partial_id(
+                "readme.md",
+                list_fn=AsyncMock(return_value=items),
+                entity_name="source",
+                list_command="source list",
+            )
+            assert result == "abc123"
+
+        run_async(_run())
+
+    def test_long_title_not_treated_as_uuid(self):
+        """Long non-UUID strings (like filenames) should not bypass resolution."""
+        from notebooklm.cli.helpers import _resolve_partial_id
+
+        items = [
+            self._make_item("abc-def-123", "Emails_Verzonden_2025-Q1.txt"),
+        ]
+
+        async def _run():
+            result = await _resolve_partial_id(
+                "Emails_Verzonden_2025-Q1.txt",
+                list_fn=AsyncMock(return_value=items),
+                entity_name="source",
+                list_command="source list",
+            )
+            assert result == "abc-def-123"
+
+        run_async(_run())
+
+    def test_actual_uuid_still_skips_resolution(self):
+        """Real UUIDs (20+ hex chars) should still skip resolution for performance."""
+        from notebooklm.cli.helpers import _resolve_partial_id
+
+        async def _run():
+            result = await _resolve_partial_id(
+                "03abe51c-d8df-43ba-ae2d-0efe02c71c4a",
+                list_fn=AsyncMock(),  # Should not be called
+                entity_name="source",
+                list_command="source list",
+            )
+            assert result == "03abe51c-d8df-43ba-ae2d-0efe02c71c4a"
+
+        run_async(_run())
+
+    def test_ambiguous_title_raises_error(self):
+        """Multiple sources with the same title should raise an error."""
+        import click
+
+        from notebooklm.cli.helpers import _resolve_partial_id
+
+        items = [
+            self._make_item("id-1", "duplicate.txt"),
+            self._make_item("id-2", "duplicate.txt"),
+        ]
+
+        async def _run():
+            with pytest.raises(click.ClickException, match="matches 2"):
+                await _resolve_partial_id(
+                    "duplicate.txt",
+                    list_fn=AsyncMock(return_value=items),
+                    entity_name="source",
+                    list_command="source list",
+                )
+
+        run_async(_run())
