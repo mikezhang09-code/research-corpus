@@ -438,9 +438,7 @@ class TestDownloadUrl:
                 patch("notebooklm._artifacts.load_httpx_cookies", return_value=mock_cookies),
                 pytest.raises(ArtifactDownloadError, match="0 bytes"),
             ):
-                await api._download_url(
-                    "https://storage.googleapis.com/file.mp4", output_path
-                )
+                await api._download_url("https://storage.googleapis.com/file.mp4", output_path)
 
             # Verify no file was left behind
             assert not os.path.exists(output_path)
