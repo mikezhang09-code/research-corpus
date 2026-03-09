@@ -29,6 +29,9 @@ from ..auth import (
 from ..paths import get_browser_profile_dir, get_context_path
 from ..types import ArtifactType
 
+# Valid characters in a UUID (hex digits + dashes)
+_UUID_CHARS = frozenset("0123456789abcdef-")
+
 if TYPE_CHECKING:
     from ..types import Artifact
 
@@ -280,7 +283,7 @@ async def _resolve_partial_id(
     partial_id = validate_id(partial_id, entity_name)
 
     # Skip resolution for IDs that look like complete UUIDs (hex + dashes only, 20+ chars)
-    if len(partial_id) >= 20 and all(c in "0123456789abcdef-" for c in partial_id.lower()):
+    if len(partial_id) >= 20 and all(c in _UUID_CHARS for c in partial_id.lower()):
         return partial_id
 
     items = await list_fn()
@@ -292,7 +295,7 @@ async def _resolve_partial_id(
             console.print(f"[dim]Matched: {matches[0].id[:12]}... ({title})[/dim]")
         return matches[0].id
     elif len(matches) == 0:
-        # Fall back to title matching (case-insensitive, exact then substring)
+        # Fall back to title matching (case-insensitive, exact)
         title_exact = [
             item for item in items if item.title and item.title.lower() == partial_id.lower()
         ]
