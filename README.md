@@ -193,6 +193,138 @@ notebooklm skill install
 # "/notebooklm generate video"
 ```
 
+## Advanced Usage
+
+### Batch Processing Multiple Notebooks
+
+```python
+import asyncio
+from notebooklm import NotebookLMClient
+
+async def process_multiple_topics(topics: list[str]):
+    """Process multiple research topics in batch."""
+    async with await NotebookLMClient.from_storage() as client:
+        results = []
+        for topic in topics:
+            # Create notebook for each topic
+            nb = await client.notebooks.create(f"Research: {topic}")
+            await client.sources.add_url(nb.id, f"https://en.wikipedia.org/wiki/{topic}", wait=True)
+            
+            # Generate audio overview
+            status = await client.artifacts.generate_audio(nb.id, instructions=f"Give a brief overview of {topic}")
+            await client.artifacts.wait_for_completion(nb.id, status.task_id)
+            await client.artifacts.download_audio(nb.id, f"{topic}.mp3")
+            
+            results.append({"topic": topic, "notebook_id": nb.id})
+        return results
+
+asyncio.run(process_multiple_topics(["Quantum_computing", "Machine_learning", "Blockchain"]))
+```
+
+### Using Custom Personas for Chat
+
+```python
+import asyncio
+from notebooklm import NotebookLMClient
+
+async def chat_with_persona():
+    """Chat with a custom persona."""
+    async with await NotebookLMClient.from_storage() as client:
+        # Get or create notebook
+        notebooks = await client.notebooks.list()
+        if not notebooks:
+            return
+        
+        nb = notebooks[0]
+        
+        # Set a custom persona for more targeted responses
+        result = await client.chat.ask(
+            nb.id, 
+            "Explain this topic to a 5-year-old",
+            persona="Explain like I'm five - use simple words and fun analogies"
+        )
+        print(result.answer)
+
+asyncio.run(chat_with_persona())
+```
+
+### Research with Auto-Import
+
+```python
+import asyncio
+from notebooklm import NotebookLMClient
+
+async def research_with_auto_import():
+    """Use web research to automatically find and import sources."""
+    async with await NotebookLMClient.from_storage() as client:
+        nb = await client.notebooks.create("AI Research")
+        
+        # Use research agent to find and import relevant sources
+        result = await client.research.web(
+            nb.id,
+            query="latest developments in large language models 2024",
+            mode="deep"  # deep or fast
+        )
+        print(f"Imported {len(result.imported_sources)} sources")
+        
+        # Now chat with all imported sources
+        answer = await client.chat.ask(nb.id, "What are the key takeaways?")
+        print(answer.answer)
+
+asyncio.run(research_with_auto_import())
+```
+
+### Export Chat History
+
+```python
+import asyncio
+import json
+from notebooklm import NotebookLMClient
+
+async def export_conversation():
+    """Export full chat conversation to markdown."""
+    async with await NotebookLMClient.from_storage() as client:
+        notebooks = await client.notebooks.list()
+        if not notebooks:
+            return
+        
+        nb = notebooks[0]
+        
+        # Get conversation history
+        history = await client.chat.get_history(nb.id)
+        
+        # Export as markdown
+        with open(f"{nb.title}_conversation.md", "w") as f:
+            f.write(f"# {nb.title}\n\n")
+            for msg in history.messages:
+                role = "**User**" if msg.role == "user" else "**AI**"
+                f.write(f"{role}: {msg.content}\n\n")
+        
+        print(f"Exported to {nb.title}_conversation.md")
+
+asyncio.run(export_conversation())
+```
+
+### CLI Advanced Examples
+
+```bash
+# Create notebook with multiple sources at once
+notebooklm create "My Project" && \
+notebooklm source add "https://example.com/article1" && \
+notebooklm source add "https://example.com/article2" && \
+notebooklm source add "./docs/readme.md"
+
+# Generate all content types in one command
+notebooklm generate audio --wait && \
+notebooklm generate video --style anime --wait && \
+notebooklm generate quiz --difficulty medium
+
+# Download all generated content
+notebooklm download audio ./output/ && \
+notebooklm download video ./output/ && \
+notebooklm download quiz --format markdown ./output/quiz.md
+```
+
 ## Documentation
 
 - **[CLI Reference](docs/cli-reference.md)** - Complete command documentation
