@@ -417,8 +417,8 @@ class TestDownloadUrl:
 
             # Mock streaming response that yields no bytes
             async def mock_aiter_bytes(chunk_size=8192):
-                return
-                yield  # pragma: no cover -- makes this an async generator
+                if False:
+                    yield  # pragma: no cover -- makes this an async generator
 
             mock_response = MagicMock()
             mock_response.headers = {"content-type": "video/mp4"}
