@@ -1,0 +1,62 @@
+# Research to Podcast Pipeline
+# Research a topic and generate an audio overview (podcast)
+
+pipeline:
+  name: "research-to-podcast"
+  description: "Research a topic using NotebookLM and create a podcast-style audio overview"
+
+variables:
+  topic: null  # Required: The topic to research
+  notebook_name: "Research: {{ topic }}"
+  output_dir: "./output"
+
+steps:
+  - name: create_notebook
+    type: builtin:create_notebook
+    config:
+      title: "{{ notebook_name }}"
+
+  - name: research_topic
+    type: builtin:ingest
+    config:
+      sources:
+        - plugin: source:research
+          query: "{{ topic }}"
+
+  - name: wait_for_sources
+    type: builtin:wait_sources
+    config:
+      timeout: 600
+      poll_interval: 5
+
+  - name: generate_content
+    type: builtin:synthesize
+    config:
+      artifacts:
+        - type: audio
+          format: deep-dive
+          length: medium
+        - type: report
+          format: study-guide
+      questions:
+        - "What are the key insights about {{ topic }}?"
+        - "What are the main controversies or debates in this field?"
+        - "What are the practical applications?"
+
+  - name: wait_for_artifacts
+    type: builtin:wait_artifacts
+    config:
+      timeout: 600
+      poll_interval: 10
+
+  - name: export_audio
+    type: builtin:export
+    config:
+      formats:
+        - plugin: exporter:audio
+          output: "{{ output_dir }}/{{ topic | slugify }}.mp3"
+        - plugin: exporter:markdown
+          output: "{{ output_dir }}/{{ topic | slugify }}-guide.md"
+          include_qa: true
+        - plugin: exporter:json
+          output: "{{ output_dir }}/{{ topic | slugify }}-results.json"

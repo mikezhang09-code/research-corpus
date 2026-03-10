@@ -66,6 +66,7 @@ from .cli import (
     generate,
     language,
     note,
+    pipeline,
     register_chat_commands,
     register_notebook_commands,
     # Register functions for top-level commands
@@ -142,6 +143,7 @@ cli.add_command(share)
 cli.add_command(skill)
 cli.add_command(research)
 cli.add_command(language)
+cli.add_command(pipeline)
 
 
 # =============================================================================

@@ -1,0 +1,66 @@
+# Document Analysis Pipeline
+# Analyze documents from URLs and generate study materials
+
+pipeline:
+  name: "document-analysis"
+  description: "Analyze documents and generate comprehensive study materials"
+
+variables:
+  name: "Document Analysis"  # Name for the notebook
+  urls: []  # List of document URLs to analyze
+  output_dir: "./output"
+
+steps:
+  - name: create_notebook
+    type: builtin:create_notebook
+    config:
+      title: "{{ name }}"
+
+  - name: add_documents
+    type: builtin:ingest
+    config:
+      sources:
+        - plugin: source:urls
+          urls: "{{ urls }}"
+
+  - name: wait_for_processing
+    type: builtin:wait_sources
+    config:
+      timeout: 600
+      poll_interval: 5
+
+  - name: generate_study_materials
+    type: builtin:synthesize
+    config:
+      artifacts:
+        - type: report
+          format: study-guide
+        - type: report
+          format: briefing-doc
+        - type: quiz
+          difficulty: medium
+          quantity: standard
+        - type: flashcards
+          difficulty: medium
+          quantity: standard
+        - type: mind_map
+      questions:
+        - "Summarize the main themes across all documents."
+        - "What are the key takeaways?"
+        - "What questions remain unanswered?"
+
+  - name: wait_for_artifacts
+    type: builtin:wait_artifacts
+    config:
+      timeout: 600
+
+  - name: export_results
+    type: builtin:export
+    config:
+      formats:
+        - plugin: exporter:markdown
+          output: "{{ output_dir }}/{{ name | slugify }}-summary.md"
+          include_qa: true
+          include_summary: true
+        - plugin: exporter:json
+          output: "{{ output_dir }}/{{ name | slugify }}-results.json"

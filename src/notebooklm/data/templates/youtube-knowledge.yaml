@@ -1,0 +1,66 @@
+# YouTube Knowledge Extraction Pipeline
+# Extract knowledge from YouTube videos or playlists
+
+pipeline:
+  name: "youtube-knowledge"
+  description: "Extract knowledge from YouTube videos and create study materials"
+
+variables:
+  name: "YouTube Knowledge Base"  # Notebook name
+  videos: []  # List of YouTube video URLs
+  playlist: null  # Optional: YouTube playlist URL
+  output_dir: "./output"
+
+steps:
+  - name: create_notebook
+    type: builtin:create_notebook
+    config:
+      title: "{{ name }}"
+
+  - name: add_videos
+    type: builtin:ingest
+    config:
+      sources:
+        - plugin: source:youtube
+          urls: "{{ videos }}"
+        - plugin: source:youtube
+          playlist: "{{ playlist }}"
+    when: "videos or playlist"
+
+  - name: wait_for_transcription
+    type: builtin:wait_sources
+    config:
+      timeout: 900  # YouTube processing can take longer
+      poll_interval: 10
+
+  - name: generate_knowledge_products
+    type: builtin:synthesize
+    config:
+      artifacts:
+        - type: audio
+          format: conversational
+          length: medium
+        - type: report
+          format: study-guide
+        - type: mind_map
+      questions:
+        - "What are the main topics covered in these videos?"
+        - "What are the key lessons or insights?"
+        - "Create a timeline of concepts presented."
+
+  - name: wait_for_generation
+    type: builtin:wait_artifacts
+    config:
+      timeout: 600
+
+  - name: export_knowledge
+    type: builtin:export
+    config:
+      formats:
+        - plugin: exporter:audio
+          output: "{{ output_dir }}/{{ name | slugify }}-podcast.mp3"
+        - plugin: exporter:markdown
+          output: "{{ output_dir }}/{{ name | slugify }}-notes.md"
+          include_qa: true
+        - plugin: exporter:json
+          output: "{{ output_dir }}/{{ name | slugify }}.json"
