@@ -65,6 +65,7 @@ from .cli import (
     download,
     generate,
     language,
+    living_doc,
     note,
     register_chat_commands,
     register_notebook_commands,
@@ -142,6 +143,7 @@ cli.add_command(share)
 cli.add_command(skill)
 cli.add_command(research)
 cli.add_command(language)
+cli.add_command(living_doc)
 
 
 # =============================================================================

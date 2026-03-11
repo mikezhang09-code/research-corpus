@@ -54,6 +54,7 @@ from .helpers import (
     with_client,
 )
 from .language import get_language, language
+from .living_doc import living_doc
 from .note import note
 from .notebook import register_notebook_commands
 from .options import (
@@ -84,6 +85,7 @@ __all__ = [
     "download",
     "note",
     "share",
+    "living_doc",
     "skill",
     "research",
     "language",
