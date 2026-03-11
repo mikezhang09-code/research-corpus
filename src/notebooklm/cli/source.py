@@ -1,17 +1,21 @@
 """Source management CLI commands.
 
 Commands:
-    list         List sources in a notebook
-    add          Add a source (url, text, file, youtube)
-    get          Get source details
-    fulltext     Get full indexed text content of a source
-    guide        Get AI-generated source summary and keywords
-    stale        Check if a URL/Drive source needs refresh
-    delete       Delete a source
-    rename       Rename a source
-    refresh      Refresh a URL/Drive source
-    add-drive    Add a Google Drive document
-    add-research Search web/drive and add sources from results
+    list           List sources in a notebook
+    add            Add a source (url, text, file, youtube)
+    add-bulk       Add multiple URLs at once
+    get            Get source details
+    fulltext       Get full indexed text content of a source
+    guide          Get AI-generated source summary and keywords
+    stale          Check if a URL/Drive source needs refresh
+    delete         Delete a source
+    delete-bulk    Delete multiple sources at once
+    rename         Rename a source
+    refresh        Refresh a URL/Drive source
+    refresh-bulk   Refresh multiple sources at once
+    wait-all       Wait for all specified sources to finish processing
+    add-drive      Add a Google Drive document
+    add-research   Search web/drive and add sources from results
 """
 
 import asyncio
@@ -31,6 +35,7 @@ from .helpers import (
     require_notebook,
     resolve_notebook_id,
     resolve_source_id,
+    resolve_source_ids,
     with_client,
 )
 
@@ -41,15 +46,19 @@ def source():
 
     \b
     Commands:
-      list         List sources in a notebook
-      add          Add a source (url, text, file, youtube)
-      get          Get source details
-      fulltext     Get full indexed text content
-      guide        Get AI-generated source summary and keywords
-      stale        Check if source needs refresh
-      delete       Delete a source
-      rename       Rename a source
-      refresh      Refresh a URL/Drive source
+      list           List sources in a notebook
+      add            Add a source (url, text, file, youtube)
+      add-bulk       Add multiple URLs at once
+      get            Get source details
+      fulltext       Get full indexed text content
+      guide          Get AI-generated source summary and keywords
+      stale          Check if source needs refresh
+      delete         Delete a source
+      delete-bulk    Delete multiple sources at once
+      rename         Rename a source
+      refresh        Refresh a URL/Drive source
+      refresh-bulk   Refresh multiple sources at once
+      wait-all       Wait for all sources to finish processing
 
     \b
     Partial ID Support:
@@ -769,6 +778,252 @@ def source_wait(ctx, source_id, notebook_id, timeout, json_output, client_auth):
                     json_output_response(data)
                 else:
                     console.print(f"[yellow]⚠ Timeout waiting for source:[/yellow] {e.source_id}")
+                    console.print(f"[dim]Last status: {e.last_status}[/dim]")
+                raise SystemExit(2) from None
+
+    return _run()
+
+
+@source.command("add-bulk")
+@click.argument("urls", nargs=-1, required=True)
+@click.option(
+    "-n",
+    "--notebook",
+    "notebook_id",
+    default=None,
+    help="Notebook ID (uses current if not set)",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+@with_client
+def source_add_bulk(ctx, urls, notebook_id, json_output, client_auth):
+    """Add multiple URLs as sources at once.
+
+    \b
+    Examples:
+      source add-bulk https://example.com/a https://example.com/b
+      source add-bulk https://a.com https://b.com --json
+    """
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        async with NotebookLMClient(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id)
+            sources = await client.sources.add_urls(nb_id_resolved, list(urls))
+
+            if json_output:
+                data = {
+                    "sources": [
+                        {
+                            "id": src.id,
+                            "title": src.title,
+                            "type": str(src.kind),
+                            "url": src.url,
+                        }
+                        for src in sources
+                    ],
+                    "count": len(sources),
+                }
+                json_output_response(data)
+                return
+
+            console.print(f"[green]Added {len(sources)} sources:[/green]")
+            for src in sources:
+                console.print(f"  {src.id}")
+
+    if not json_output:
+        with console.status(f"Adding {len(urls)} URL sources..."):
+            return _run()
+    return _run()
+
+
+@source.command("delete-bulk")
+@click.argument("source_ids", nargs=-1, required=True)
+@click.option(
+    "-n",
+    "--notebook",
+    "notebook_id",
+    default=None,
+    help="Notebook ID (uses current if not set)",
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@with_client
+def source_delete_bulk(ctx, source_ids, notebook_id, yes, client_auth):
+    """Delete multiple sources at once.
+
+    SOURCE_ID arguments can be full UUIDs or partial prefixes.
+
+    \b
+    Examples:
+      source delete-bulk abc123 def456
+      source delete-bulk abc123 def456 -y    # Skip confirmation
+    """
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        async with NotebookLMClient(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id)
+            resolved_ids = await resolve_source_ids(client, nb_id_resolved, source_ids)
+            assert resolved_ids is not None  # guaranteed by required=True
+
+            if not yes and not click.confirm(f"Delete {len(resolved_ids)} sources?"):
+                return
+
+            deleted = await client.sources.delete_bulk(nb_id_resolved, resolved_ids)
+            console.print(f"[green]Deleted {len(deleted)} sources:[/green]")
+            for sid in deleted:
+                console.print(f"  {sid}")
+
+    return _run()
+
+
+@source.command("refresh-bulk")
+@click.argument("source_ids", nargs=-1, required=True)
+@click.option(
+    "-n",
+    "--notebook",
+    "notebook_id",
+    default=None,
+    help="Notebook ID (uses current if not set)",
+)
+@with_client
+def source_refresh_bulk(ctx, source_ids, notebook_id, client_auth):
+    """Refresh multiple URL/Drive sources at once.
+
+    SOURCE_ID arguments can be full UUIDs or partial prefixes.
+
+    \b
+    Examples:
+      source refresh-bulk abc123 def456
+    """
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        async with NotebookLMClient(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id)
+            resolved_ids = await resolve_source_ids(client, nb_id_resolved, source_ids)
+            assert resolved_ids is not None  # guaranteed by required=True
+
+            with console.status(f"Refreshing {len(resolved_ids)} sources..."):
+                refreshed = await client.sources.refresh_bulk(nb_id_resolved, resolved_ids)
+
+            console.print(f"[green]Refreshed {len(refreshed)} sources:[/green]")
+            for src in refreshed:
+                console.print(f"  {src.id}")
+
+    return _run()
+
+
+@source.command("wait-all")
+@click.argument("source_ids", nargs=-1, required=True)
+@click.option(
+    "-n",
+    "--notebook",
+    "notebook_id",
+    default=None,
+    help="Notebook ID (uses current if not set)",
+)
+@click.option(
+    "--timeout",
+    default=120,
+    type=int,
+    help="Maximum seconds to wait per source (default: 120)",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+@with_client
+def source_wait_all(ctx, source_ids, notebook_id, timeout, json_output, client_auth):
+    """Wait for multiple sources to finish processing.
+
+    SOURCE_ID arguments can be full UUIDs or partial prefixes.
+
+    \b
+    Exit codes:
+      0 - All sources are ready
+      1 - A source was not found or processing failed
+      2 - Timeout reached
+
+    \b
+    Examples:
+      source wait-all abc123 def456                    # Wait for sources
+      source wait-all abc123 def456 --timeout 300      # Wait up to 5 minutes
+      source wait-all abc123 def456 --json             # Output as JSON
+    """
+    from ..types import SourceNotFoundError, SourceProcessingError, SourceTimeoutError
+
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        async with NotebookLMClient(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id)
+            resolved_ids = await resolve_source_ids(client, nb_id_resolved, source_ids)
+            assert resolved_ids is not None  # guaranteed by required=True
+
+            if not json_output:
+                console.print(f"[dim]Waiting for {len(resolved_ids)} sources...[/dim]")
+
+            try:
+                sources = await client.sources.wait_for_sources(
+                    nb_id_resolved,
+                    resolved_ids,
+                    timeout=float(timeout),
+                )
+
+                if json_output:
+                    data = {
+                        "sources": [
+                            {
+                                "source_id": src.id,
+                                "title": src.title,
+                                "status": "ready",
+                                "status_code": src.status,
+                            }
+                            for src in sources
+                        ],
+                        "count": len(sources),
+                    }
+                    json_output_response(data)
+                else:
+                    console.print(f"[green]All {len(sources)} sources ready:[/green]")
+                    for src in sources:
+                        title = f" ({src.title})" if src.title else ""
+                        console.print(f"  {src.id}{title}")
+
+            except SourceNotFoundError as e:
+                if json_output:
+                    data = {
+                        "source_id": e.source_id,
+                        "status": "not_found",
+                        "error": str(e),
+                    }
+                    json_output_response(data)
+                else:
+                    console.print(f"[red]Source not found:[/red] {e.source_id}")
+                raise SystemExit(1) from None
+
+            except SourceProcessingError as e:
+                if json_output:
+                    data = {
+                        "source_id": e.source_id,
+                        "status": "error",
+                        "status_code": e.status,
+                        "error": str(e),
+                    }
+                    json_output_response(data)
+                else:
+                    console.print(f"[red]Source processing failed:[/red] {e.source_id}")
+                raise SystemExit(1) from None
+
+            except SourceTimeoutError as e:
+                if json_output:
+                    data = {
+                        "source_id": e.source_id,
+                        "status": "timeout",
+                        "last_status_code": e.last_status,
+                        "timeout_seconds": int(e.timeout),
+                        "error": str(e),
+                    }
+                    json_output_response(data)
+                else:
+                    console.print(f"[yellow]Timeout waiting for source:[/yellow] {e.source_id}")
                     console.print(f"[dim]Last status: {e.last_status}[/dim]")
                 raise SystemExit(2) from None
 
