@@ -432,6 +432,14 @@ class SourcesAPI:
         # Get file size without loading into memory
         file_size = file_path.stat().st_size
 
+        # Check file size limit (200MB max - NotebookLM's typical limit)
+        MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB
+        if file_size > MAX_FILE_SIZE:
+            raise ValidationError(
+                f"File too large: {file_size} bytes (max {MAX_FILE_SIZE} bytes). "
+                "NotebookLM typically rejects files larger than 200MB."
+            )
+
         # Step 1: Register source intent with RPC → get SOURCE_ID
         source_id = await self._register_file_source(notebook_id, filename)
 

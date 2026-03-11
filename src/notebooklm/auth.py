@@ -442,6 +442,14 @@ def _load_storage_state(path: Path | None = None) -> dict[str, Any]:
                 "NOTEBOOKLM_AUTH_JSON environment variable is set but empty.\n"
                 "Provide valid Playwright storage state JSON or unset the variable."
             )
+        # Limit size to prevent resource exhaustion (10MB should be more than enough)
+        MAX_AUTH_JSON_SIZE = 10 * 1024 * 1024  # 10MB
+        if len(auth_json) > MAX_AUTH_JSON_SIZE:
+            raise ValueError(
+                f"NOTEBOOKLM_AUTH_JSON environment variable is too large "
+                f"({len(auth_json)} bytes, max {MAX_AUTH_JSON_SIZE} bytes). "
+                "This may indicate a configuration error."
+            )
         try:
             storage_state = json.loads(auth_json)
         except json.JSONDecodeError as e:
