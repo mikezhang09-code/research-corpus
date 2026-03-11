@@ -594,8 +594,8 @@ class TestRpcCallAutoRetry:
         assert call_count[0] == 2, "Should only retry once"
 
     @pytest.mark.asyncio
-    async def test_no_retry_on_non_auth_error(self):
-        """rpc_call should NOT retry on non-auth errors (HTTP 500)."""
+    async def test_no_retry_on_non_retryable_client_error(self):
+        """rpc_call should NOT retry on non-retryable client errors (HTTP 400)."""
         auth = AuthTokens(
             cookies={"SID": "test"},
             csrf_token="csrf",
@@ -615,17 +615,48 @@ class TestRpcCallAutoRetry:
         async def mock_post(*args, **kwargs):
             call_count[0] += 1
             request = httpx.Request("POST", args[0])
+            response = httpx.Response(400, request=request)
+            raise httpx.HTTPStatusError("Bad Request", request=request, response=response)
+
+        core._http_client = MagicMock()
+        core._http_client.post = mock_post
+
+        with pytest.raises(RPCError, match="Client error 400"):
+            await core.rpc_call(RPCMethod.LIST_NOTEBOOKS, [])
+
+        assert len(refresh_called) == 0, "Should not refresh on non-auth error"
+        assert call_count[0] == 1, "Should not retry on non-retryable error"
+
+    @pytest.mark.asyncio
+    async def test_retries_on_server_error(self):
+        """rpc_call should retry with backoff on 500/502/503/504 errors."""
+        from unittest.mock import patch as mock_patch
+
+        auth = AuthTokens(
+            cookies={"SID": "test"},
+            csrf_token="csrf",
+            session_id="sid",
+        )
+        core = ClientCore(auth, refresh_retry_delay=0)
+
+        call_count = [0]
+
+        async def mock_post(*args, **kwargs):
+            call_count[0] += 1
+            request = httpx.Request("POST", args[0])
             response = httpx.Response(500, request=request)
             raise httpx.HTTPStatusError("Server Error", request=request, response=response)
 
         core._http_client = MagicMock()
         core._http_client.post = mock_post
 
-        with pytest.raises(RPCError, match="Server error 500"):
+        with (
+            mock_patch("notebooklm._core.asyncio.sleep", return_value=None),
+            pytest.raises(RPCError, match="Server error 500"),
+        ):
             await core.rpc_call(RPCMethod.LIST_NOTEBOOKS, [])
 
-        assert len(refresh_called) == 0, "Should not refresh on non-auth error"
-        assert call_count[0] == 1, "Should not retry on non-auth error"
+        assert call_count[0] == 4, "Should retry 3 times (4 total attempts)"
 
     @pytest.mark.asyncio
     async def test_refresh_failure_raises_original_error(self):

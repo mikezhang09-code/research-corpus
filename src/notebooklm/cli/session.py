@@ -531,7 +531,7 @@ def register_session_commands(cli):
         # Check 4: Token fetch (optional)
         if test_fetch:
             try:
-                csrf, session_id = run_async(fetch_tokens(cookies))
+                csrf, session_id, _build_label = run_async(fetch_tokens(cookies))
                 checks["token_fetch"] = True
                 details["csrf_length"] = len(csrf)
                 details["session_id_length"] = len(session_id)

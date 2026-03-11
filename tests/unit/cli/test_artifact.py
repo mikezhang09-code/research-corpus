@@ -51,7 +51,7 @@ class TestArtifactList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "list", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -70,7 +70,7 @@ class TestArtifactList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "list", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -89,7 +89,7 @@ class TestArtifactList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "list", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 0
@@ -125,7 +125,7 @@ class TestArtifactGet:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "get", "art_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -141,7 +141,7 @@ class TestArtifactGet:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "get", "nonexistent", "-n", "nb_123"])
 
             # Now exits with error from resolve_artifact_id (no match)
@@ -169,7 +169,7 @@ class TestArtifactRename:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "rename", "art_123", "New Title", "-n", "nb_123"]
                 )
@@ -192,7 +192,7 @@ class TestArtifactRename:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "rename", "mm_123", "New Title", "-n", "nb_123"]
                 )
@@ -221,7 +221,7 @@ class TestArtifactDelete:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "delete", "art_123", "-n", "nb_123", "-y"])
 
             assert result.exit_code == 0
@@ -245,7 +245,7 @@ class TestArtifactDelete:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "delete", "mm_456", "-n", "nb_123", "-y"])
 
             assert result.exit_code == 0
@@ -272,7 +272,7 @@ class TestArtifactExport:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "export", "art_123", "--title", "My Export", "-n", "nb_123"]
                 )
@@ -301,7 +301,7 @@ class TestArtifactExport:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     [
@@ -339,7 +339,7 @@ class TestArtifactExport:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "export", "art_123", "--title", "Fail", "-n", "nb_123"]
                 )
@@ -363,7 +363,7 @@ class TestArtifactPoll:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "poll", "task_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -392,7 +392,7 @@ class TestArtifactWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "wait", "art_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -413,7 +413,7 @@ class TestArtifactWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "wait", "art_123", "-n", "nb_123"])
 
             assert result.exit_code == 1
@@ -432,7 +432,7 @@ class TestArtifactWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "wait", "art_123", "-n", "nb_123", "--timeout", "5"]
                 )
@@ -455,7 +455,7 @@ class TestArtifactWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "wait", "art_123", "-n", "nb_123", "--json"]
                 )
@@ -478,7 +478,7 @@ class TestArtifactWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["artifact", "wait", "art_123", "-n", "nb_123", "--json", "--timeout", "5"]
                 )
@@ -506,7 +506,7 @@ class TestArtifactSuggestions:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "suggestions", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -519,7 +519,7 @@ class TestArtifactSuggestions:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "suggestions", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -536,7 +536,7 @@ class TestArtifactSuggestions:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["artifact", "suggestions", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 0

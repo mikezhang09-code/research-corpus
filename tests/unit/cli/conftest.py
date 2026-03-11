@@ -38,7 +38,7 @@ def mock_fetch_tokens():
     Uses AsyncMock since fetch_tokens is an async function.
     """
     with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock:
-        mock.return_value = ("csrf_token", "session_id")
+        mock.return_value = ("csrf_token", "session_id", "bl_label")
         yield mock
 
 

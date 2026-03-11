@@ -50,6 +50,37 @@ class SourcesAPI:
         """
         self._core = core
 
+    async def _check_duplicate(
+        self,
+        notebook_id: str,
+        *,
+        url: str | None = None,
+        title: str | None = None,
+    ) -> Source | None:
+        """Check if a source with the same URL or title already exists.
+
+        Args:
+            notebook_id: The notebook ID.
+            url: URL to check for duplicates (used for URL/YouTube sources).
+            title: Title to check for duplicates (used for text sources).
+
+        Returns:
+            The existing Source if a duplicate is found, None otherwise.
+        """
+        existing_sources = await self.list(notebook_id)
+
+        if url is not None:
+            for source in existing_sources:
+                if source.url and source.url == url:
+                    return source
+
+        if title is not None:
+            for source in existing_sources:
+                if source.title and source.title == title:
+                    return source
+
+        return None
+
     async def list(self, notebook_id: str) -> list[Source]:
         """List all sources in a notebook.
 
@@ -286,6 +317,7 @@ class SourcesAPI:
         url: str,
         wait: bool = False,
         wait_timeout: float = 120.0,
+        skip_dedup: bool = True,
     ) -> Source:
         """Add a URL source to a notebook.
 
@@ -296,9 +328,14 @@ class SourcesAPI:
             url: The URL to add.
             wait: If True, wait for source to be ready before returning.
             wait_timeout: Maximum seconds to wait if wait=True (default: 120).
+            skip_dedup: If True, skip duplicate checking (default: True).
 
         Returns:
             The created Source object. If wait=False, status may be PROCESSING.
+
+        Raises:
+            ValueError: If a source with the same URL already exists and
+                skip_dedup is False.
 
         Example:
             # Add and wait for processing
@@ -309,6 +346,15 @@ class SourcesAPI:
             # ... add more sources ...
             await client.sources.wait_for_sources(nb_id, [s.id for s in sources])
         """
+        if not skip_dedup:
+            existing = await self._check_duplicate(notebook_id, url=url)
+            if existing:
+                raise ValueError(
+                    f"Duplicate source: a source with URL '{url}' already exists "
+                    f"in notebook {notebook_id} (source_id={existing.id}, "
+                    f"title='{existing.title}'). Use skip_dedup=True to add anyway."
+                )
+
         logger.debug("Adding URL source to notebook %s: %s", notebook_id, url[:80])
         video_id = self._extract_youtube_video_id(url)
         try:
@@ -344,6 +390,7 @@ class SourcesAPI:
         content: str,
         wait: bool = False,
         wait_timeout: float = 120.0,
+        skip_dedup: bool = True,
     ) -> Source:
         """Add a text source (copied text) to a notebook.
 
@@ -353,10 +400,24 @@ class SourcesAPI:
             content: Text content.
             wait: If True, wait for source to be ready before returning.
             wait_timeout: Maximum seconds to wait if wait=True (default: 120).
+            skip_dedup: If True, skip duplicate checking (default: True).
 
         Returns:
             The created Source object. If wait=False, status may be PROCESSING.
+
+        Raises:
+            ValueError: If a source with the same title already exists and
+                skip_dedup is False.
         """
+        if not skip_dedup:
+            existing = await self._check_duplicate(notebook_id, title=title)
+            if existing:
+                raise ValueError(
+                    f"Duplicate source: a source with title '{title}' already exists "
+                    f"in notebook {notebook_id} (source_id={existing.id}). "
+                    f"Use skip_dedup=True to add anyway."
+                )
+
         logger.debug("Adding text source to notebook %s: %s", notebook_id, title)
         params = [
             [[None, [title, content], None, None, None, None, None, None]],
@@ -745,6 +806,142 @@ class SourcesAPI:
             url=url,
             char_count=len(content),
         )
+
+    # =========================================================================
+    # Bulk operations
+    # =========================================================================
+
+    async def add_urls(
+        self,
+        notebook_id: str,
+        urls: builtins.list[str],
+        *,
+        skip_failures: bool = False,
+    ) -> builtins.list[Source]:
+        """Add multiple URL sources in parallel.
+
+        Uses asyncio.gather() to add all URLs concurrently.
+
+        Args:
+            notebook_id: The notebook ID.
+            urls: List of URLs to add.
+            skip_failures: If True, catch per-URL exceptions and continue.
+                If False (default), raise the first exception encountered.
+
+        Returns:
+            List of successfully added Source objects.
+
+        Raises:
+            SourceAddError: If any URL fails and skip_failures is False.
+
+        Example:
+            sources = await client.sources.add_urls(
+                nb_id,
+                ["https://example.com/a", "https://example.com/b"],
+                skip_failures=True,
+            )
+        """
+        if not urls:
+            return []
+
+        results = await asyncio.gather(
+            *(self.add_url(notebook_id, url) for url in urls),
+            return_exceptions=True,
+        )
+
+        sources: builtins.list[Source] = []
+        for i, result in enumerate(results):
+            if isinstance(result, BaseException):
+                if skip_failures:
+                    logger.warning("Failed to add URL %s: %s", urls[i], result)
+                else:
+                    raise result
+            else:
+                sources.append(result)
+
+        return sources
+
+    async def delete_bulk(
+        self,
+        notebook_id: str,
+        source_ids: builtins.list[str],
+    ) -> builtins.list[str]:
+        """Delete multiple sources in parallel.
+
+        Uses asyncio.gather() to delete all sources concurrently.
+
+        Args:
+            notebook_id: The notebook ID.
+            source_ids: List of source IDs to delete.
+
+        Returns:
+            List of successfully deleted source IDs.
+
+        Example:
+            deleted = await client.sources.delete_bulk(nb_id, ["id1", "id2"])
+        """
+        if not source_ids:
+            return []
+
+        results = await asyncio.gather(
+            *(self.delete(notebook_id, sid) for sid in source_ids),
+            return_exceptions=True,
+        )
+
+        deleted: builtins.list[str] = []
+        for i, result in enumerate(results):
+            if isinstance(result, BaseException):
+                logger.warning("Failed to delete source %s: %s", source_ids[i], result)
+            else:
+                deleted.append(source_ids[i])
+
+        return deleted
+
+    async def refresh_bulk(
+        self,
+        notebook_id: str,
+        source_ids: builtins.list[str] | None = None,
+    ) -> builtins.list[Source]:
+        """Refresh multiple sources in parallel.
+
+        Uses asyncio.gather() to refresh all sources concurrently. If
+        source_ids is None, refreshes all sources in the notebook.
+
+        Args:
+            notebook_id: The notebook ID.
+            source_ids: List of source IDs to refresh. If None, refreshes
+                all sources in the notebook.
+
+        Returns:
+            List of Source objects for successfully refreshed sources.
+
+        Example:
+            # Refresh specific sources
+            refreshed = await client.sources.refresh_bulk(nb_id, ["id1", "id2"])
+
+            # Refresh all sources
+            refreshed = await client.sources.refresh_bulk(nb_id)
+        """
+        if source_ids is None:
+            all_sources = await self.list(notebook_id)
+            source_ids = [s.id for s in all_sources]
+
+        if not source_ids:
+            return []
+
+        results = await asyncio.gather(
+            *(self.refresh(notebook_id, sid) for sid in source_ids),
+            return_exceptions=True,
+        )
+
+        refreshed: builtins.list[Source] = []
+        for i, result in enumerate(results):
+            if isinstance(result, BaseException):
+                logger.warning("Failed to refresh source %s: %s", source_ids[i], result)
+            else:
+                refreshed.append(Source(id=source_ids[i], title=None))
+
+        return refreshed
 
     # =========================================================================
     # Private helper methods

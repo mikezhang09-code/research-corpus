@@ -105,7 +105,7 @@ class TestUseCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
 
                 # Patch in session module where it's imported
                 with patch(
@@ -133,7 +133,7 @@ class TestUseCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
 
                 # Patch in session module where it's imported
                 with patch(
@@ -174,7 +174,7 @@ class TestUseCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
 
                 # Patch in session module where it's imported
                 with patch(
@@ -533,7 +533,7 @@ class TestAuthCheckCommand:
         mock_storage_path.write_text(json.dumps(storage_data))
 
         with patch("notebooklm.auth.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = ("csrf_12345", "sess_67890")
+            mock_fetch.return_value = ("csrf_12345", "sess_67890", "bl_test")
 
             result = runner.invoke(cli, ["auth", "check", "--test", "--json"])
 
@@ -724,7 +724,7 @@ class TestSessionEdgeCases:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
 
                 # Patch in session module where it's imported
                 with patch(
@@ -761,7 +761,7 @@ class TestSessionEdgeCases:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
 
                 # Patch resolve_notebook_id to raise ClickException (e.g., ambiguous ID)
                 with patch(

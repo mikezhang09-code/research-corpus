@@ -158,6 +158,7 @@ class AuthTokens:
     cookies: dict[str, str]
     csrf_token: str
     session_id: str
+    build_label: str = ""
 
     @property
     def cookie_header(self) -> str:
@@ -193,8 +194,13 @@ class AuthTokens:
                 notebooks = await client.list_notebooks()
         """
         cookies = load_auth_from_storage(path)
-        csrf_token, session_id = await fetch_tokens(cookies)
-        return cls(cookies=cookies, csrf_token=csrf_token, session_id=session_id)
+        csrf_token, session_id, build_label = await fetch_tokens(cookies)
+        return cls(
+            cookies=cookies,
+            csrf_token=csrf_token,
+            session_id=session_id,
+            build_label=build_label,
+        )
 
 
 def _is_google_domain(domain: str) -> bool:
@@ -585,8 +591,8 @@ def load_httpx_cookies(path: Path | None = None) -> "httpx.Cookies":
     return cookies
 
 
-async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
-    """Fetch CSRF token and session ID from NotebookLM homepage.
+async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str, str]:
+    """Fetch CSRF token, session ID, and build label from NotebookLM homepage.
 
     Makes an authenticated request to NotebookLM and extracts the required
     tokens from the page HTML.
@@ -595,7 +601,8 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
         cookies: Dict of Google auth cookies
 
     Returns:
-        Tuple of (csrf_token, session_id)
+        Tuple of (csrf_token, session_id, build_label). build_label may be
+        empty string if not found in the page.
 
     Raises:
         httpx.HTTPError: If request fails
@@ -626,5 +633,12 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
         csrf = extract_csrf_from_html(response.text, final_url)
         session_id = extract_session_id_from_html(response.text, final_url)
 
+        # Extract build label (cfb2h) to keep bl parameter current
+        build_label = ""
+        bl_match = re.search(r'"cfb2h":"([^"]+)"', response.text)
+        if bl_match:
+            build_label = bl_match.group(1)
+            logger.debug("Extracted build label: %s", build_label)
+
         logger.debug("Authentication tokens obtained successfully")
-        return csrf, session_id
+        return csrf, session_id, build_label

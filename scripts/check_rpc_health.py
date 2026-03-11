@@ -897,7 +897,7 @@ async def run_health_check(full_mode: bool = False) -> list[CheckResult]:
 
     print("Fetching auth tokens...")
     try:
-        csrf_token, session_id = await fetch_tokens(cookies)
+        csrf_token, session_id, _build_label = await fetch_tokens(cookies)
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(2)

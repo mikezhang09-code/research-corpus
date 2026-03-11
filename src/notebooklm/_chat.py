@@ -4,10 +4,12 @@ Provides operations for asking questions, managing conversations, and
 retrieving conversation history.
 """
 
+import asyncio
 import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -87,6 +89,7 @@ class ChatAPI:
                 conversation_id=result.conversation_id
             )
         """
+        _ask_start = time.perf_counter()
         logger.debug(
             "Asking question in notebook %s (conversation=%s)",
             notebook_id,
@@ -132,7 +135,10 @@ class ChatAPI:
 
         self._core._reqid_counter += 100000
         url_params = {
-            "bl": os.environ.get("NOTEBOOKLM_BL", _DEFAULT_BL),
+            "bl": os.environ.get(
+                "NOTEBOOKLM_BL",
+                self._core.auth.build_label or _DEFAULT_BL,
+            ),
             "hl": "en",
             "_reqid": str(self._core._reqid_counter),
             "rt": "c",
@@ -174,6 +180,39 @@ class ChatAPI:
             self._core.cache_conversation_turn(conversation_id, question, answer_text, turn_number)
         else:
             turn_number = len(turns)
+
+        # Store query/response in persistent cache for dataset building
+        if self._core._cache and answer_text:
+            try:
+                elapsed_ms = int((time.perf_counter() - _ask_start) * 1000) if _ask_start else None
+                citations_json = (
+                    json.dumps(
+                        [{"source_id": r.source_id, "text": r.cited_text} for r in references]
+                    )
+                    if references
+                    else None
+                )
+                self._core._cache.store_query(
+                    notebook_id,
+                    question,
+                    answer_text,
+                    citations=citations_json,
+                    conversation_id=conversation_id,
+                    turn_number=turn_number,
+                    source_ids=source_ids,
+                    latency_ms=elapsed_ms,
+                )
+                self._core._cache.log_query(
+                    notebook_id,
+                    question,
+                    response_length=len(answer_text),
+                    citation_count=len(references),
+                    source_count=len(source_ids) if source_ids else 0,
+                    latency_ms=elapsed_ms or 0,
+                    cache_hit=False,
+                )
+            except Exception:
+                logger.debug("Failed to store query in cache", exc_info=True)
 
         return AskResult(
             answer=answer_text,
@@ -416,6 +455,49 @@ class ChatAPI:
 
         goal, length, prompt = mode_configs[mode]
         await self.configure(notebook_id, goal, length, prompt)
+
+    async def multi_ask(
+        self,
+        queries: list[tuple[str, str]],
+    ) -> list[AskResult]:
+        """Ask questions across multiple notebooks in parallel.
+
+        Fires all queries concurrently using asyncio.gather, reducing total
+        latency compared to sequential calls.
+
+        Args:
+            queries: List of (notebook_id, question) tuples.
+
+        Returns:
+            List of AskResult objects in the same order as queries.
+            Failed queries return an AskResult with an error message as the answer.
+
+        Example:
+            results = await client.chat.multi_ask([
+                ("nb-1", "What is the main thesis?"),
+                ("nb-2", "Summarize the key findings"),
+                ("nb-3", "List all citations"),
+            ])
+            for result in results:
+                print(result.answer[:200])
+        """
+
+        async def _safe_ask(notebook_id: str, question: str) -> AskResult:
+            try:
+                return await self.ask(notebook_id, question)
+            except Exception as e:
+                logger.warning("multi_ask failed for notebook %s: %s", notebook_id, e)
+                return AskResult(
+                    answer=f"Error: {e}",
+                    conversation_id="",
+                    turn_number=0,
+                    is_follow_up=False,
+                    references=[],
+                    raw_response="",
+                )
+
+        tasks = [_safe_ask(nb_id, q) for nb_id, q in queries]
+        return list(await asyncio.gather(*tasks))
 
     # =========================================================================
     # Private Helpers

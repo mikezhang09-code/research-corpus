@@ -1,14 +1,19 @@
 """Core infrastructure for NotebookLM API client."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlencode
 
 import httpx
+
+if TYPE_CHECKING:
+    from ._cache import CacheMiddleware
 
 from .auth import AuthTokens
 from .rpc import (
@@ -34,6 +39,12 @@ MAX_CONVERSATION_CACHE_SIZE = 100
 # Default HTTP timeouts in seconds
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_CONNECT_TIMEOUT = 10.0  # Connection establishment timeout
+
+# Retry configuration for transient server errors (429, 500, 502, 503, 504)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+DEFAULT_MAX_RETRIES = 3  # 4 total attempts (initial + 3 retries)
+DEFAULT_RETRY_BASE_DELAY = 1.0  # seconds
+DEFAULT_RETRY_MAX_DELAY = 16.0  # seconds
 
 # Auth error detection patterns (case-insensitive)
 AUTH_ERROR_PATTERNS = (
@@ -95,6 +106,7 @@ class ClientCore:
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         refresh_callback: Callable[[], Awaitable[AuthTokens]] | None = None,
         refresh_retry_delay: float = 0.2,
+        cache: CacheMiddleware | None = None,
     ):
         """Initialize the core client.
 
@@ -107,6 +119,8 @@ class ClientCore:
             refresh_callback: Optional async callback to refresh auth tokens on failure.
                 If provided, rpc_call will automatically retry once after refreshing.
             refresh_retry_delay: Delay in seconds before retrying after refresh.
+            cache: Optional cache middleware for reducing API calls and storing
+                query/response pairs. If None, no caching is performed.
         """
         self.auth = auth
         self._timeout = timeout
@@ -116,6 +130,7 @@ class ClientCore:
         self._refresh_lock: asyncio.Lock | None = asyncio.Lock() if refresh_callback else None
         self._refresh_task: asyncio.Task[AuthTokens] | None = None
         self._http_client: httpx.AsyncClient | None = None
+        self._cache = cache
         # Request ID counter for chat API (must be unique per request)
         self._reqid_counter: int = 100000
         # OrderedDict for FIFO eviction when cache exceeds MAX_CONVERSATION_CACHE_SIZE
@@ -195,18 +210,23 @@ class ClientCore:
         source_path: str = "/",
         allow_null: bool = False,
         _is_retry: bool = False,
+        _server_retry: int = 0,
     ) -> Any:
         """Make an RPC call to the NotebookLM API.
 
         Automatically refreshes authentication tokens and retries once if an
         auth failure is detected and a refresh_callback was provided.
 
+        Retries automatically with exponential backoff on transient server
+        errors (429, 500, 502, 503, 504) up to DEFAULT_MAX_RETRIES times.
+
         Args:
             method: The RPC method to call.
             params: Parameters for the RPC call (nested list structure).
             source_path: The source path parameter (usually /notebook/{id}).
             allow_null: If True, don't raise error when response is null.
-            _is_retry: Internal flag to prevent infinite retries.
+            _is_retry: Internal flag to prevent infinite auth retries.
+            _server_retry: Internal counter for server error retries.
 
         Returns:
             Decoded response data.
@@ -239,6 +259,41 @@ class ClientCore:
                 )
                 if refreshed is not None:
                     return refreshed
+
+            # Retry on transient server errors with exponential backoff
+            if (
+                isinstance(e, httpx.HTTPStatusError)
+                and e.response.status_code in RETRYABLE_STATUS_CODES
+                and _server_retry < DEFAULT_MAX_RETRIES
+            ):
+                delay = min(
+                    DEFAULT_RETRY_BASE_DELAY * (2**_server_retry),
+                    DEFAULT_RETRY_MAX_DELAY,
+                )
+                # Use retry-after header if available (for 429s)
+                retry_after_header = e.response.headers.get("retry-after")
+                if retry_after_header:
+                    try:
+                        delay = max(delay, float(retry_after_header))
+                    except ValueError:
+                        pass
+                logger.warning(
+                    "RPC %s got HTTP %s, retrying in %.1fs (attempt %d/%d)",
+                    method.name,
+                    e.response.status_code,
+                    delay,
+                    _server_retry + 1,
+                    DEFAULT_MAX_RETRIES,
+                )
+                await asyncio.sleep(delay)
+                return await self.rpc_call(
+                    method,
+                    params,
+                    source_path,
+                    allow_null,
+                    _is_retry=_is_retry,
+                    _server_retry=_server_retry + 1,
+                )
 
             if isinstance(e, httpx.HTTPStatusError):
                 status = e.response.status_code

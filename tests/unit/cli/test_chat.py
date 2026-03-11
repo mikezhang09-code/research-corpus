@@ -63,7 +63,7 @@ class TestAskSaveAsNote:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["ask", "What is 42?", "--save-as-note", "-n", "nb_123"]
                 )
@@ -83,7 +83,7 @@ class TestAskSaveAsNote:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     [
@@ -111,7 +111,7 @@ class TestAskSaveAsNote:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["ask", "What is 42?", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -127,7 +127,7 @@ class TestHistoryCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["history", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -143,7 +143,7 @@ class TestHistoryCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["history", "--save", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -157,7 +157,7 @@ class TestHistoryCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["history", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -171,7 +171,7 @@ class TestHistoryCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["history", "--json", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -194,7 +194,7 @@ class TestHistoryCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["history", "--json", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -216,7 +216,7 @@ class TestHistoryCommand:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["history", "--show-all", "-n", "nb_123"])
 
             assert result.exit_code == 0, result.output
@@ -254,7 +254,7 @@ class TestAskServerResumed:
                 patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch,
                 patch("notebooklm.cli.helpers.get_context_path", return_value=context_file),
             ):
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["ask", "-n", "nb_123", "question"])
 
         assert result.exit_code == 0, result.output
@@ -284,7 +284,7 @@ class TestAskServerResumed:
                 patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch,
                 patch("notebooklm.cli.helpers.get_context_path", return_value=context_file),
             ):
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["ask", "-n", "nb_123", "follow-up question"])
 
         assert result.exit_code == 0, result.output

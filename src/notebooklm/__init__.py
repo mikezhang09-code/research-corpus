@@ -40,6 +40,9 @@ except PackageNotFoundError:
         __version__,
     )
 
+# Public API: Cache
+from ._cache import CacheConfig, CacheMiddleware
+
 # Public API: Authentication
 from .auth import DEFAULT_STORAGE_PATH, AuthTokens
 
@@ -104,6 +107,7 @@ from .types import (
     Note,
     Notebook,
     NotebookDescription,
+    NotebookHealth,
     QuizDifficulty,
     QuizQuantity,
     ReportFormat,
@@ -131,12 +135,16 @@ __all__ = [
     "__version__",
     # Client (main entry point)
     "NotebookLMClient",
+    # Cache
+    "CacheConfig",
+    "CacheMiddleware",
     # Auth
     "AuthTokens",
     "DEFAULT_STORAGE_PATH",
     # Types
     "Notebook",
     "NotebookDescription",
+    "NotebookHealth",
     "SuggestedTopic",
     "Source",
     "SourceFulltext",

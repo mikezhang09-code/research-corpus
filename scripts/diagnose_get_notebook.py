@@ -139,7 +139,7 @@ async def run_diagnosis(notebook_id: str | None = None) -> None:
 
     print("Fetching auth tokens...")
     try:
-        csrf_token, session_id = await fetch_tokens(cookies)
+        csrf_token, session_id, _build_label = await fetch_tokens(cookies)
     except (ValueError, httpx.HTTPError) as e:
         print(f"ERROR: Failed to fetch auth tokens: {e}")
         print("Try running: notebooklm login")

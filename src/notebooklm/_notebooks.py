@@ -1,11 +1,19 @@
 """Notebook operations API."""
 
+from __future__ import annotations
+
+import asyncio
+import builtins
 import logging
-from typing import Any
+from collections import Counter
+from typing import TYPE_CHECKING, Any
 
 from ._core import ClientCore
 from .rpc import RPCMethod
-from .types import Notebook, NotebookDescription, SuggestedTopic
+from .types import Notebook, NotebookDescription, NotebookHealth, SuggestedTopic
+
+if TYPE_CHECKING:
+    from ._sources import SourcesAPI
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +31,15 @@ class NotebooksAPI:
             await client.notebooks.rename(new_nb.id, "Better Title")
     """
 
-    def __init__(self, core: ClientCore):
+    def __init__(self, core: ClientCore, sources_api: SourcesAPI | None = None):
         """Initialize the notebooks API.
 
         Args:
             core: The core client infrastructure.
+            sources_api: Optional sources API for health checks.
         """
         self._core = core
+        self._sources: SourcesAPI | None = sources_api
 
     async def list(self) -> list[Notebook]:
         """List all notebooks.
@@ -300,3 +310,187 @@ class NotebooksAPI:
         if artifact_id:
             return f"{base_url}?artifactId={artifact_id}"
         return base_url
+
+    async def health(self, notebook_id: str) -> NotebookHealth:
+        """Audit notebook health - check for empty, stale sources, duplicates.
+
+        Inspects the notebook's sources and reports:
+        - Whether the notebook has any sources at all.
+        - Which sources are stale (need refresh), checked via
+          ``client.sources.check_freshness()`` when a sources API is available.
+        - Which URLs appear more than once across sources.
+
+        Args:
+            notebook_id: The notebook ID to audit.
+
+        Returns:
+            NotebookHealth report with status, stale sources, and duplicate URLs.
+
+        Raises:
+            RuntimeError: If no sources API was provided to the notebooks API.
+
+        Example:
+            report = await client.notebooks.health(notebook_id)
+            if report.status == "needs_attention":
+                print(f"Stale sources: {report.stale_sources}")
+                print(f"Duplicate URLs: {report.duplicate_urls}")
+        """
+        if self._sources is None:
+            raise RuntimeError(
+                "No sources API available. Use NotebookLMClient which wires "
+                "the sources API automatically."
+            )
+
+        # Get notebook info and sources in parallel
+        notebook, sources = await asyncio.gather(
+            self.get(notebook_id),
+            self._sources.list(notebook_id),
+        )
+
+        source_count = len(sources)
+        has_sources = source_count > 0
+
+        if not has_sources:
+            return NotebookHealth(
+                notebook_id=notebook_id,
+                title=notebook.title,
+                source_count=0,
+                has_sources=False,
+                stale_sources=[],
+                duplicate_urls=[],
+                status="empty",
+            )
+
+        # Check freshness for all sources in parallel
+        freshness_tasks = [self._sources.check_freshness(notebook_id, src.id) for src in sources]
+        freshness_results = await asyncio.gather(*freshness_tasks, return_exceptions=True)
+
+        stale_sources: list[str] = []
+        for src, result in zip(sources, freshness_results, strict=False):
+            if isinstance(result, Exception):
+                # If freshness check fails, flag as stale to be safe
+                stale_sources.append(src.id)
+            elif result is False:
+                stale_sources.append(src.id)
+
+        # Find duplicate URLs
+        url_counts: Counter[str] = Counter()
+        for src in sources:
+            if src.url:
+                url_counts[src.url] += 1
+        duplicate_urls = [url for url, count in url_counts.items() if count > 1]
+
+        # Determine status
+        status = "needs_attention" if stale_sources or duplicate_urls else "healthy"
+
+        return NotebookHealth(
+            notebook_id=notebook_id,
+            title=notebook.title,
+            source_count=source_count,
+            has_sources=True,
+            stale_sources=stale_sources,
+            duplicate_urls=duplicate_urls,
+            status=status,
+        )
+
+    async def merge(
+        self,
+        source_notebook_id: str,
+        target_notebook_id: str,
+        *,
+        skip_duplicates: bool = True,
+    ) -> builtins.list[Any]:
+        """Copy all sources from one notebook to another.
+
+        Reads sources from the source notebook, fetches their full text content,
+        and adds each as a text source to the target notebook. URL sources are
+        re-added by URL; text-only sources are copied as text.
+
+        Args:
+            source_notebook_id: The notebook to copy sources from.
+            target_notebook_id: The notebook to copy sources into.
+            skip_duplicates: If True, skip sources whose title already exists
+                in the target notebook (default: True).
+
+        Returns:
+            List of newly created Source objects in the target notebook.
+
+        Raises:
+            RuntimeError: If no sources API was provided to the notebooks API.
+
+        Example:
+            merged = await client.notebooks.merge(src_id, dst_id)
+            print(f"Copied {len(merged)} sources")
+        """
+        if self._sources is None:
+            raise RuntimeError(
+                "No sources API available. Use NotebookLMClient which wires "
+                "the sources API automatically."
+            )
+
+        src_sources = await self._sources.list(source_notebook_id)
+        if not src_sources:
+            return []
+
+        # Get existing titles in target for dedup
+        existing_titles: set[str] = set()
+        existing_urls: set[str] = set()
+        if skip_duplicates:
+            target_sources = await self._sources.list(target_notebook_id)
+            existing_titles = {s.title for s in target_sources if s.title}
+            existing_urls = {s.url for s in target_sources if s.url}
+
+        added: builtins.list[Any] = []
+        for src in src_sources:
+            # Skip duplicates by title or URL
+            if skip_duplicates:
+                if src.title and src.title in existing_titles:
+                    logger.debug("Skipping duplicate (title): %s", src.title)
+                    continue
+                if src.url and src.url in existing_urls:
+                    logger.debug("Skipping duplicate (URL): %s", src.url)
+                    continue
+
+            try:
+                if src.url:
+                    new_source = await self._sources.add_url(
+                        target_notebook_id, src.url, skip_dedup=True
+                    )
+                else:
+                    # For text-only sources, fetch content and re-add
+                    fulltext = await self._sources.get_fulltext(source_notebook_id, src.id)
+                    new_source = await self._sources.add_text(
+                        target_notebook_id,
+                        src.title or "Untitled",
+                        fulltext.content or "",
+                        skip_dedup=True,
+                    )
+                added.append(new_source)
+                logger.debug("Merged source: %s", src.title)
+            except Exception:
+                logger.warning("Failed to merge source %s (%s)", src.id, src.title, exc_info=True)
+
+        return added
+
+    async def health_all(self) -> builtins.list[NotebookHealth]:
+        """Run health checks on all notebooks in parallel.
+
+        Lists all notebooks and then runs ``health()`` on each one concurrently.
+
+        Returns:
+            List of NotebookHealth reports, one per notebook.
+
+        Raises:
+            RuntimeError: If no sources API was provided to the notebooks API.
+
+        Example:
+            reports = await client.notebooks.health_all()
+            for report in reports:
+                print(f"{report.title}: {report.status}")
+        """
+        notebooks = await self.list()
+        if not notebooks:
+            return []
+
+        tasks = [self.health(nb.id) for nb in notebooks]
+        return list(await asyncio.gather(*tasks))
