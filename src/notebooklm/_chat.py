@@ -21,7 +21,7 @@ from .types import AskResult, ChatReference, ConversationTurn
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BL = "boq_labs-tailwind-frontend_20260301.03_p0"
+_DEFAULT_BL = "boq_labs-tailwind-frontend_20260301.03_p0"  # Updated periodically; may be overridden via NOTEBOOKLM_BL env var
 
 # UUID pattern for validating source IDs (compiled once at module level)
 _UUID_PATTERN = re.compile(
