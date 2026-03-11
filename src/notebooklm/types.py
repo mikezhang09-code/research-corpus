@@ -244,6 +244,7 @@ __all__ = [
     # Dataclasses
     "Notebook",
     "NotebookDescription",
+    "NotebookHealth",
     "SuggestedTopic",
     "Source",
     "SourceFulltext",
@@ -387,6 +388,35 @@ class NotebookDescription:
             summary=data.get("summary", ""),
             suggested_topics=topics,
         )
+
+
+@dataclass
+class NotebookHealth:
+    """Health audit report for a notebook.
+
+    Returned by ``client.notebooks.health()`` and ``client.notebooks.health_all()``.
+    Checks for empty notebooks, stale sources, and duplicate URLs.
+
+    Attributes:
+        notebook_id: The notebook ID.
+        title: The notebook title.
+        source_count: Total number of sources in the notebook.
+        has_sources: Whether the notebook has any sources.
+        stale_sources: Source IDs that need refresh.
+        duplicate_urls: URLs that appear more than once across sources.
+        status: Overall health status -
+            ``"healthy"`` if no issues,
+            ``"needs_attention"`` if stale sources or duplicates exist,
+            ``"empty"`` if the notebook has no sources.
+    """
+
+    notebook_id: str
+    title: str
+    source_count: int
+    has_sources: bool
+    stale_sources: list[str] = field(default_factory=list)
+    duplicate_urls: list[str] = field(default_factory=list)
+    status: str = "healthy"
 
 
 # =============================================================================

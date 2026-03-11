@@ -103,6 +103,7 @@ from .types import (
     Note,
     Notebook,
     NotebookDescription,
+    NotebookHealth,
     QuizDifficulty,
     QuizQuantity,
     ReportFormat,
@@ -136,6 +137,7 @@ __all__ = [
     # Types
     "Notebook",
     "NotebookDescription",
+    "NotebookHealth",
     "SuggestedTopic",
     "Source",
     "SourceFulltext",

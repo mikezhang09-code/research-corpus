@@ -86,8 +86,9 @@ class NotebookLMClient:
 
         # Initialize sub-client APIs
         # Note: notes must be initialized before artifacts (artifacts uses notes API)
-        self.notebooks = NotebooksAPI(self._core)
+        # Note: sources must be initialized before notebooks (notebooks uses sources for health checks)
         self.sources = SourcesAPI(self._core)
+        self.notebooks = NotebooksAPI(self._core, sources_api=self.sources)
         self.notes = NotesAPI(self._core)
         self.artifacts = ArtifactsAPI(self._core, notes_api=self.notes)
         self.chat = ChatAPI(self._core)
