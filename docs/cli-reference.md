@@ -411,6 +411,7 @@ notebooklm source add-research <query> [OPTIONS]
 - `--mode [fast|deep]` - Research depth (default: fast)
 - `--from [web|drive]` - Search source (default: web)
 - `--import-all` - Automatically import all found sources (works with blocking mode)
+- `--timeout SECONDS` - Maximum seconds to keep retrying imports when `--import-all` is used (default: 1800)
 - `--no-wait` - Start research and return immediately (non-blocking)
 
 **Examples:**
@@ -423,6 +424,9 @@ notebooklm source add-research "Project Alpha" --from drive --mode deep
 
 # Non-blocking deep research for agent workflows
 notebooklm source add-research "AI safety papers" --mode deep --no-wait
+
+# Keep retrying imports for up to 10 minutes
+notebooklm source add-research "AI safety papers" --import-all --timeout 600
 ```
 
 ### Research: `status`

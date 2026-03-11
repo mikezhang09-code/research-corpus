@@ -421,13 +421,19 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @click.option("--import-all", is_flag=True, help="Import all found sources")
 @click.option(
+    "--timeout",
+    default=1800,
+    type=int,
+    help="Maximum seconds to keep retrying imports when --import-all is used (default: 1800)",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     help="Start research and return immediately (use 'research status/wait' to monitor)",
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, no_wait, client_auth
+    ctx, query, notebook_id, search_source, mode, import_all, timeout, no_wait, client_auth
 ):
     """Search web or drive and add sources from results.
 
@@ -486,6 +492,7 @@ def source_add_research(
                         nb_id_resolved,
                         task_id,
                         sources,
+                        max_elapsed=float(timeout),
                     )
                     console.print(f"[green]Imported {len(imported)} sources[/green]")
             else:
