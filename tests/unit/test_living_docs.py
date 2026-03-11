@@ -1,7 +1,6 @@
 """Unit tests for the Living Documents API."""
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,7 +10,6 @@ from notebooklm._living_docs import (
     LivingDocsAPI,
     StaleCheckResult,
     SyncResult,
-    _get_registry_path,
     _load_registry,
     _save_registry,
 )
@@ -184,9 +182,7 @@ class TestLivingDocsAPI:
 
     @pytest.mark.asyncio
     async def test_check_stale_fresh(self, living_docs_api, mock_sources_api):
-        _save_registry(
-            [{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}]
-        )
+        _save_registry([{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}])
         mock_sources_api.check_freshness = AsyncMock(return_value=True)
 
         result = await living_docs_api.check_stale()
@@ -195,9 +191,7 @@ class TestLivingDocsAPI:
 
     @pytest.mark.asyncio
     async def test_check_stale_stale(self, living_docs_api, mock_sources_api):
-        _save_registry(
-            [{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}]
-        )
+        _save_registry([{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}])
         mock_sources_api.check_freshness = AsyncMock(return_value=False)
 
         result = await living_docs_api.check_stale()
@@ -214,9 +208,7 @@ class TestLivingDocsAPI:
 
     @pytest.mark.asyncio
     async def test_sync_all(self, living_docs_api, mock_sources_api):
-        _save_registry(
-            [{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}]
-        )
+        _save_registry([{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}])
         mock_sources_api.check_freshness = AsyncMock(return_value=False)
 
         result = await living_docs_api.sync_all()
@@ -225,9 +217,7 @@ class TestLivingDocsAPI:
 
     @pytest.mark.asyncio
     async def test_sync_all_skips_fresh(self, living_docs_api, mock_sources_api):
-        _save_registry(
-            [{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}]
-        )
+        _save_registry([{"drive_file_id": "abc", "notebook_id": "nb_1", "source_id": "src_1"}])
         mock_sources_api.check_freshness = AsyncMock(return_value=True)
 
         result = await living_docs_api.sync_all()
