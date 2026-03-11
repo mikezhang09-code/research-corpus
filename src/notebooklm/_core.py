@@ -1,14 +1,19 @@
 """Core infrastructure for NotebookLM API client."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlencode
 
 import httpx
+
+if TYPE_CHECKING:
+    from ._cache import CacheMiddleware
 
 from .auth import AuthTokens
 from .rpc import (
@@ -95,6 +100,7 @@ class ClientCore:
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         refresh_callback: Callable[[], Awaitable[AuthTokens]] | None = None,
         refresh_retry_delay: float = 0.2,
+        cache: CacheMiddleware | None = None,
     ):
         """Initialize the core client.
 
@@ -107,6 +113,8 @@ class ClientCore:
             refresh_callback: Optional async callback to refresh auth tokens on failure.
                 If provided, rpc_call will automatically retry once after refreshing.
             refresh_retry_delay: Delay in seconds before retrying after refresh.
+            cache: Optional cache middleware for reducing API calls and storing
+                query/response pairs. If None, no caching is performed.
         """
         self.auth = auth
         self._timeout = timeout
@@ -116,6 +124,7 @@ class ClientCore:
         self._refresh_lock: asyncio.Lock | None = asyncio.Lock() if refresh_callback else None
         self._refresh_task: asyncio.Task[AuthTokens] | None = None
         self._http_client: httpx.AsyncClient | None = None
+        self._cache = cache
         # Request ID counter for chat API (must be unique per request)
         self._reqid_counter: int = 100000
         # OrderedDict for FIFO eviction when cache exceeds MAX_CONVERSATION_CACHE_SIZE

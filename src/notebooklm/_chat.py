@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -87,6 +88,7 @@ class ChatAPI:
                 conversation_id=result.conversation_id
             )
         """
+        _ask_start = time.perf_counter()
         logger.debug(
             "Asking question in notebook %s (conversation=%s)",
             notebook_id,
@@ -174,6 +176,39 @@ class ChatAPI:
             self._core.cache_conversation_turn(conversation_id, question, answer_text, turn_number)
         else:
             turn_number = len(turns)
+
+        # Store query/response in persistent cache for dataset building
+        if self._core._cache and answer_text:
+            try:
+                elapsed_ms = int((time.perf_counter() - _ask_start) * 1000) if _ask_start else None
+                citations_json = (
+                    json.dumps(
+                        [{"source_id": r.source_id, "text": r.cited_text} for r in references]
+                    )
+                    if references
+                    else None
+                )
+                self._core._cache.store_query(
+                    notebook_id,
+                    question,
+                    answer_text,
+                    citations=citations_json,
+                    conversation_id=conversation_id,
+                    turn_number=turn_number,
+                    source_ids=source_ids,
+                    latency_ms=elapsed_ms,
+                )
+                self._core._cache.log_query(
+                    notebook_id,
+                    question,
+                    response_length=len(answer_text),
+                    citation_count=len(references),
+                    source_count=len(source_ids) if source_ids else 0,
+                    latency_ms=elapsed_ms or 0,
+                    cache_hit=False,
+                )
+            except Exception:
+                logger.debug("Failed to store query in cache", exc_info=True)
 
         return AskResult(
             answer=answer_text,

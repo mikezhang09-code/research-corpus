@@ -24,6 +24,7 @@ import re
 from pathlib import Path
 
 from ._artifacts import ArtifactsAPI
+from ._cache import CacheConfig, CacheMiddleware
 from ._chat import ChatAPI
 from ._core import DEFAULT_TIMEOUT, ClientCore
 from ._notebooks import NotebooksAPI
@@ -73,16 +74,29 @@ class NotebookLMClient:
         auth: The AuthTokens used for authentication
     """
 
-    def __init__(self, auth: AuthTokens, timeout: float = DEFAULT_TIMEOUT):
+    def __init__(
+        self,
+        auth: AuthTokens,
+        timeout: float = DEFAULT_TIMEOUT,
+        cache_config: CacheConfig | None = None,
+    ):
         """Initialize the NotebookLM client.
 
         Args:
             auth: Authentication tokens from browser login.
             timeout: HTTP request timeout in seconds. Defaults to 30 seconds.
+            cache_config: Optional cache configuration. If provided and enabled,
+                API responses will be cached locally and query/response pairs
+                will be stored for dataset building.
         """
+        # Initialize cache middleware if configured
+        self._cache = CacheMiddleware(cache_config) if cache_config else None
+
         # Pass refresh_auth as callback for automatic retry on auth failures
         # Note: refresh_auth calls update_auth_headers internally
-        self._core = ClientCore(auth, timeout=timeout, refresh_callback=self.refresh_auth)
+        self._core = ClientCore(
+            auth, timeout=timeout, refresh_callback=self.refresh_auth, cache=self._cache
+        )
 
         # Initialize sub-client APIs
         # Note: notes must be initialized before artifacts (artifacts uses notes API)
@@ -110,6 +124,8 @@ class NotebookLMClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Close the client connection."""
         logger.debug("Closing NotebookLM client")
+        if self._cache:
+            self._cache.close()
         await self._core.close()
 
     @property
@@ -119,7 +135,10 @@ class NotebookLMClient:
 
     @classmethod
     async def from_storage(
-        cls, path: str | None = None, timeout: float = DEFAULT_TIMEOUT
+        cls,
+        path: str | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+        cache_config: CacheConfig | None = None,
     ) -> "NotebookLMClient":
         """Create a client from Playwright storage state file.
 
@@ -130,6 +149,8 @@ class NotebookLMClient:
             path: Path to storage_state.json. If None, uses default location
                   (~/.notebooklm/storage_state.json).
             timeout: HTTP request timeout in seconds. Defaults to 30 seconds.
+            cache_config: Optional cache configuration for response caching
+                and query/response dataset building.
 
         Returns:
             NotebookLMClient instance (not yet connected).
@@ -137,10 +158,15 @@ class NotebookLMClient:
         Example:
             async with await NotebookLMClient.from_storage() as client:
                 notebooks = await client.notebooks.list()
+
+            # With caching enabled:
+            config = CacheConfig(enabled=True, log_queries=True)
+            async with await NotebookLMClient.from_storage(cache_config=config) as client:
+                notebooks = await client.notebooks.list()
         """
         storage_path = Path(path) if path else None
         auth = await AuthTokens.from_storage(storage_path)
-        return cls(auth, timeout=timeout)
+        return cls(auth, timeout=timeout, cache_config=cache_config)
 
     async def refresh_auth(self) -> AuthTokens:
         """Refresh authentication tokens by fetching the NotebookLM homepage.
