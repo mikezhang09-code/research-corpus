@@ -517,10 +517,11 @@ class TestFetchTokens:
         )
 
         cookies = {"SID": "test_sid"}
-        csrf, session_id = await fetch_tokens(cookies)
+        csrf, session_id, build_label = await fetch_tokens(cookies)
 
         assert csrf == "AF1_QpN-csrf_token_123"
         assert session_id == "session_id_456"
+        assert build_label == ""  # No cfb2h in test HTML
 
     @pytest.mark.asyncio
     async def test_fetch_tokens_redirect_to_login(self, httpx_mock: HTTPXMock):

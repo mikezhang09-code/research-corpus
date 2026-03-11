@@ -135,7 +135,10 @@ class ChatAPI:
 
         self._core._reqid_counter += 100000
         url_params = {
-            "bl": os.environ.get("NOTEBOOKLM_BL", _DEFAULT_BL),
+            "bl": os.environ.get(
+                "NOTEBOOKLM_BL",
+                self._core.auth.build_label or _DEFAULT_BL,
+            ),
             "hl": "en",
             "_reqid": str(self._core._reqid_counter),
             "rt": "c",

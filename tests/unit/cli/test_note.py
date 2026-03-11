@@ -57,7 +57,7 @@ class TestNoteList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "list", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -69,7 +69,7 @@ class TestNoteList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "list", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -91,7 +91,7 @@ class TestNoteCreate:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     ["note", "create", "Hello world", "--title", "My Note", "-n", "nb_123"],
@@ -109,7 +109,7 @@ class TestNoteCreate:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "create", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -121,7 +121,7 @@ class TestNoteCreate:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "create", "Test", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -147,7 +147,7 @@ class TestNoteGet:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "get", "note_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -163,7 +163,7 @@ class TestNoteGet:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "get", "nonexistent", "-n", "nb_123"])
 
             # resolve_note_id will raise ClickException for no match
@@ -188,7 +188,7 @@ class TestNoteSave:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["note", "save", "note_123", "--content", "New content", "-n", "nb_123"]
                 )
@@ -207,7 +207,7 @@ class TestNoteSave:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["note", "save", "note_123", "--title", "New Title", "-n", "nb_123"]
                 )
@@ -222,7 +222,7 @@ class TestNoteSave:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "save", "note_123", "-n", "nb_123"])
 
         assert "Provide --title and/or --content" in result.output
@@ -248,7 +248,7 @@ class TestNoteRename:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["note", "rename", "note_123", "New Title", "-n", "nb_123"]
                 )
@@ -265,7 +265,7 @@ class TestNoteRename:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["note", "rename", "nonexistent", "New Title", "-n", "nb_123"]
                 )
@@ -292,7 +292,7 @@ class TestNoteDelete:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["note", "delete", "note_123", "-n", "nb_123", "-y"])
 
             assert result.exit_code == 0

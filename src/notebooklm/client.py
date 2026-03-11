@@ -207,6 +207,13 @@ class NotebookLMClient:
             )
         self._core.auth.session_id = sid_match.group(1)
 
+        # Extract cfb2h (build label / bl parameter) - keeps API requests current
+        # Without this, the hardcoded bl value goes stale every few weeks
+        bl_match = re.search(r'"cfb2h":"([^"]+)"', response.text)
+        if bl_match:
+            self._core.auth.build_label = bl_match.group(1)
+            logger.debug("Extracted build label: %s", self._core.auth.build_label)
+
         # CRITICAL: Update the HTTP client headers with new auth tokens
         # Without this, the client continues using stale credentials
         self._core.update_auth_headers()

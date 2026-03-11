@@ -40,6 +40,12 @@ MAX_CONVERSATION_CACHE_SIZE = 100
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_CONNECT_TIMEOUT = 10.0  # Connection establishment timeout
 
+# Retry configuration for transient server errors (429, 500, 502, 503, 504)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+DEFAULT_MAX_RETRIES = 3  # 4 total attempts (initial + 3 retries)
+DEFAULT_RETRY_BASE_DELAY = 1.0  # seconds
+DEFAULT_RETRY_MAX_DELAY = 16.0  # seconds
+
 # Auth error detection patterns (case-insensitive)
 AUTH_ERROR_PATTERNS = (
     "authentication",
@@ -204,18 +210,23 @@ class ClientCore:
         source_path: str = "/",
         allow_null: bool = False,
         _is_retry: bool = False,
+        _server_retry: int = 0,
     ) -> Any:
         """Make an RPC call to the NotebookLM API.
 
         Automatically refreshes authentication tokens and retries once if an
         auth failure is detected and a refresh_callback was provided.
 
+        Retries automatically with exponential backoff on transient server
+        errors (429, 500, 502, 503, 504) up to DEFAULT_MAX_RETRIES times.
+
         Args:
             method: The RPC method to call.
             params: Parameters for the RPC call (nested list structure).
             source_path: The source path parameter (usually /notebook/{id}).
             allow_null: If True, don't raise error when response is null.
-            _is_retry: Internal flag to prevent infinite retries.
+            _is_retry: Internal flag to prevent infinite auth retries.
+            _server_retry: Internal counter for server error retries.
 
         Returns:
             Decoded response data.
@@ -248,6 +259,41 @@ class ClientCore:
                 )
                 if refreshed is not None:
                     return refreshed
+
+            # Retry on transient server errors with exponential backoff
+            if (
+                isinstance(e, httpx.HTTPStatusError)
+                and e.response.status_code in RETRYABLE_STATUS_CODES
+                and _server_retry < DEFAULT_MAX_RETRIES
+            ):
+                delay = min(
+                    DEFAULT_RETRY_BASE_DELAY * (2**_server_retry),
+                    DEFAULT_RETRY_MAX_DELAY,
+                )
+                # Use retry-after header if available (for 429s)
+                retry_after_header = e.response.headers.get("retry-after")
+                if retry_after_header:
+                    try:
+                        delay = max(delay, float(retry_after_header))
+                    except ValueError:
+                        pass
+                logger.warning(
+                    "RPC %s got HTTP %s, retrying in %.1fs (attempt %d/%d)",
+                    method.name,
+                    e.response.status_code,
+                    delay,
+                    _server_retry + 1,
+                    DEFAULT_MAX_RETRIES,
+                )
+                await asyncio.sleep(delay)
+                return await self.rpc_call(
+                    method,
+                    params,
+                    source_path,
+                    allow_null,
+                    _is_retry=_is_retry,
+                    _server_retry=_server_retry + 1,
+                )
 
             if isinstance(e, httpx.HTTPStatusError):
                 status = e.response.status_code

@@ -54,7 +54,7 @@ class TestSourceList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "list", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -76,7 +76,7 @@ class TestSourceList:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "list", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 0
@@ -105,7 +105,7 @@ class TestSourceAdd:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "add", "https://example.com", "-n", "nb_123"]
                 )
@@ -125,7 +125,7 @@ class TestSourceAdd:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "add", "https://youtube.com/watch?v=abc123", "-n", "nb_123"]
                 )
@@ -142,7 +142,7 @@ class TestSourceAdd:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     ["source", "add", "Some text content", "--type", "text", "-n", "nb_123"],
@@ -159,7 +159,7 @@ class TestSourceAdd:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     [
@@ -190,7 +190,7 @@ class TestSourceAdd:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     ["source", "add", str(test_file), "--type", "file", "-n", "nb_123"],
@@ -211,7 +211,7 @@ class TestSourceAdd:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "add", "https://example.com", "-n", "nb_123", "--json"]
                 )
@@ -245,7 +245,7 @@ class TestSourceGet:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "get", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -261,7 +261,7 @@ class TestSourceGet:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "get", "nonexistent", "-n", "nb_123"])
 
             # Now exits with error from resolve_source_id (no match)
@@ -286,7 +286,7 @@ class TestSourceDelete:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "delete", "src_123", "-n", "nb_123", "-y"])
 
             assert result.exit_code == 0
@@ -304,7 +304,7 @@ class TestSourceDelete:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "delete", "src_123", "-n", "nb_123", "-y"])
 
             assert result.exit_code == 0
@@ -330,7 +330,7 @@ class TestSourceRename:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "rename", "src_123", "New Title", "-n", "nb_123"]
                 )
@@ -359,7 +359,7 @@ class TestSourceRefresh:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "refresh", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -376,7 +376,7 @@ class TestSourceRefresh:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "refresh", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -401,7 +401,7 @@ class TestSourceAddDrive:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "add-drive", "drive_file_id", "My Google Doc", "-n", "nb_123"]
                 )
@@ -421,7 +421,7 @@ class TestSourceAddDrive:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     [
@@ -465,7 +465,7 @@ class TestSourceGuide:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "guide", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -484,7 +484,7 @@ class TestSourceGuide:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "guide", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -502,7 +502,7 @@ class TestSourceGuide:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "guide", "src_123", "-n", "nb_123", "--json"]
                 )
@@ -526,7 +526,7 @@ class TestSourceGuide:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "guide", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -547,7 +547,7 @@ class TestSourceGuide:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "guide", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -573,7 +573,7 @@ class TestSourceStale:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "stale", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0  # 0 = stale (condition is true)
@@ -591,7 +591,7 @@ class TestSourceStale:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "stale", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 1  # 1 = not stale (condition is false)
@@ -657,7 +657,7 @@ class TestSourceAddAutoDetect:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     ["source", "add", str(test_file), "-n", "nb_123"],
@@ -679,7 +679,7 @@ class TestSourceAddAutoDetect:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     ["source", "add", "This is just some plain text content", "-n", "nb_123"],
@@ -704,7 +704,7 @@ class TestSourceAddAutoDetect:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     [
@@ -749,7 +749,7 @@ class TestSourceFulltext:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "fulltext", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -779,7 +779,7 @@ class TestSourceFulltext:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "fulltext", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -807,7 +807,7 @@ class TestSourceFulltext:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli,
                     ["source", "fulltext", "src_123", "-n", "nb_123", "-o", str(output_file)],
@@ -836,7 +836,7 @@ class TestSourceFulltext:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["source", "fulltext", "src_123", "-n", "nb_123", "--json"]
                 )
@@ -867,7 +867,7 @@ class TestSourceFulltext:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "fulltext", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -893,7 +893,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -912,7 +912,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -931,7 +931,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 0
@@ -952,7 +952,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 1
@@ -971,7 +971,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 1
@@ -992,7 +992,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 1
@@ -1011,7 +1011,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 1
@@ -1033,7 +1033,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123"])
 
             assert result.exit_code == 2
@@ -1052,7 +1052,7 @@ class TestSourceWait:
             mock_client_cls.return_value = mock_client
 
             with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["source", "wait", "src_123", "-n", "nb_123", "--json"])
 
             assert result.exit_code == 2

@@ -100,7 +100,7 @@ def get_client(ctx) -> tuple[dict, str, str]:
     """
     storage_path = ctx.obj.get("storage_path") if ctx.obj else None
     cookies = load_auth_from_storage(storage_path)
-    csrf, session_id = run_async(fetch_tokens(cookies))
+    csrf, session_id, _build_label = run_async(fetch_tokens(cookies))
     return cookies, csrf, session_id
 
 
@@ -113,8 +113,12 @@ def get_auth_tokens(ctx) -> AuthTokens:
     Returns:
         AuthTokens ready for client construction
     """
-    cookies, csrf, session_id = get_client(ctx)
-    return AuthTokens(cookies=cookies, csrf_token=csrf, session_id=session_id)
+    storage_path = ctx.obj.get("storage_path") if ctx.obj else None
+    cookies = load_auth_from_storage(storage_path)
+    csrf, session_id, build_label = run_async(fetch_tokens(cookies))
+    return AuthTokens(
+        cookies=cookies, csrf_token=csrf, session_id=session_id, build_label=build_label
+    )
 
 
 # =============================================================================

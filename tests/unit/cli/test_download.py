@@ -59,7 +59,7 @@ def mock_fetch_tokens():
         patch.object(download_module, "load_auth_from_storage") as mock_load,
     ):
         mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-        mock_fetch.return_value = ("csrf", "session")
+        mock_fetch.return_value = ("csrf", "session", "bl_label")
         yield mock_fetch
 
 
@@ -91,7 +91,7 @@ class TestDownloadAudio:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["download", "audio", str(output_file), "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -110,7 +110,7 @@ class TestDownloadAudio:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["download", "audio", "--dry-run", "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -127,7 +127,7 @@ class TestDownloadAudio:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["download", "audio", "-n", "nb_123"])
 
             assert "No completed audio artifacts found" in result.output or result.exit_code != 0
@@ -161,7 +161,7 @@ class TestDownloadVideo:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(cli, ["download", "video", str(output_file), "-n", "nb_123"])
 
             assert result.exit_code == 0
@@ -196,7 +196,7 @@ class TestDownloadInfographic:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["download", "infographic", str(output_file), "-n", "nb_123"]
                 )
@@ -234,7 +234,7 @@ class TestDownloadSlideDeck:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test", "HSID": "test", "SSID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["download", "slide-deck", str(output_dir), "-n", "nb_123"]
                 )
@@ -278,7 +278,7 @@ class TestDownloadFlags:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["download", "audio", str(output_file), "--latest", "-n", "nb_123"]
                 )
@@ -315,7 +315,7 @@ class TestDownloadFlags:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["download", "audio", str(output_file), "--earliest", "-n", "nb_123"]
                 )
@@ -346,7 +346,7 @@ class TestDownloadFlags:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 result = runner.invoke(
                     cli, ["download", "audio", str(output_file), "--force", "-n", "nb_123"]
                 )
@@ -372,7 +372,7 @@ class TestDownloadFlags:
                 patch.object(download_module, "load_auth_from_storage") as mock_load,
             ):
                 mock_load.return_value = {"SID": "test"}
-                mock_fetch.return_value = ("csrf", "session")
+                mock_fetch.return_value = ("csrf", "session", "bl_label")
                 runner.invoke(
                     cli, ["download", "audio", str(output_file), "--no-clobber", "-n", "nb_123"]
                 )
