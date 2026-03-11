@@ -4,6 +4,7 @@ Provides operations for asking questions, managing conversations, and
 retrieving conversation history.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -451,6 +452,49 @@ class ChatAPI:
 
         goal, length, prompt = mode_configs[mode]
         await self.configure(notebook_id, goal, length, prompt)
+
+    async def multi_ask(
+        self,
+        queries: list[tuple[str, str]],
+    ) -> list[AskResult]:
+        """Ask questions across multiple notebooks in parallel.
+
+        Fires all queries concurrently using asyncio.gather, reducing total
+        latency compared to sequential calls.
+
+        Args:
+            queries: List of (notebook_id, question) tuples.
+
+        Returns:
+            List of AskResult objects in the same order as queries.
+            Failed queries return an AskResult with an error message as the answer.
+
+        Example:
+            results = await client.chat.multi_ask([
+                ("nb-1", "What is the main thesis?"),
+                ("nb-2", "Summarize the key findings"),
+                ("nb-3", "List all citations"),
+            ])
+            for result in results:
+                print(result.answer[:200])
+        """
+
+        async def _safe_ask(notebook_id: str, question: str) -> AskResult:
+            try:
+                return await self.ask(notebook_id, question)
+            except Exception as e:
+                logger.warning("multi_ask failed for notebook %s: %s", notebook_id, e)
+                return AskResult(
+                    answer=f"Error: {e}",
+                    conversation_id="",
+                    turn_number=0,
+                    is_follow_up=False,
+                    references=[],
+                    raw_response="",
+                )
+
+        tasks = [_safe_ask(nb_id, q) for nb_id, q in queries]
+        return list(await asyncio.gather(*tasks))
 
     # =========================================================================
     # Private Helpers

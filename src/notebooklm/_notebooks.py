@@ -379,6 +379,85 @@ class NotebooksAPI:
             status=status,
         )
 
+    async def merge(
+        self,
+        source_notebook_id: str,
+        target_notebook_id: str,
+        *,
+        skip_duplicates: bool = True,
+    ) -> builtins.list[Any]:
+        """Copy all sources from one notebook to another.
+
+        Reads sources from the source notebook, fetches their full text content,
+        and adds each as a text source to the target notebook. URL sources are
+        re-added by URL; text-only sources are copied as text.
+
+        Args:
+            source_notebook_id: The notebook to copy sources from.
+            target_notebook_id: The notebook to copy sources into.
+            skip_duplicates: If True, skip sources whose title already exists
+                in the target notebook (default: True).
+
+        Returns:
+            List of newly created Source objects in the target notebook.
+
+        Raises:
+            RuntimeError: If no sources API was provided to the notebooks API.
+
+        Example:
+            merged = await client.notebooks.merge(src_id, dst_id)
+            print(f"Copied {len(merged)} sources")
+        """
+        if self._sources is None:
+            raise RuntimeError(
+                "No sources API available. Use NotebookLMClient which wires "
+                "the sources API automatically."
+            )
+
+        src_sources = await self._sources.list(source_notebook_id)
+        if not src_sources:
+            return []
+
+        # Get existing titles in target for dedup
+        existing_titles: set[str] = set()
+        existing_urls: set[str] = set()
+        if skip_duplicates:
+            target_sources = await self._sources.list(target_notebook_id)
+            existing_titles = {s.title for s in target_sources if s.title}
+            existing_urls = {s.url for s in target_sources if s.url}
+
+        added: builtins.list[Any] = []
+        for src in src_sources:
+            # Skip duplicates by title or URL
+            if skip_duplicates:
+                if src.title and src.title in existing_titles:
+                    logger.debug("Skipping duplicate (title): %s", src.title)
+                    continue
+                if src.url and src.url in existing_urls:
+                    logger.debug("Skipping duplicate (URL): %s", src.url)
+                    continue
+
+            try:
+                if src.url:
+                    new_source = await self._sources.add_url(
+                        target_notebook_id, src.url, skip_dedup=True
+                    )
+                else:
+                    # For text-only sources, fetch content and re-add
+                    fulltext = await self._sources.get_fulltext(source_notebook_id, src.id)
+                    new_source = await self._sources.add_text(
+                        target_notebook_id,
+                        src.title or "Untitled",
+                        fulltext.content or "",
+                        skip_dedup=True,
+                    )
+                added.append(new_source)
+                logger.debug("Merged source: %s", src.title)
+            except Exception:
+                logger.warning("Failed to merge source %s (%s)", src.id, src.title, exc_info=True)
+
+        return added
+
     async def health_all(self) -> builtins.list[NotebookHealth]:
         """Run health checks on all notebooks in parallel.
 
