@@ -115,6 +115,37 @@ class TestSourceAdd:
 
             assert result.exit_code == 0
 
+    def test_source_add_url_with_custom_timeout(self, runner, mock_auth):
+        with patch_client_for_module("source") as mock_client_cls:
+            mock_client = create_mock_client()
+            mock_client.sources.add_url = AsyncMock(
+                return_value=Source(
+                    id="src_new",
+                    title="Example",
+                    url="https://example.com",
+                )
+            )
+            mock_client_cls.return_value = mock_client
+
+            with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(
+                    cli,
+                    [
+                        "source",
+                        "add",
+                        "https://example.com",
+                        "--timeout",
+                        "45",
+                        "-n",
+                        "nb_123",
+                    ],
+                )
+
+            assert result.exit_code == 0
+            assert mock_client_cls.call_count == 1
+            assert mock_client_cls.call_args.kwargs["timeout"] == 45.0
+
     def test_source_add_youtube_url(self, runner, mock_auth):
         with patch_client_for_module("source") as mock_client_cls:
             mock_client = create_mock_client()

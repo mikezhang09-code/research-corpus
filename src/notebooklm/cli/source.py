@@ -23,7 +23,7 @@ import click
 from rich.table import Table
 
 from .._url_utils import is_youtube_url
-from ..client import NotebookLMClient
+from ..client import DEFAULT_TIMEOUT, NotebookLMClient
 from ..types import source_status_to_str
 from .helpers import (
     console,
@@ -230,9 +230,25 @@ def source_list(ctx, notebook_id, json_output, client_auth):
 )
 @click.option("--title", help="Title for text sources")
 @click.option("--mime-type", help="MIME type for file sources")
+@click.option(
+    "--timeout",
+    default=int(DEFAULT_TIMEOUT),
+    type=int,
+    help="HTTP request timeout in seconds for the add operation (default: 30)",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @with_client
-def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_output, client_auth):
+def source_add(
+    ctx,
+    content,
+    notebook_id,
+    source_type,
+    title,
+    mime_type,
+    timeout,
+    json_output,
+    client_auth,
+):
     """Add a source to a notebook.
 
     \b
@@ -249,6 +265,7 @@ def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_ou
       source add https://youtube.com/...          # YouTube video
       source add "My notes here"                  # Inline text
       source add "My notes" --title "Research"   # Text with custom title
+      source add https://example.com --timeout 45 # Allow slower ADD_SOURCE requests
     """
     nb_id = require_notebook(notebook_id)
 
@@ -272,7 +289,7 @@ def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_ou
             file_title = title or "Pasted Text"
 
     async def _run():
-        async with NotebookLMClient(client_auth) as client:
+        async with NotebookLMClient(client_auth, timeout=float(timeout)) as client:
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
             if detected_type == "url" or detected_type == "youtube":
                 src = await client.sources.add_url(nb_id_resolved, content)
