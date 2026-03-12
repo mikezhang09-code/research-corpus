@@ -554,6 +554,96 @@ class TestFetchTokens:
         assert "HSID=hsid_value" in cookie_header
 
 
+class TestFetchTokensWithCookieJar:
+    """Test fetch_tokens with domain-preserving httpx.Cookies jar (issue #114)."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_tokens_with_cookie_jar(self, httpx_mock: HTTPXMock):
+        """Test successful token fetch using cookie jar."""
+        import httpx
+
+        html = """
+        <html>
+        <script>
+            window.WIZ_global_data = {
+                "SNlM0e": "AF1_QpN-csrf_jar",
+                "FdrFJe": "session_jar_789"
+            };
+        </script>
+        </html>
+        """
+        httpx_mock.add_response(
+            url="https://notebooklm.google.com/",
+            content=html.encode(),
+        )
+
+        cookies = {"SID": "test_sid"}
+        jar = httpx.Cookies()
+        jar.set("SID", "test_sid", domain=".google.com")
+        jar.set("OSID", "test_osid", domain="notebooklm.google.com")
+
+        csrf, session_id = await fetch_tokens(cookies, cookie_jar=jar)
+
+        assert csrf == "AF1_QpN-csrf_jar"
+        assert session_id == "session_jar_789"
+
+    @pytest.mark.asyncio
+    async def test_cookie_jar_does_not_use_flat_header(self, httpx_mock: HTTPXMock):
+        """Test that cookie jar path does not set a flat Cookie header."""
+        import httpx
+
+        html = '"SNlM0e":"csrf" "FdrFJe":"sess"'
+        httpx_mock.add_response(content=html.encode())
+
+        cookies = {"SID": "flat_sid"}
+        jar = httpx.Cookies()
+        jar.set("SID", "jar_sid", domain=".google.com")
+
+        await fetch_tokens(cookies, cookie_jar=jar)
+
+        request = httpx_mock.get_request()
+        # When using the cookie jar path, the flat "SID=flat_sid" header
+        # should not appear; httpx manages cookies via the jar instead.
+        raw_cookie = request.headers.get("cookie", "")
+        assert "flat_sid" not in raw_cookie
+
+    @pytest.mark.asyncio
+    async def test_legacy_path_without_cookie_jar(self, httpx_mock: HTTPXMock):
+        """Test that omitting cookie_jar falls back to flat Cookie header."""
+        html = '"SNlM0e":"csrf" "FdrFJe":"sess"'
+        httpx_mock.add_response(content=html.encode())
+
+        cookies = {"SID": "sid_value", "HSID": "hsid_value"}
+        await fetch_tokens(cookies)
+
+        request = httpx_mock.get_request()
+        cookie_header = request.headers.get("cookie", "")
+        assert "SID=sid_value" in cookie_header
+        assert "HSID=hsid_value" in cookie_header
+
+    @pytest.mark.asyncio
+    async def test_cookie_jar_redirect_to_login(self, httpx_mock: HTTPXMock):
+        """Test raises error when redirected to login with cookie jar."""
+        import httpx
+
+        httpx_mock.add_response(
+            url="https://notebooklm.google.com/",
+            status_code=302,
+            headers={"Location": "https://accounts.google.com/signin"},
+        )
+        httpx_mock.add_response(
+            url="https://accounts.google.com/signin",
+            content=b"<html>Login</html>",
+        )
+
+        cookies = {"SID": "expired_sid"}
+        jar = httpx.Cookies()
+        jar.set("SID", "expired_sid", domain=".google.com")
+
+        with pytest.raises(ValueError, match="Authentication expired"):
+            await fetch_tokens(cookies, cookie_jar=jar)
+
+
 class TestAuthTokensFromStorage:
     """Test AuthTokens.from_storage class method."""
 

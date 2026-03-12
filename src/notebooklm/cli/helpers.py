@@ -25,6 +25,7 @@ from ..auth import (
     AuthTokens,
     fetch_tokens,
     load_auth_from_storage,
+    load_httpx_cookies,
 )
 from ..exceptions import RPCTimeoutError
 from ..paths import get_browser_profile_dir, get_context_path
@@ -149,7 +150,8 @@ def get_client(ctx) -> tuple[dict, str, str]:
     """
     storage_path = ctx.obj.get("storage_path") if ctx.obj else None
     cookies = load_auth_from_storage(storage_path)
-    csrf, session_id = run_async(fetch_tokens(cookies))
+    cookie_jar = load_httpx_cookies(storage_path)
+    csrf, session_id = run_async(fetch_tokens(cookies, cookie_jar=cookie_jar))
     return cookies, csrf, session_id
 
 

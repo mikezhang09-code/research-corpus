@@ -20,7 +20,7 @@ from typing import Any, TypedDict
 
 import click
 
-from ..auth import AuthTokens, fetch_tokens, load_auth_from_storage
+from ..auth import AuthTokens, fetch_tokens, load_auth_from_storage, load_httpx_cookies
 from ..client import NotebookLMClient
 from ..types import Artifact, ArtifactType
 from .download_helpers import (
@@ -165,7 +165,8 @@ async def _download_artifacts_generic(
     nb_id = require_notebook(notebook)
     storage_path = ctx.obj.get("storage_path") if ctx.obj else None
     cookies = load_auth_from_storage(storage_path)
-    csrf, session_id = await fetch_tokens(cookies)
+    cookie_jar = load_httpx_cookies(storage_path)
+    csrf, session_id = await fetch_tokens(cookies, cookie_jar=cookie_jar)
     auth = AuthTokens(cookies=cookies, csrf_token=csrf, session_id=session_id)
 
     # Adjust extension for PPTX format (must be outside _download() to avoid UnboundLocalError)
@@ -803,8 +804,9 @@ async def _download_interactive(
     nb_id = require_notebook(notebook)
     storage_path = ctx.obj.get("storage_path") if ctx.obj else None
     cookies = load_auth_from_storage(storage_path)
+    cookie_jar = load_httpx_cookies(storage_path)
 
-    csrf, session_id = await fetch_tokens(cookies)
+    csrf, session_id = await fetch_tokens(cookies, cookie_jar=cookie_jar)
     auth = AuthTokens(cookies=cookies, csrf_token=csrf, session_id=session_id)
 
     async with NotebookLMClient(auth) as client:

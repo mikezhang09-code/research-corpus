@@ -175,6 +175,10 @@ class AuthTokens:
         This is the recommended way to create AuthTokens for programmatic use.
         It loads cookies from storage and fetches CSRF/session tokens automatically.
 
+        Uses a domain-preserving httpx.Cookies jar for token fetching so that
+        redirects across Google domains (e.g., notebooklm.google.com to
+        accounts.google.com) retain proper cookie scoping.
+
         Args:
             path: Path to storage_state.json. If None, uses default location
                   (~/.notebooklm/storage_state.json).
@@ -193,7 +197,10 @@ class AuthTokens:
                 notebooks = await client.list_notebooks()
         """
         cookies = load_auth_from_storage(path)
-        csrf_token, session_id = await fetch_tokens(cookies)
+        # Use domain-preserving cookie jar for token fetch to handle
+        # cross-domain redirects correctly (see issue #114)
+        cookie_jar = load_httpx_cookies(path)
+        csrf_token, session_id = await fetch_tokens(cookies, cookie_jar=cookie_jar)
         return cls(cookies=cookies, csrf_token=csrf_token, session_id=session_id)
 
 
@@ -585,14 +592,29 @@ def load_httpx_cookies(path: Path | None = None) -> "httpx.Cookies":
     return cookies
 
 
-async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
+async def fetch_tokens(
+    cookies: dict[str, str],
+    cookie_jar: "httpx.Cookies | None" = None,
+) -> tuple[str, str]:
     """Fetch CSRF token and session ID from NotebookLM homepage.
 
     Makes an authenticated request to NotebookLM and extracts the required
     tokens from the page HTML.
 
+    When a cookie_jar is provided, it is used instead of flattening cookies
+    into a single Cookie header. This preserves domain scoping so that
+    redirects across Google domains (e.g., notebooklm.google.com to
+    accounts.google.com) send only the cookies that belong to each domain.
+    Without this, the flat header sends all cookies to every domain in the
+    redirect chain, which can cause Google to reject the request or redirect
+    to the account chooser/login page.
+
     Args:
-        cookies: Dict of Google auth cookies
+        cookies: Dict of Google auth cookies (used as fallback when
+            cookie_jar is not provided).
+        cookie_jar: Optional httpx.Cookies jar with domain-scoped cookies.
+            When provided, takes precedence over the flat cookies dict for
+            the HTTP request.
 
     Returns:
         Tuple of (csrf_token, session_id)
@@ -602,29 +624,40 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
         ValueError: If tokens cannot be extracted from response
     """
     logger.debug("Fetching CSRF and session tokens from NotebookLM")
-    cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://notebooklm.google.com/",
-            headers={"Cookie": cookie_header},
-            follow_redirects=True,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-
-        final_url = str(response.url)
-
-        # Check if we were redirected to login
-        if is_google_auth_redirect(final_url):
-            raise ValueError(
-                "Authentication expired or invalid. "
-                "Redirected to: " + final_url + "\n"
-                "Run 'notebooklm login' to re-authenticate."
+    if cookie_jar is not None:
+        logger.debug("Using domain-preserving cookie jar for token fetch")
+        async with httpx.AsyncClient(cookies=cookie_jar) as client:
+            response = await client.get(
+                "https://notebooklm.google.com/",
+                follow_redirects=True,
+                timeout=30.0,
+            )
+    else:
+        logger.debug("Using flat cookie header for token fetch (legacy path)")
+        cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://notebooklm.google.com/",
+                headers={"Cookie": cookie_header},
+                follow_redirects=True,
+                timeout=30.0,
             )
 
-        csrf = extract_csrf_from_html(response.text, final_url)
-        session_id = extract_session_id_from_html(response.text, final_url)
+    response.raise_for_status()
 
-        logger.debug("Authentication tokens obtained successfully")
-        return csrf, session_id
+    final_url = str(response.url)
+
+    # Check if we were redirected to login
+    if is_google_auth_redirect(final_url):
+        raise ValueError(
+            "Authentication expired or invalid. "
+            "Redirected to: " + final_url + "\n"
+            "Run 'notebooklm login' to re-authenticate."
+        )
+
+    csrf = extract_csrf_from_html(response.text, final_url)
+    session_id = extract_session_id_from_html(response.text, final_url)
+
+    logger.debug("Authentication tokens obtained successfully")
+    return csrf, session_id

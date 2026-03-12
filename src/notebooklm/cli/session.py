@@ -490,6 +490,7 @@ def register_session_commands(cli):
         from ..auth import (
             extract_cookies_from_storage,
             fetch_tokens,
+            load_httpx_cookies,
         )
 
         storage_path = get_storage_path()
@@ -568,7 +569,10 @@ def register_session_commands(cli):
         # Check 4: Token fetch (optional)
         if test_fetch:
             try:
-                csrf, session_id = run_async(fetch_tokens(cookies))
+                cookie_jar = load_httpx_cookies()
+                csrf, session_id = run_async(
+                    fetch_tokens(cookies, cookie_jar=cookie_jar)
+                )
                 checks["token_fetch"] = True
                 details["csrf_length"] = len(csrf)
                 details["session_id_length"] = len(session_id)
