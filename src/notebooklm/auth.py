@@ -37,10 +37,14 @@ from typing import Any
 
 import httpx
 
+from .exceptions import ValidationError
 from ._url_utils import contains_google_auth_redirect, is_google_auth_redirect
 from .paths import get_storage_path
 
 logger = logging.getLogger(__name__)
+
+# Maximum size for NOTEBOOKLM_AUTH_JSON environment variable (10MB)
+_MAX_AUTH_JSON_SIZE = 10 * 1024 * 1024  # 10MB
 
 # Minimum required cookies (must have at least SID for basic auth)
 MINIMUM_REQUIRED_COOKIES = {"SID"}
@@ -438,28 +442,29 @@ def _load_storage_state(path: Path | None = None) -> dict[str, Any]:
     if "NOTEBOOKLM_AUTH_JSON" in os.environ:
         auth_json = os.environ["NOTEBOOKLM_AUTH_JSON"].strip()
         if not auth_json:
-            raise ValueError(
+            raise ValidationError(
                 "NOTEBOOKLM_AUTH_JSON environment variable is set but empty.\n"
                 "Provide valid Playwright storage state JSON or unset the variable."
             )
-        # Limit size to prevent resource exhaustion (10MB should be more than enough)
-        MAX_AUTH_JSON_SIZE = 10 * 1024 * 1024  # 10MB
-        if len(auth_json) > MAX_AUTH_JSON_SIZE:
-            raise ValueError(
+        # Limit size to prevent resource exhaustion
+        if len(auth_json) > _MAX_AUTH_JSON_SIZE:
+            size_mb = len(auth_json) / 1024 / 1024
+            max_mb = _MAX_AUTH_JSON_SIZE / 1024 / 1024
+            raise ValidationError(
                 f"NOTEBOOKLM_AUTH_JSON environment variable is too large "
-                f"({len(auth_json)} bytes, max {MAX_AUTH_JSON_SIZE} bytes). "
+                f"({size_mb:.1f}MB, max {max_mb:.0f}MB). "
                 "This may indicate a configuration error."
             )
         try:
             storage_state = json.loads(auth_json)
         except json.JSONDecodeError as e:
-            raise ValueError(
+            raise ValidationError(
                 f"Invalid JSON in NOTEBOOKLM_AUTH_JSON environment variable: {e}\n"
                 f"Ensure the value is valid Playwright storage state JSON."
             ) from e
         # Validate structure
         if not isinstance(storage_state, dict) or "cookies" not in storage_state:
-            raise ValueError(
+            raise ValidationError(
                 "NOTEBOOKLM_AUTH_JSON must contain valid Playwright storage state "
                 "with a 'cookies' key.\n"
                 'Expected format: {"cookies": [{"name": "SID", "value": "...", ...}]}'

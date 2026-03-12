@@ -1,5 +1,6 @@
 """Unit tests for SourcesAPI file upload pipeline and YouTube detection."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -435,6 +436,55 @@ class TestAddFile:
 
         assert result.id == "src_txt"
         assert result.title == "doc.txt"
+
+    @pytest.mark.asyncio
+    async def test_add_file_raises_validation_error_for_too_large_file(
+        self, sources_api, mock_core, tmp_path
+    ):
+        """Test that file exceeding 200MB limit raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+
+        # Create a file that appears larger than 200MB
+        test_file = tmp_path / "large.pdf"
+        test_file.write_bytes(b"x")
+
+        # Mock stat() to return a size larger than 200MB
+        with patch.object(Path, "stat") as mock_stat:
+            mock_stat_result = MagicMock()
+            mock_stat_result.st_size = 201 * 1024 * 1024  # 201MB
+            mock_stat.return_value = mock_stat_result
+
+            with pytest.raises(ValidationError, match="File too large"):
+                await sources_api.add_file("nb_123", str(test_file))
+
+    @pytest.mark.asyncio
+    async def test_add_file_accepts_file_within_limit(self, sources_api, mock_core, tmp_path):
+        """Test that file within 200MB limit is accepted."""
+        test_file = tmp_path / "normal.pdf"
+        test_file.write_bytes(b"content")
+
+        # Mock stat() to return a size just under 200MB
+        with patch.object(Path, "stat") as mock_stat:
+            mock_stat_result = MagicMock()
+            mock_stat_result.st_size = 199 * 1024 * 1024  # 199MB
+            mock_stat.return_value = mock_stat_result
+
+            mock_core.rpc_call.return_value = [[[["src_new"]]]]
+
+            mock_start_response = MagicMock()
+            mock_start_response.headers = {"x-goog-upload-url": "https://upload.example.com"}
+            mock_upload_response = MagicMock()
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.__aenter__.return_value = mock_client
+                mock_client.__aexit__.return_value = None
+                mock_client.post.side_effect = [mock_start_response, mock_upload_response]
+                mock_client_cls.return_value = mock_client
+
+                # Should not raise
+                result = await sources_api.add_file("nb_123", str(test_file))
+                assert result.id == "src_new"
 
 
 # =============================================================================

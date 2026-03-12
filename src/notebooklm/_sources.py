@@ -28,6 +28,9 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
+# Maximum file size for uploads (200MB - NotebookLM's typical limit)
+_MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB
+
 
 class SourcesAPI:
     """Operations on NotebookLM sources.
@@ -432,11 +435,12 @@ class SourcesAPI:
         # Get file size without loading into memory
         file_size = file_path.stat().st_size
 
-        # Check file size limit (200MB max - NotebookLM's typical limit)
-        MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB
-        if file_size > MAX_FILE_SIZE:
+        # Check file size limit
+        if file_size > _MAX_FILE_SIZE:
+            size_mb = file_size / 1024 / 1024
+            max_mb = _MAX_FILE_SIZE / 1024 / 1024
             raise ValidationError(
-                f"File too large: {file_size} bytes (max {MAX_FILE_SIZE} bytes). "
+                f"File too large: {size_mb:.1f}MB (max {max_mb:.0f}MB). "
                 "NotebookLM typically rejects files larger than 200MB."
             )
 

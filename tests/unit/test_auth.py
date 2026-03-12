@@ -1116,3 +1116,95 @@ class TestLoadHttpxCookiesRegional:
 
         cookies = load_httpx_cookies(path=storage_file)
         assert cookies.get("SID", domain=".google.de") == "sid_de"
+
+
+# =============================================================================
+# NOTEBOOKLM_AUTH_JSON SIZE VALIDATION TESTS
+# =============================================================================
+
+
+class TestAuthJsonSizeValidation:
+    """Test NOTEBOOKLM_AUTH_JSON environment variable size validation."""
+
+    def test_raises_validation_error_for_oversized_auth_json(self, tmp_path, monkeypatch):
+        """Test that oversized NOTEBOOKLM_AUTH_JSON raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+        from notebooklm.auth import _load_storage_state
+
+        # Create auth JSON larger than 10MB
+        large_json = '{"cookies": [{"name": "SID", "value": "' + "x" * (11 * 1024 * 1024) + '"}]}'
+
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", large_json)
+
+        with pytest.raises(ValidationError, match="too large"):
+            _load_storage_state()
+
+    def test_accepts_auth_json_within_limit(self, tmp_path, monkeypatch, httpx_mock: HTTPXMock):
+        """Test that NOTEBOOKLM_AUTH_JSON within 10MB limit is accepted."""
+        from notebooklm.auth import load_auth_from_storage
+
+        # Create auth JSON under 10MB
+        storage_state = {
+            "cookies": [
+                {"name": "SID", "value": "test_sid_value", "domain": ".google.com"},
+            ]
+        }
+        auth_json = json.dumps(storage_state)
+
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", auth_json)
+
+        # Should not raise
+        cookies = load_auth_from_storage()
+        assert cookies["SID"] == "test_sid_value"
+
+    def test_raises_validation_error_for_empty_auth_json(self, tmp_path, monkeypatch):
+        """Test that empty NOTEBOOKLM_AUTH_JSON raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+        from notebooklm.auth import _load_storage_state
+
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", "")
+
+        with pytest.raises(ValidationError, match="empty"):
+            _load_storage_state()
+
+    def test_raises_validation_error_for_malformed_auth_json(self, tmp_path, monkeypatch):
+        """Test that malformed JSON in NOTEBOOKLM_AUTH_JSON raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+        from notebooklm.auth import _load_storage_state
+
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", "{invalid json")
+
+        with pytest.raises(ValidationError, match="Invalid JSON"):
+            _load_storage_state()
+
+    def test_raises_validation_error_for_auth_json_missing_cookies(self, tmp_path, monkeypatch):
+        """Test that NOTEBOOKLM_AUTH_JSON without cookies key raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+        from notebooklm.auth import _load_storage_state
+
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", '{"data": "value"}')
+
+        with pytest.raises(ValidationError, match="cookies"):
+            _load_storage_state()
+
+
+# =============================================================================
+# MODULE CONSTANTS TESTS
+# =============================================================================
+
+
+class TestModuleConstants:
+    """Test module-level constants for size limits."""
+
+    def test_max_file_size_constant(self):
+        """Test _MAX_FILE_SIZE constant is defined."""
+        from notebooklm._sources import _MAX_FILE_SIZE
+
+        assert _MAX_FILE_SIZE == 200 * 1024 * 1024  # 200MB
+
+    def test_max_auth_json_size_constant(self):
+        """Test _MAX_AUTH_JSON_SIZE constant is defined."""
+        from notebooklm.auth import _MAX_AUTH_JSON_SIZE
+
+        assert _MAX_AUTH_JSON_SIZE == 10 * 1024 * 1024  # 10MB
+

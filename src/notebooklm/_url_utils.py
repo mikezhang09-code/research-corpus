@@ -61,7 +61,6 @@ def contains_google_auth_redirect(text: str) -> bool:
         True if any URL in the text points to Google accounts
     """
     # Find URLs in the text (href="...", src="...", or standalone https://...)
-    # More strict pattern: requires protocol, domain, and at least one path char or valid ending
-    url_pattern = r'https?://[^\s"\'<>]+(?=[\s"\'<>]|$)'
+    url_pattern = r'https?://[^\s"\'<>]+'
     urls = re.findall(url_pattern, text)
     return any(is_google_auth_redirect(url) for url in urls)
