@@ -340,18 +340,22 @@ class TestLoadHttpxCookiesWithEnvVar:
         assert cookies.get("__Secure-1PSID", domain=".google.com") == "psid1_val"
 
     def test_env_var_invalid_json_raises(self, monkeypatch):
-        """Test that invalid JSON in NOTEBOOKLM_AUTH_JSON raises ValueError."""
+        """Test that invalid JSON in NOTEBOOKLM_AUTH_JSON raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+
         monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", "not valid json")
 
-        with pytest.raises(ValueError, match="Invalid JSON in NOTEBOOKLM_AUTH_JSON"):
+        with pytest.raises(ValidationError, match="Invalid JSON in NOTEBOOKLM_AUTH_JSON"):
             load_httpx_cookies()
 
     def test_env_var_empty_string_raises(self, monkeypatch):
-        """Test that empty string NOTEBOOKLM_AUTH_JSON raises ValueError."""
+        """Test that empty string NOTEBOOKLM_AUTH_JSON raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+
         monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", "")
 
         with pytest.raises(
-            ValueError, match="NOTEBOOKLM_AUTH_JSON environment variable is set but empty"
+            ValidationError, match="NOTEBOOKLM_AUTH_JSON environment variable is set but empty"
         ):
             load_httpx_cookies()
 
@@ -392,11 +396,13 @@ class TestLoadHttpxCookiesWithEnvVar:
         assert cookies.get("evil_cookie", domain=".evil.com") is None
 
     def test_env_var_missing_cookies_key_raises(self, monkeypatch):
-        """Test that storage state without cookies key raises ValueError."""
+        """Test that storage state without cookies key raises ValidationError."""
+        from notebooklm.exceptions import ValidationError
+
         storage_state = {"origins": []}  # Valid JSON but no cookies key
         monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", json.dumps(storage_state))
 
-        with pytest.raises(ValueError, match="must contain valid Playwright storage state"):
+        with pytest.raises(ValidationError, match="must contain valid Playwright storage state"):
             load_httpx_cookies()
 
     def test_env_var_malformed_cookie_objects_skipped(self, monkeypatch):

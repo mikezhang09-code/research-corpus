@@ -454,13 +454,13 @@ class TestAddFile:
         # Need to mock the specific file's stat, not Path.stat globally
         original_stat = Path.stat
 
-        def mock_stat_func(self):
+        def mock_stat_func(self, **kwargs):
             if self == test_file:
                 mock_result = MagicMock()
                 mock_result.st_size = 201 * 1024 * 1024  # 201MB
                 mock_result.st_mode = stat.S_IFREG  # Regular file
                 return mock_result
-            return original_stat(self)
+            return original_stat(self, **kwargs)
 
         with (
             patch.object(Path, "stat", mock_stat_func),
@@ -480,13 +480,13 @@ class TestAddFile:
         # Need to mock the specific file's stat, not Path.stat globally
         original_stat = Path.stat
 
-        def mock_stat_func(self):
+        def mock_stat_func(self, **kwargs):
             if self == test_file:
                 mock_result = MagicMock()
                 mock_result.st_size = 199 * 1024 * 1024  # 199MB
                 mock_result.st_mode = stat.S_IFREG  # Regular file
                 return mock_result
-            return original_stat(self)
+            return original_stat(self, **kwargs)
 
         with patch.object(Path, "stat", mock_stat_func):
             mock_core.rpc_call.return_value = [[[["src_new"]]]]
