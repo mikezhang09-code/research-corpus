@@ -419,13 +419,20 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @click.option("--import-all", is_flag=True, help="Import all found sources")
 @click.option(
+    "--timeout",
+    default=300,
+    type=int,
+    show_default=True,
+    help="Maximum seconds to wait for research to complete (ignored with --no-wait)",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     help="Start research and return immediately (use 'research status/wait' to monitor)",
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, no_wait, client_auth
+    ctx, query, notebook_id, search_source, mode, import_all, timeout, no_wait, client_auth
 ):
     """Search web or drive and add sources from results.
 
@@ -436,6 +443,7 @@ def source_add_research(
       source add-research "AI papers" --mode deep         # Deep search
       source add-research "tutorials" --import-all        # Auto-import all results
       source add-research "topic" --mode deep --no-wait   # Non-blocking deep search
+      source add-research "deep topic" --mode deep --timeout 1800  # Custom timeout
     """
     nb_id = require_notebook(notebook_id)
 
@@ -460,7 +468,8 @@ def source_add_research(
                 return
 
             status = None
-            for _ in range(60):
+            max_iterations = max(1, timeout // 5)
+            for _ in range(max_iterations):
                 status = await client.research.poll(nb_id_resolved)
                 if status.get("status") == "completed":
                     break
