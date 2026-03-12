@@ -442,6 +442,8 @@ class TestAddFile:
         self, sources_api, mock_core, tmp_path
     ):
         """Test that file exceeding 200MB limit raises ValidationError."""
+        import stat
+
         from notebooklm.exceptions import ValidationError
 
         # Create a file that appears larger than 200MB
@@ -449,26 +451,44 @@ class TestAddFile:
         test_file.write_bytes(b"x")
 
         # Mock stat() to return a size larger than 200MB
-        with patch.object(Path, "stat") as mock_stat:
-            mock_stat_result = MagicMock()
-            mock_stat_result.st_size = 201 * 1024 * 1024  # 201MB
-            mock_stat.return_value = mock_stat_result
+        # Need to mock the specific file's stat, not Path.stat globally
+        original_stat = Path.stat
 
-            with pytest.raises(ValidationError, match="File too large"):
-                await sources_api.add_file("nb_123", str(test_file))
+        def mock_stat_func(self):
+            if self == test_file:
+                mock_result = MagicMock()
+                mock_result.st_size = 201 * 1024 * 1024  # 201MB
+                mock_result.st_mode = stat.S_IFREG  # Regular file
+                return mock_result
+            return original_stat(self)
+
+        with (
+            patch.object(Path, "stat", mock_stat_func),
+            pytest.raises(ValidationError, match="File too large"),
+        ):
+            await sources_api.add_file("nb_123", str(test_file))
 
     @pytest.mark.asyncio
     async def test_add_file_accepts_file_within_limit(self, sources_api, mock_core, tmp_path):
         """Test that file within 200MB limit is accepted."""
+        import stat
+
         test_file = tmp_path / "normal.pdf"
         test_file.write_bytes(b"content")
 
         # Mock stat() to return a size just under 200MB
-        with patch.object(Path, "stat") as mock_stat:
-            mock_stat_result = MagicMock()
-            mock_stat_result.st_size = 199 * 1024 * 1024  # 199MB
-            mock_stat.return_value = mock_stat_result
+        # Need to mock the specific file's stat, not Path.stat globally
+        original_stat = Path.stat
 
+        def mock_stat_func(self):
+            if self == test_file:
+                mock_result = MagicMock()
+                mock_result.st_size = 199 * 1024 * 1024  # 199MB
+                mock_result.st_mode = stat.S_IFREG  # Regular file
+                return mock_result
+            return original_stat(self)
+
+        with patch.object(Path, "stat", mock_stat_func):
             mock_core.rpc_call.return_value = [[[["src_new"]]]]
 
             mock_start_response = MagicMock()
