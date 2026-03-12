@@ -27,6 +27,7 @@ from ._artifacts import ArtifactsAPI
 from ._cache import CacheConfig, CacheMiddleware
 from ._chat import ChatAPI
 from ._core import DEFAULT_TIMEOUT, ClientCore
+from ._living_docs import LivingDocsAPI
 from ._notebooks import NotebooksAPI
 from ._notes import NotesAPI
 from ._research import ResearchAPI
@@ -51,6 +52,7 @@ class NotebookLMClient:
     - notes: Create and manage user notes
     - settings: Manage user settings (output language, etc.)
     - sharing: Manage notebook sharing and permissions
+    - living_docs: Auto-syncing Drive files linked to notebooks
 
     Usage:
         # Create from saved authentication
@@ -109,6 +111,7 @@ class NotebookLMClient:
         self.research = ResearchAPI(self._core)
         self.settings = SettingsAPI(self._core)
         self.sharing = SharingAPI(self._core)
+        self.living_docs = LivingDocsAPI(self._core, sources_api=self.sources)
 
     @property
     def auth(self) -> AuthTokens:

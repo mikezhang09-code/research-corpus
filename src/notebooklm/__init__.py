@@ -43,6 +43,9 @@ except PackageNotFoundError:
 # Public API: Cache
 from ._cache import CacheConfig, CacheMiddleware
 
+# Public API: Living Docs
+from ._living_docs import LivingDoc, LivingDocsAPI, StaleCheckResult, SyncResult
+
 # Public API: Authentication
 from .auth import DEFAULT_STORAGE_PATH, AuthTokens
 
@@ -138,6 +141,11 @@ __all__ = [
     # Cache
     "CacheConfig",
     "CacheMiddleware",
+    # Living Docs
+    "LivingDocsAPI",
+    "LivingDoc",
+    "StaleCheckResult",
+    "SyncResult",
     # Auth
     "AuthTokens",
     "DEFAULT_STORAGE_PATH",

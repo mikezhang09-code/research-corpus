@@ -198,6 +198,60 @@ def register_chat_commands(cli):
 
         return _run()
 
+    @cli.command("multi-ask")
+    @click.argument("question")
+    @click.option(
+        "-n",
+        "--notebooks",
+        "notebook_ids",
+        multiple=True,
+        required=True,
+        help="Notebook IDs to query (can be repeated)",
+    )
+    @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+    @with_client
+    def multi_ask_cmd(ctx, question, notebook_ids, json_output, client_auth):
+        """Ask a question across multiple notebooks simultaneously.
+
+        Sends the same question to multiple notebooks in parallel and
+        displays results grouped by notebook.
+
+        \b
+        Example:
+          notebooklm multi-ask "what are the key themes?" -n nb1 -n nb2 -n nb3
+          notebooklm multi-ask "summarize" -n nb1 -n nb2 --json
+        """
+
+        async def _run():
+            async with NotebookLMClient(client_auth) as client:
+                resolved_ids = []
+                for nb_id in notebook_ids:
+                    resolved_ids.append(await resolve_notebook_id(client, nb_id))
+
+                queries = [(nb_id, question) for nb_id in resolved_ids]
+                results = await client.chat.multi_ask(queries)
+
+                if json_output:
+                    from dataclasses import asdict
+
+                    data = {
+                        "question": question,
+                        "results": [],
+                    }
+                    for (nb_id, _), result in zip(queries, results, strict=True):
+                        entry = asdict(result)
+                        del entry["raw_response"]
+                        entry["notebook_id"] = nb_id
+                        data["results"].append(entry)
+                    json_output_response(data)
+                    return
+
+                for (nb_id, _), result in zip(queries, results, strict=True):
+                    console.print(f"\n[bold cyan]Notebook {nb_id[:12]}...:[/bold cyan]")
+                    console.print(result.answer)
+
+        return _run()
+
     @cli.command("configure")
     @click.option(
         "-n",
