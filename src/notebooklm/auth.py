@@ -37,8 +37,8 @@ from typing import Any
 
 import httpx
 
-from .exceptions import ValidationError
 from ._url_utils import contains_google_auth_redirect, is_google_auth_redirect
+from .exceptions import ValidationError
 from .paths import get_storage_path
 
 logger = logging.getLogger(__name__)

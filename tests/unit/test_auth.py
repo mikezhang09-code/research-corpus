@@ -1128,8 +1128,8 @@ class TestAuthJsonSizeValidation:
 
     def test_raises_validation_error_for_oversized_auth_json(self, tmp_path, monkeypatch):
         """Test that oversized NOTEBOOKLM_AUTH_JSON raises ValidationError."""
-        from notebooklm.exceptions import ValidationError
         from notebooklm.auth import _load_storage_state
+        from notebooklm.exceptions import ValidationError
 
         # Create auth JSON larger than 10MB
         large_json = '{"cookies": [{"name": "SID", "value": "' + "x" * (11 * 1024 * 1024) + '"}]}'
@@ -1159,8 +1159,8 @@ class TestAuthJsonSizeValidation:
 
     def test_raises_validation_error_for_empty_auth_json(self, tmp_path, monkeypatch):
         """Test that empty NOTEBOOKLM_AUTH_JSON raises ValidationError."""
-        from notebooklm.exceptions import ValidationError
         from notebooklm.auth import _load_storage_state
+        from notebooklm.exceptions import ValidationError
 
         monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", "")
 
@@ -1169,8 +1169,8 @@ class TestAuthJsonSizeValidation:
 
     def test_raises_validation_error_for_malformed_auth_json(self, tmp_path, monkeypatch):
         """Test that malformed JSON in NOTEBOOKLM_AUTH_JSON raises ValidationError."""
-        from notebooklm.exceptions import ValidationError
         from notebooklm.auth import _load_storage_state
+        from notebooklm.exceptions import ValidationError
 
         monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", "{invalid json")
 
@@ -1179,8 +1179,8 @@ class TestAuthJsonSizeValidation:
 
     def test_raises_validation_error_for_auth_json_missing_cookies(self, tmp_path, monkeypatch):
         """Test that NOTEBOOKLM_AUTH_JSON without cookies key raises ValidationError."""
-        from notebooklm.exceptions import ValidationError
         from notebooklm.auth import _load_storage_state
+        from notebooklm.exceptions import ValidationError
 
         monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", '{"data": "value"}')
 
@@ -1207,4 +1207,3 @@ class TestModuleConstants:
         from notebooklm.auth import _MAX_AUTH_JSON_SIZE
 
         assert _MAX_AUTH_JSON_SIZE == 10 * 1024 * 1024  # 10MB
-
