@@ -1,6 +1,7 @@
 """Tests for authentication module."""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -1144,6 +1145,10 @@ class TestLoadHttpxCookiesRegional:
 class TestAuthJsonSizeValidation:
     """Test NOTEBOOKLM_AUTH_JSON environment variable size validation."""
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows environment variables are limited to 32767 characters",
+    )
     def test_raises_validation_error_for_oversized_auth_json(self, tmp_path, monkeypatch):
         """Test that oversized NOTEBOOKLM_AUTH_JSON raises ValidationError."""
         from notebooklm.auth import _load_storage_state
