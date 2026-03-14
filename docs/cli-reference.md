@@ -1,24 +1,26 @@
 # CLI Reference
 
 **Status:** Active
-**Last Updated:** 2026-03-02
+**Last Updated:** 2026-03-14
 
 Complete command reference for the `notebooklm` CLI—providing full programmatic access to all NotebookLM features, including capabilities not exposed in the web UI.
 
 ## Command Structure
 
 ```
-notebooklm [--storage PATH] [--version] <command> [OPTIONS] [ARGS]
+notebooklm [--storage PATH] [--version] [-v|-vv] <command> [OPTIONS] [ARGS]
 ```
 
 **Global Options:**
 - `--storage PATH` - Override the default storage location (`~/.notebooklm/storage_state.json`)
 - `--version` - Show version and exit
+- `-v, --verbose` - Increase verbosity (`-v` for INFO, `-vv` for DEBUG)
 - `--help` - Show help message
 
 **Environment Variables:**
 - `NOTEBOOKLM_HOME` - Base directory for all config files (default: `~/.notebooklm`)
 - `NOTEBOOKLM_AUTH_JSON` - Inline authentication JSON (for CI/CD, no file writes needed)
+- `NOTEBOOKLM_LOG_LEVEL` - Set to `DEBUG`, `INFO`, `WARNING` (default), or `ERROR`
 - `NOTEBOOKLM_DEBUG_RPC` - Enable RPC debug logging (`1` to enable)
 
 See [Configuration](configuration.md) for details on environment variables and CI/CD setup.
@@ -27,7 +29,8 @@ See [Configuration](configuration.md) for details on environment variables and C
 - **Session commands** - Authentication and context management
 - **Notebook commands** - CRUD operations on notebooks
 - **Chat commands** - Querying and conversation management
-- **Grouped commands** - `source`, `artifact`, `generate`, `download`, `note`
+- **Grouped commands** - `source`, `artifact`, `generate`, `download`, `note`, `share`, `research`, `language`, `living-doc`, `skill`
+- **Other commands** - `archive`, `get`, `health`, `health-all`, `merge`, `multi-ask`
 
 ---
 
@@ -67,8 +70,12 @@ See [Configuration](configuration.md) for details on environment variables and C
 | `create <title>` | Create notebook | `notebooklm create "Research"` |
 | `delete <id>` | Delete notebook | `notebooklm delete abc123` |
 | `rename <title>` | Rename current notebook | `notebooklm rename "New Title"` |
-| `share` | Toggle notebook sharing | `notebooklm share` or `notebooklm share --revoke` |
+| `get [id]` | Get notebook details | `notebooklm get abc123` |
 | `summary` | Get AI summary | `notebooklm summary` |
+| `archive` | Remove from recently viewed list | `notebooklm archive` |
+| `health` | Audit notebook health (empty/stale/duplicate sources) | `notebooklm health` |
+| `health-all` | Audit health of ALL notebooks | `notebooklm health-all` |
+| `merge <target_id>` | Merge sources into target notebook | `notebooklm merge target123` |
 
 ### Chat Commands
 
@@ -79,6 +86,7 @@ See [Configuration](configuration.md) for details on environment variables and C
 | `ask --json` | Get answer with source references | `notebooklm ask "Explain X" --json` |
 | `ask --save-as-note` | Save response as a note | `notebooklm ask "Explain X" --save-as-note` |
 | `ask --save-as-note --note-title` | Save response with custom note title | `notebooklm ask "Explain X" --save-as-note --note-title "Title"` |
+| `multi-ask <question>` | Ask across multiple notebooks | `notebooklm multi-ask "summarize" -n nb1 -n nb2` |
 | `configure` | Set persona/mode | `notebooklm configure --mode learning-guide` |
 | `history` | View conversation history | `notebooklm history` |
 | `history --clear` | Clear local conversation cache | `notebooklm history --clear` |
@@ -94,15 +102,20 @@ Supported source types: URLs, YouTube videos, files (PDF, text, Markdown, Word, 
 |---------|-----------|---------|---------|
 | `list` | - | - | `source list` |
 | `add <content>` | URL/file/text | - | `source add "https://..."` |
+| `add-bulk <urls...>` | Multiple URLs | `--json` | `source add-bulk url1 url2 url3` |
 | `add-drive <id> <title>` | Drive file ID | - | `source add-drive abc123 "Doc"` |
 | `add-research <query>` | Search query | `--mode [fast|deep]`, `--from [web|drive]`, `--import-all`, `--no-wait` | `source add-research "AI" --mode deep --no-wait` |
 | `get <id>` | Source ID | - | `source get src123` |
 | `fulltext <id>` | Source ID | `--json`, `-o FILE` | `source fulltext src123 -o content.txt` |
 | `guide <id>` | Source ID | `--json` | `source guide src123` |
+| `stale <id>` | Source ID | - | `source stale src123` |
 | `rename <id> <title>` | Source ID, new title | - | `source rename src123 "New Name"` |
 | `refresh <id>` | Source ID | - | `source refresh src123` |
+| `refresh-bulk <ids...>` | Multiple source IDs | - | `source refresh-bulk src1 src2` |
 | `delete <id>` | Source ID | - | `source delete src123` |
+| `delete-bulk <ids...>` | Multiple source IDs | `-y` | `source delete-bulk src1 src2 -y` |
 | `wait <id>` | Source ID | `--timeout`, `--interval` | `source wait src123` |
+| `wait-all <ids...>` | Multiple source IDs | `--timeout`, `--json` | `source wait-all src1 src2` |
 
 ### Research Commands (`notebooklm research <cmd>`)
 
@@ -122,7 +135,8 @@ All generate commands support:
 | Command | Options | Example |
 |---------|---------|---------|
 | `audio [description]` | `--format [deep-dive\|brief\|critique\|debate]`, `--length [short\|default\|long]`, `--wait` | `generate audio "Focus on history"` |
-| `video [description]` | `--format [explainer\|brief]`, `--style [auto\|classic\|whiteboard\|kawaii\|anime\|watercolor\|retro-print\|heritage\|paper-craft]`, `--wait` | `generate video "Explainer for kids"` |
+| `video [description]` | `--format [explainer\|brief\|cinematic]`, `--style [auto\|classic\|whiteboard\|kawaii\|anime\|watercolor\|retro-print\|heritage\|paper-craft]`, `--wait` | `generate video "Explainer for kids"` |
+| `cinematic-video [description]` | Same as `video` (alias for `video --format cinematic`) | `generate cinematic-video "documentary"` |
 | `slide-deck [description]` | `--format [detailed\|presenter]`, `--length [default\|short]`, `--wait` | `generate slide-deck` |
 | `revise-slide <description>` | `-a/--artifact <id>` (required), `--slide N` (required), `--wait` | `generate revise-slide "Move title up" --artifact <id> --slide 0` |
 | `quiz [description]` | `--difficulty [easy\|medium\|hard]`, `--quantity [fewer\|standard\|more]`, `--wait` | `generate quiz --difficulty hard` |
@@ -149,13 +163,14 @@ All generate commands support:
 
 | Command | Arguments | Options | Example |
 |---------|-----------|---------|---------|
-| `audio [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run` | `download audio --all` |
-| `video [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run` | `download video --latest` |
-| `slide-deck [path]` | Output path      | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run`, `--format [pdf\|pptx]` | `download slide-deck ./slides.pdf` |
-| `infographic [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run` | `download infographic ./info.png` |
-| `report [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run` | `download report ./report.md` |
-| `mind-map [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run` | `download mind-map ./map.json` |
-| `data-table [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--name`, `--force`, `--dry-run` | `download data-table ./data.csv` |
+| `audio [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--json` | `download audio --all` |
+| `video [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--json` | `download video --latest` |
+| `cinematic-video [path]` | Output path | Same as `video` (alias) | `download cinematic-video` |
+| `slide-deck [path]` | Output path      | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--format [pdf\|pptx]`, `--json` | `download slide-deck ./slides.pdf` |
+| `infographic [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--json` | `download infographic ./info.png` |
+| `report [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--json` | `download report ./report.md` |
+| `mind-map [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--json` | `download mind-map ./map.json` |
+| `data-table [path]` | Output path | `-a/--artifact`, `--all`, `--latest`, `--earliest`, `--name`, `--force`, `--dry-run`, `--no-clobber`, `--json` | `download data-table ./data.csv` |
 | `quiz [path]` | Output path | `-n/--notebook`, `-a/--artifact`, `--format` (json/markdown/html) | `download quiz --format markdown quiz.md` |
 | `flashcards [path]` | Output path | `-n/--notebook`, `-a/--artifact`, `--format` (json/markdown/html) | `download flashcards cards.json` |
 
@@ -169,6 +184,28 @@ All generate commands support:
 | `save <id>` | Note ID | - | `note save note123` |
 | `rename <id> <title>` | Note ID, title | - | `note rename note123 "Title"` |
 | `delete <id>` | Note ID | - | `note delete note123` |
+
+### Share Commands (`notebooklm share <cmd>`)
+
+| Command | Arguments | Options | Example |
+|---------|-----------|---------|---------|
+| `status` | - | `-n`, `--json` | `share status` |
+| `public` | - | `--enable/--disable`, `-n`, `--json` | `share public --enable` |
+| `view-level <level>` | `full` or `chat` | `-n`, `--json` | `share view-level chat` |
+| `add <email>` | Email address | `--permission [viewer\|editor]`, `-m MESSAGE`, `--no-notify`, `-n`, `--json` | `share add user@example.com` |
+| `update <email>` | Email address | `--permission [viewer\|editor]`, `-n`, `--json` | `share update user@example.com --permission editor` |
+| `remove <email>` | Email address | `-y`, `-n`, `--json` | `share remove user@example.com` |
+
+### Living Document Commands (`notebooklm living-doc <cmd>`)
+
+| Command | Arguments | Options | Example |
+|---------|-----------|---------|---------|
+| `list` | - | `--json` | `living-doc list` |
+| `register <drive_file_id>` | Drive file ID | `-n`, `--title`, `--mime-type`, `--template`, `--no-add`, `--json` | `living-doc register 1abc123 --title "Timeline"` |
+| `remove <drive_file_id>` | Drive file ID | `--json` | `living-doc remove 1abc123` |
+| `check-stale` | - | `--json` | `living-doc check-stale` |
+| `sync` | - | `--json` | `living-doc sync` |
+| `templates` | - | `--json` | `living-doc templates` |
 
 ### Skill Commands (`notebooklm skill <cmd>`)
 
@@ -190,15 +227,22 @@ These CLI capabilities are not available in NotebookLM's web interface:
 | Feature | Command | Description |
 |---------|---------|-------------|
 | **Batch downloads** | `download <type> --all` | Download all artifacts of a type at once |
+| **Bulk source ops** | `source add-bulk`, `delete-bulk`, `refresh-bulk` | Add, delete, or refresh multiple sources at once |
 | **Quiz/Flashcard export** | `download quiz --format json` | Export as JSON, Markdown, or HTML |
 | **Mind map extraction** | `download mind-map` | Export hierarchical JSON for visualization tools |
 | **Data table export** | `download data-table` | Download structured tables as CSV |
 | **Slide deck as PPTX** | `download slide-deck --format pptx` | Download as editable .pptx (web UI only offers PDF) |
 | **Slide revision** | `generate revise-slide "prompt" --artifact <id> --slide N` | Modify individual slides with a natural-language prompt |
+| **Cinematic video** | `generate cinematic-video` | Generate AI documentary footage (Veo 3, requires AI Ultra) |
 | **Report template append** | `generate report --format study-guide --append "..."` | Append instructions to built-in templates |
 | **Source fulltext** | `source fulltext <id>` | Retrieve the indexed text content of any source |
+| **Source staleness check** | `source stale <id>` | Check if a source needs refresh (shell-friendly exit codes) |
 | **Save chat to note** | `ask "..." --save-as-note` / `history --save` | Save Q&A answers or full conversation as notebook notes |
+| **Multi-notebook chat** | `multi-ask "question" -n nb1 -n nb2` | Ask across multiple notebooks simultaneously |
+| **Notebook health audit** | `health` / `health-all` | Check for empty, stale, or duplicate sources |
+| **Notebook merging** | `merge <target_id>` | Copy sources from one notebook to another |
 | **Programmatic sharing** | `share` commands | Manage permissions without the UI |
+| **Living documents** | `living-doc` commands | Auto-sync Google Drive files with notebooks |
 
 ---
 
@@ -308,6 +352,87 @@ notebooklm language set ja
 
 Run `notebooklm language list` for all 80+ supported languages.
 
+### Notebook: `get`
+
+Get detailed information about a notebook.
+
+```bash
+notebooklm get [NOTEBOOK_ID] [OPTIONS]
+```
+
+**Options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+- `--json` - Output as JSON
+
+### Notebook: `health`
+
+Audit a notebook's health — checks for empty, stale, or duplicate sources.
+
+```bash
+notebooklm health [OPTIONS]
+```
+
+**Options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+- `--json` - Output as JSON
+
+### Notebook: `health-all`
+
+Audit health of ALL notebooks at once.
+
+```bash
+notebooklm health-all [OPTIONS]
+```
+
+**Options:**
+- `--json` - Output as JSON
+
+### Notebook: `archive`
+
+Remove a notebook from the recently viewed list.
+
+```bash
+notebooklm archive [OPTIONS]
+```
+
+**Options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+
+### Notebook: `merge`
+
+Merge sources from the current notebook into a target notebook.
+
+```bash
+notebooklm merge <TARGET_NOTEBOOK_ID> [OPTIONS]
+```
+
+Copies all sources from the source notebook into the target. URL sources are re-added by URL; text sources are copied as text.
+
+**Options:**
+- `-n, --notebook ID` - Source notebook ID (uses current if not set)
+- `--skip-duplicates / --no-skip-duplicates` - Skip sources that already exist in target (default: True)
+- `-y, --yes` - Skip confirmation
+
+### Chat: `multi-ask`
+
+Ask a question across multiple notebooks simultaneously.
+
+```bash
+notebooklm multi-ask <QUESTION> -n <nb1> -n <nb2> [OPTIONS]
+```
+
+Sends the same question to multiple notebooks in parallel and displays results grouped by notebook.
+
+**Options:**
+- `-n, --notebooks ID` - Notebook IDs to query (repeatable, required)
+- `--json` - Output as JSON
+
+**Examples:**
+```bash
+notebooklm multi-ask "what are the key themes?" -n nb1 -n nb2 -n nb3
+notebooklm multi-ask "summarize" -n nb1 -n nb2 --json
+```
+
 ### Share: `status`, `public`, `view-level`, `add`, `update`, `remove`
 
 Manage notebook sharing settings and user permissions.
@@ -399,6 +524,72 @@ notebooklm auth check --json
 - Check if cookies are from correct domain (regional vs .google.com)
 - Diagnose NOTEBOOKLM_AUTH_JSON environment variable issues
 
+### Source: `add-bulk`
+
+Add multiple URLs as sources at once.
+
+```bash
+notebooklm source add-bulk <url1> <url2> ... [OPTIONS]
+```
+
+**Options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+- `--json` - Output as JSON
+
+### Source: `stale`
+
+Check if a URL/Drive source needs refresh.
+
+```bash
+notebooklm source stale <SOURCE_ID> [OPTIONS]
+```
+
+Returns exit code 0 if stale (needs refresh), 1 if fresh. Shell-friendly:
+
+```bash
+if notebooklm source stale abc123; then
+  notebooklm source refresh abc123
+fi
+```
+
+### Source: `delete-bulk`
+
+Delete multiple sources at once.
+
+```bash
+notebooklm source delete-bulk <id1> <id2> ... [OPTIONS]
+```
+
+**Options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+- `-y, --yes` - Skip confirmation
+
+### Source: `refresh-bulk`
+
+Refresh multiple URL/Drive sources at once.
+
+```bash
+notebooklm source refresh-bulk <id1> <id2> ... [OPTIONS]
+```
+
+### Source: `wait-all`
+
+Wait for multiple sources to finish processing.
+
+```bash
+notebooklm source wait-all <id1> <id2> ... [OPTIONS]
+```
+
+**Options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+- `--timeout SECONDS` - Maximum seconds to wait per source (default: 120)
+- `--json` - Output as JSON
+
+**Exit codes:**
+- `0` - All sources are ready
+- `1` - A source was not found or processing failed
+- `2` - Timeout reached
+
 ### Source: `add-research`
 
 Perform AI-powered research and add discovered sources to the notebook.
@@ -483,6 +674,44 @@ notebooklm research wait --json --import-all
 
 **Use case:** Primarily for LLM agents that need to wait for non-blocking deep research started with `source add-research --no-wait`.
 
+### Living Document: `register`, `list`, `remove`, `check-stale`, `sync`, `templates`
+
+Manage auto-syncing Google Drive files linked to notebooks.
+
+```bash
+# Register a Drive file as a living document
+notebooklm living-doc register 1abc123 --title "Master Timeline"
+
+# Register with specific type and template
+notebooklm living-doc register 1abc123 --mime-type google-sheets --template timeline-master
+
+# Register without adding as notebook source
+notebooklm living-doc register 1abc123 --no-add
+
+# List all registered living documents
+notebooklm living-doc list
+
+# Check which documents need syncing
+notebooklm living-doc check-stale
+
+# Sync all stale documents
+notebooklm living-doc sync
+
+# List available templates
+notebooklm living-doc templates
+
+# Remove a living document from registry
+notebooklm living-doc remove 1abc123
+```
+
+**Register options:**
+- `-n, --notebook ID` - Notebook ID (uses current if not set)
+- `--title TEXT` - Display title for the document
+- `--mime-type [google-doc|google-slides|google-sheets|pdf]` - Document type (default: google-doc)
+- `--template TEXT` - Template ID for categorization
+- `--no-add` - Register only, don't add as notebook source
+- `--json` - Output as JSON
+
 ### Generate: `audio`
 
 Generate an audio overview (podcast).
@@ -497,6 +726,7 @@ notebooklm generate audio [description] [OPTIONS]
 - `--language LANG` - Language code (default: en)
 - `-s, --source ID` - Use specific source(s) (repeatable, uses all if not specified)
 - `--wait` - Wait for generation to complete
+- `--retry N` - Retry N times with exponential backoff on rate limit
 - `--json` - Output as JSON (returns `task_id` and `status`)
 
 **Examples:**
@@ -527,11 +757,12 @@ notebooklm generate video [description] [OPTIONS]
 ```
 
 **Options:**
-- `--format [explainer|brief]` - Video format
-- `--style [auto|classic|whiteboard|kawaii|anime|watercolor|retro|heritage|paper-craft]` - Visual style
+- `--format [explainer|brief|cinematic]` - Video format
+- `--style [auto|classic|whiteboard|kawaii|anime|watercolor|retro-print|heritage|paper-craft]` - Visual style
 - `--language LANG` - Language code
 - `-s, --source ID` - Use specific source(s) (repeatable, uses all if not specified)
 - `--wait` - Wait for generation to complete
+- `--retry N` - Retry N times with exponential backoff on rate limit
 - `--json` - Output as JSON (returns `task_id` and `status`)
 
 **Examples:**
@@ -548,6 +779,16 @@ notebooklm generate video -s src_123 -s src_456
 # JSON output for scripting/automation
 notebooklm generate video --json
 ```
+
+### Generate: `cinematic-video`
+
+Generate a cinematic video overview with AI-generated documentary footage (Veo 3). Requires Google AI Ultra.
+
+```bash
+notebooklm generate cinematic-video [description] [OPTIONS]
+```
+
+Alias for `generate video --format cinematic`. Same options as `video`.
 
 ### Generate: `revise-slide`
 
@@ -609,7 +850,7 @@ notebooklm generate report --format study-guide --append "Target audience: begin
 notebooklm generate report --format briefing-doc --append "Focus on AI trends, keep it under 2 pages"
 ```
 
-### Download: `audio`, `video`, `slide-deck`, `infographic`, `report`, `mind-map`, `data-table`
+### Download: `audio`, `video`, `cinematic-video`, `slide-deck`, `infographic`, `report`, `mind-map`, `data-table`
 
 Download generated artifacts to your local machine.
 
@@ -623,6 +864,7 @@ notebooklm download <type> [OUTPUT_PATH] [OPTIONS]
 |------|-------------------|-------------|
 | `audio` | `.mp4` | Audio overview (podcast) in MP4 container |
 | `video` | `.mp4` | Video overview |
+| `cinematic-video` | `.mp4` | Cinematic video (alias for `video`) |
 | `slide-deck` | `.pdf` or `.pptx` | Slide deck as PDF (default) or PowerPoint |
 | `infographic` | `.png` | Infographic image |
 | `report` | `.md` | Report as Markdown (Briefing Doc, Study Guide, etc.) |
@@ -814,15 +1056,31 @@ Add multiple sources at once.
 # Set active notebook
 notebooklm use <id>
 
-# Add multiple URLs
-notebooklm source add "https://example.com/article1"
-notebooklm source add "https://example.com/article2"
-notebooklm source add "https://example.com/article3"
+# Add multiple URLs at once
+notebooklm source add-bulk "https://example.com/article1" "https://example.com/article2" "https://example.com/article3"
 
 # Add multiple local files (use a loop)
 for f in ./papers/*.pdf; do
   notebooklm source add "$f"
 done
+
+# Wait for all sources to be processed
+notebooklm source wait-all src1 src2 src3
+```
+
+### Notebook Health Check
+
+Audit notebooks for issues.
+
+```bash
+# Check current notebook health
+notebooklm health
+
+# Audit all notebooks
+notebooklm health-all --json
+
+# Merge sources from one notebook to another
+notebooklm merge target_nb_id --skip-duplicates
 ```
 
 ---
@@ -839,7 +1097,7 @@ When using this CLI programmatically:
 
    Avoid `--wait` for LLM agents—all async operations can take minutes to 30+ minutes. Use `artifact wait <id>` in a background task or inform the user to check back later.
 
-3. **Partial IDs work**: `notebooklm use abc` matches any notebook ID starting with "abc".
+3. **Partial IDs work**: `notebooklm use abc` matches any notebook ID starting with "abc". Same for source, artifact, and note IDs.
 
 4. **Check status**: Use `notebooklm status` to see the current active notebook and conversation.
 
@@ -851,3 +1109,9 @@ When using this CLI programmatically:
 6. **Error handling**: Commands exit with non-zero status on failure. Check stderr for error messages.
 
 7. **Deep research**: Use `--no-wait` with `source add-research --mode deep` to avoid blocking. Then use `research wait --import-all` in a subagent to wait for completion.
+
+8. **Bulk operations**: Use `source add-bulk`, `source delete-bulk`, `source refresh-bulk`, and `source wait-all` for efficient multi-source operations.
+
+9. **Verbosity**: Use `-v` for INFO-level logs or `-vv` for DEBUG-level logs to troubleshoot issues.
+
+10. **JSON output**: Most commands support `--json` for machine-readable output, ideal for programmatic consumption.
