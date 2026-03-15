@@ -26,6 +26,7 @@ from .._url_utils import is_youtube_url
 from ..client import NotebookLMClient
 from ..types import source_status_to_str
 from .helpers import (
+    DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS,
     console,
     display_report,
     display_research_sources,
@@ -542,9 +543,9 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 @click.option("--import-all", is_flag=True, help="Import all found sources")
 @click.option(
     "--timeout",
-    default=1800,
+    default=DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS,
     type=int,
-    help="Maximum seconds for import retries (default: 1800)",
+    help=f"Maximum seconds for import retries (default: {DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS})",
 )
 @click.option(
     "--no-wait",

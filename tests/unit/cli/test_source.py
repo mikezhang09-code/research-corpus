@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+from notebooklm.cli.helpers import DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS
 from notebooklm.notebooklm_cli import cli
 from notebooklm.types import (
     Source,
@@ -666,7 +667,7 @@ class TestSourceAddResearch:
             "nb_123",
             "task_123",
             [{"title": "Source 1", "url": "http://example.com"}],
-            max_elapsed=1800,
+            max_elapsed=DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS,
         )
 
     def test_add_research_timeout_passed_to_import(self, runner, mock_auth):
