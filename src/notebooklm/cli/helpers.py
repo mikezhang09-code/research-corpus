@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 CONTEXT_FILE = get_context_path()
 BROWSER_PROFILE_DIR = get_browser_profile_dir()
 
+# Default timeout for import_with_retry (seconds)
+DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS = 1800
+
 # CLI artifact type name aliases
 _CLI_ARTIFACT_ALIASES = {
     "flashcard": "flashcards",  # CLI uses singular, enum uses plural
@@ -88,7 +91,7 @@ async def import_with_retry(
     task_id: str,
     sources: list[dict],
     *,
-    max_elapsed: float = 1800,
+    max_elapsed: float = DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS,
     initial_delay: float = 5,
     backoff_factor: float = 2,
     max_delay: float = 60,

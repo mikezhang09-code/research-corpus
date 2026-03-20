@@ -26,6 +26,7 @@ from .._url_utils import is_youtube_url
 from ..client import NotebookLMClient
 from ..types import source_status_to_str
 from .helpers import (
+    DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS,
     console,
     display_report,
     display_research_sources,
@@ -541,13 +542,19 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @click.option("--import-all", is_flag=True, help="Import all found sources")
 @click.option(
+    "--timeout",
+    default=DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS,
+    type=int,
+    help=f"Maximum seconds for import retries (default: {DEFAULT_IMPORT_RETRY_TIMEOUT_SECONDS})",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     help="Start research and return immediately (use 'research status/wait' to monitor)",
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, no_wait, client_auth
+    ctx, query, notebook_id, search_source, mode, import_all, timeout, no_wait, client_auth
 ):
     """Search web or drive and add sources from results.
 
@@ -606,6 +613,7 @@ def source_add_research(
                         nb_id_resolved,
                         task_id,
                         sources,
+                        max_elapsed=timeout,
                     )
                     console.print(f"[green]Imported {len(imported)} sources[/green]")
             else:
