@@ -489,9 +489,10 @@ def register_session_commands(cli):
 
         try:
             from playwright.sync_api import Error as PlaywrightError
+            from playwright.sync_api import TimeoutError as PlaywrightTimeout
             from playwright.sync_api import sync_playwright
         except ImportError:
-            if browser == "msedge":
+            if browser in ("msedge", "chrome"):
                 install_hint = "  pip install notebooklm[browser]"
             else:
                 install_hint = "  pip install notebooklm[browser]\n  playwright install chromium"
@@ -641,20 +642,18 @@ def register_session_commands(cli):
                 err_lower = str(e).lower()
                 is_not_found = (
                     "executable doesn't exist" in err_lower
+                    or "is not found at" in err_lower
                     or "no such file" in err_lower
                     or "failed to launch" in err_lower
                 )
-                if browser == "msedge" and is_not_found:
+                if is_not_found and browser in ("msedge", "chrome"):
+                    install_urls = {
+                        "msedge": "https://www.microsoft.com/edge",
+                        "chrome": "https://www.google.com/chrome",
+                    }
                     console.print(
-                        "[red]Microsoft Edge not found.[/red]\n"
-                        "Install from: https://www.microsoft.com/edge\n"
-                        "Or use the default Chromium browser: notebooklm login"
-                    )
-                    raise SystemExit(1) from None
-                if browser == "chrome" and is_not_found:
-                    console.print(
-                        "[red]Google Chrome not found.[/red]\n"
-                        "Install from: https://www.google.com/chrome\n"
+                        f"[red]{browser_labels[browser]} not found.[/red]\n"
+                        f"Install from: {install_urls[browser]}\n"
                         "Or use the default Chromium browser: notebooklm login"
                     )
                     raise SystemExit(1) from None
@@ -677,7 +676,7 @@ def register_session_commands(cli):
 
                 try:
                     page.wait_for_url(f"https://{NOTEBOOKLM_HOST}/**", timeout=300_000)
-                except Exception:
+                except PlaywrightTimeout:
                     console.print(
                         "[red]Login not detected within 5 minutes.[/red]\n"
                         "Try again with: notebooklm login"
