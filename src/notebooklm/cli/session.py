@@ -401,9 +401,9 @@ def register_session_commands(cli):
     )
     @click.option(
         "--browser",
-        type=click.Choice(["chromium", "msedge"], case_sensitive=False),
+        type=click.Choice(["chromium", "chrome", "msedge"], case_sensitive=False),
         default="chromium",
-        help="Browser to use for login (default: chromium). Use 'msedge' for Microsoft Edge.",
+        help="Browser to use for login (default: chromium). Use 'chrome' for system Chrome, 'msedge' for Edge.",
     )
     @click.option(
         "--browser-cookies",
@@ -426,9 +426,10 @@ def register_session_commands(cli):
     def login(storage, browser, browser_cookies, fresh):
         """Log in to NotebookLM via browser.
 
-        Opens a browser window for Google login. After logging in,
-        press ENTER in the terminal to save authentication.
+        Opens a browser window for Google login. Authentication is saved
+        automatically once login is detected.
 
+        Use --browser chrome if the bundled Chromium crashes (e.g. macOS 15+).
         Use --browser msedge if your organization requires Microsoft Edge for SSO.
 
         Note: Cannot be used when NOTEBOOKLM_AUTH_JSON is set (use file-based
@@ -497,15 +498,18 @@ def register_session_commands(cli):
             console.print(f"[red]Playwright not installed. Run:[/red]\n{install_hint}")
             raise SystemExit(1) from None
 
-        # Pre-flight check: verify Chromium browser is installed (skip for Edge)
+        # Pre-flight check: verify Chromium browser is installed (skip for Edge/Chrome)
         if browser == "chromium":
             _ensure_chromium_installed()
 
         from ..paths import resolve_profile
 
-        profile_name = resolve_profile()
-        browser_label = "Microsoft Edge" if browser == "msedge" else "Chromium"
-        console.print(f"[dim]Profile: {profile_name}[/dim]")
+        browser_labels = {
+            "msedge": "Microsoft Edge",
+            "chrome": "Google Chrome",
+            "chromium": "Chromium",
+        }
+        browser_label = browser_labels.get(browser, "Chromium")
         console.print(f"[yellow]Opening {browser_label} for Google login...[/yellow]")
         console.print(f"[dim]Using persistent profile: {browser_profile}[/dim]")
 
@@ -521,8 +525,8 @@ def register_session_commands(cli):
                 ],
                 "ignore_default_args": ["--enable-automation"],
             }
-            if browser == "msedge":
-                launch_kwargs["channel"] = "msedge"
+            if browser in ("msedge", "chrome"):
+                launch_kwargs["channel"] = browser
 
             context = None
             try:
@@ -634,26 +638,64 @@ def register_session_commands(cli):
                     storage_path.chmod(0o600)
 
             except Exception as e:
-                # Handle browser launch errors specially (context will be None if launch failed)
-                if context is None:
-                    if browser == "msedge" and (
-                        "executable doesn't exist" in str(e).lower()
-                        or "no such file" in str(e).lower()
-                        or "failed to launch" in str(e).lower()
-                    ):
-                        logger.error(f"Microsoft Edge not found: {e}")
-                        console.print(
-                            "[red]Microsoft Edge not found.[/red]\n"
-                            "Install from: https://www.microsoft.com/edge\n"
-                            "Or use the default Chromium browser: notebooklm login"
-                        )
-                        raise SystemExit(1) from e
-                logger.error(f"Login failed: {e}", exc_info=True)
+                err_lower = str(e).lower()
+                is_not_found = (
+                    "executable doesn't exist" in err_lower
+                    or "no such file" in err_lower
+                    or "failed to launch" in err_lower
+                )
+                if browser == "msedge" and is_not_found:
+                    console.print(
+                        "[red]Microsoft Edge not found.[/red]\n"
+                        "Install from: https://www.microsoft.com/edge\n"
+                        "Or use the default Chromium browser: notebooklm login"
+                    )
+                    raise SystemExit(1) from None
+                if browser == "chrome" and is_not_found:
+                    console.print(
+                        "[red]Google Chrome not found.[/red]\n"
+                        "Install from: https://www.google.com/chrome\n"
+                        "Or use the default Chromium browser: notebooklm login"
+                    )
+                    raise SystemExit(1) from None
                 raise
-            finally:
-                # Always close the browser context to prevent resource leaks
-                if context:
+
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(NOTEBOOKLM_URL)
+
+            if NOTEBOOKLM_HOST in page.url:
+                # Already logged in (persistent profile has valid session)
+                console.print("[green]Already logged in![/green]")
+            else:
+                # Need to log in — auto-detect when login completes
+                console.print("\n[bold green]Instructions:[/bold green]")
+                console.print("1. Complete the Google login in the browser window")
+                console.print(
+                    "2. Authentication will be saved automatically once login is detected\n"
+                )
+                console.print("[dim]Waiting for login (up to 5 minutes)...[/dim]")
+
+                try:
+                    page.wait_for_url(f"https://{NOTEBOOKLM_HOST}/**", timeout=300_000)
+                except Exception:
+                    console.print(
+                        "[red]Login not detected within 5 minutes.[/red]\n"
+                        "Try again with: notebooklm login"
+                    )
                     context.close()
+                    raise SystemExit(1) from None
+
+                console.print("[green]Login detected![/green]")
+
+            # Force .google.com cookies for regional users (e.g. UK lands on
+            # .google.co.uk). Use "load" not "networkidle" to avoid analytics hangs.
+            page.goto(GOOGLE_ACCOUNTS_URL, wait_until="load")
+            page.goto(NOTEBOOKLM_URL, wait_until="load")
+
+            context.storage_state(path=str(storage_path))
+            # Restrict permissions to owner only (contains sensitive cookies)
+            storage_path.chmod(0o600)
+            context.close()
 
         console.print(f"\n[green]Authentication saved to:[/green] {storage_path}")
 
