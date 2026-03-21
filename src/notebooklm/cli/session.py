@@ -644,7 +644,6 @@ def register_session_commands(cli):
                     "executable doesn't exist" in err_lower
                     or "is not found at" in err_lower
                     or "no such file" in err_lower
-                    or "failed to launch" in err_lower
                 )
                 if is_not_found and browser in ("msedge", "chrome"):
                     install_urls = {
