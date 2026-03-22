@@ -255,8 +255,16 @@ def register_session_commands(cli):
 
             # Force .google.com cookies for regional users (e.g. UK lands on
             # .google.co.uk). Use "load" not "networkidle" to avoid analytics hangs.
-            page.goto(GOOGLE_ACCOUNTS_URL, wait_until="load")
-            page.goto(NOTEBOOKLM_URL, wait_until="load")
+            # Wrap in try-except: already-authenticated sessions may redirect
+            # and cause "Navigation interrupted" (see GitHub issue #214).
+            try:
+                page.goto(GOOGLE_ACCOUNTS_URL, wait_until="load")
+            except Exception:
+                pass  # redirect race is harmless — cookies already set
+            try:
+                page.goto(NOTEBOOKLM_URL, wait_until="load")
+            except Exception:
+                pass  # same: redirect means we're already on NotebookLM
 
             current_url = page.url
             if NOTEBOOKLM_HOST not in current_url:
