@@ -866,7 +866,13 @@ class SourcesAPI:
         return bool(video_id and re.match(r"^[a-zA-Z0-9_-]+$", video_id))
 
     async def _add_youtube_source(self, notebook_id: str, url: str) -> Any:
-        """Add a YouTube video as a source."""
+        """Add a YouTube video as a source.
+
+        Note: allow_null is intentionally False (default) so that null API
+        responses trigger the retry/auth-recovery path in rpc_call, matching
+        the behaviour of _add_url_source.  Previously allow_null=True silently
+        swallowed null responses, preventing automatic retry on stale tokens.
+        """
         params = [
             [[None, None, None, None, None, None, None, [url], None, None, 1]],
             notebook_id,
@@ -877,7 +883,6 @@ class SourcesAPI:
             RPCMethod.ADD_SOURCE,
             params,
             source_path=f"/notebook/{notebook_id}",
-            allow_null=True,
         )
 
     async def _add_url_source(self, notebook_id: str, url: str) -> Any:

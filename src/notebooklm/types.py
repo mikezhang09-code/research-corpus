@@ -580,10 +580,15 @@ class Source:
                     title = entry[1] if len(entry) > 1 else None
 
                     # Try to extract URL if present
+                    # YouTube sources may store URL at index 5 (changed by Google),
+                    # while web pages use index 7.  Try both positions.
                     url = None
                     if len(entry) > 2 and isinstance(entry[2], list):
-                        if len(entry[2]) > 7 and isinstance(entry[2][7], list):
-                            url = entry[2][7][0] if entry[2][7] else None
+                        for idx in (7, 5):
+                            if len(entry[2]) > idx and isinstance(entry[2][idx], list):
+                                url = entry[2][idx][0] if entry[2][idx] else None
+                                if url:
+                                    break
 
                     return cls(id=str(source_id), title=title, url=url, _type_code=None)
 
@@ -591,10 +596,13 @@ class Source:
                 url = None
                 type_code = None
                 if len(entry) > 2 and isinstance(entry[2], list):
-                    if len(entry[2]) > 7:
-                        url_list = entry[2][7]
-                        if isinstance(url_list, list) and len(url_list) > 0:
-                            url = url_list[0]
+                    # Try index 7 first (web pages), then index 5 (YouTube)
+                    for idx in (7, 5):
+                        if len(entry[2]) > idx:
+                            url_list = entry[2][idx]
+                            if isinstance(url_list, list) and len(url_list) > 0:
+                                url = url_list[0]
+                                break
                     if not url and len(entry[2]) > 0:
                         if isinstance(entry[2][0], str) and entry[2][0].startswith("http"):
                             url = entry[2][0]
