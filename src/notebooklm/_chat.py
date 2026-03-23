@@ -100,7 +100,8 @@ class ChatAPI:
             conversation_id = str(uuid.uuid4())
             conversation_history = None
         else:
-            assert conversation_id is not None  # Type narrowing for mypy
+            if conversation_id is None:  # Defensive check (was assert, stripped by -O)
+                raise RuntimeError("conversation_id unexpectedly None in continuation mode")
             conversation_history = self._build_conversation_history(conversation_id)
 
         sources_array = [[[sid]] for sid in source_ids] if source_ids else []
