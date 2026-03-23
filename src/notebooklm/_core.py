@@ -384,12 +384,14 @@ class ClientCore:
         )
 
         # This function is only called when _refresh_callback is set
-        assert self._refresh_callback is not None
+        if self._refresh_callback is None:
+            raise RuntimeError("_refresh_callback is None; token refresh cannot proceed")
 
         # Use lock to coordinate refresh task creation
         # Note: refresh_callback is expected to update auth headers internally
         # Lock is always created when callback is set (see __init__)
-        assert self._refresh_lock is not None
+        if self._refresh_lock is None:
+            raise RuntimeError("_refresh_lock is None; cannot coordinate token refresh")
 
         # Determine which task to await (existing or new)
         async with self._refresh_lock:
