@@ -63,3 +63,109 @@ cli/*.py                  →  cmd/notebooklm/*.go   (cobra commands)
 **Sharing**: status, public, view-level, add, update, remove
 **Research**: status, wait, add-research (with import)
 **Language**: list, get, set
+
+---
+
+## Section 2: Go Tool Selection
+
+### CLI Framework: **Cobra** (recommended)
+
+| Framework | Stars | Subcommands | Completions | Used By |
+|-----------|-------|-------------|-------------|---------|
+| **cobra** | 39k+ | Native groups | bash/zsh/fish/ps | kubectl, gh, docker, hugo |
+| urfave/cli | 22k+ | Flat or nested | bash/zsh | - |
+| kong | 2k+ | Struct tags | Limited | - |
+
+**Why Cobra wins for this project:**
+- ~60 commands with 9 groups maps perfectly to Cobra's command tree
+- `gh` CLI (GitHub) uses Cobra — same pattern we need (verb-noun groups)
+- Built-in `--help`, shell completions, man page generation
+- Custom help templates (replaces Python's `SectionedGroup`)
+- Persistent flags (like `--notebook`, `--json`) propagate to subcommands
+- Ecosystem: `cobra-cli` scaffolding tool speeds up development
+
+```go
+// Example: mirrors Python's Click group structure
+rootCmd.AddCommand(sourceCmd)       // notebooklm source ...
+sourceCmd.AddCommand(sourceAddCmd)  // notebooklm source add ...
+sourceCmd.AddCommand(sourceListCmd) // notebooklm source list
+```
+
+### Terminal UI: **lipgloss** + **tablewriter**
+
+| Need | Python (rich) | Go Library |
+|------|---------------|------------|
+| Colored text | `rich.print` | `lipgloss` (charmbracelet) |
+| Tables | `rich.table` | `tablewriter` |
+| Spinners | `rich.spinner` | `yacspin` or `spinner` |
+| Progress bars | `rich.progress` | `mpb` |
+| JSON output | `json.dumps` | `encoding/json` (stdlib) |
+
+**lipgloss** (charmbracelet) is the standard for Go CLI styling — used by `gh`, `charm`, `gum`.
+
+### HTTP Client: **net/http** (stdlib)
+
+No external dependency needed. Go's stdlib HTTP client handles:
+- Cookie jars (`net/http/cookiejar`)
+- Custom headers
+- Timeouts (`http.Client.Timeout`)
+- Form-encoded POST bodies (`url.Values`)
+- File uploads (`multipart/Writer`)
+
+Python's async (httpx + asyncio) maps to Go's goroutines naturally — no async/await complexity.
+
+### Browser Auth: **chromedp** (user-selected)
+
+```
+chromedp vs rod comparison:
+┌──────────────┬──────────────────────────┬─────────────────────────┐
+│              │ chromedp                 │ rod                     │
+├──────────────┼──────────────────────────┼─────────────────────────┤
+│ Protocol     │ Chrome DevTools Protocol │ Chrome DevTools Protocol│
+│ Dependencies │ None (uses system Chrome)│ Auto-downloads Chromium │
+│ Stars        │ 11k+                     │ 5k+                    │
+│ Cookie API   │ network.GetAllCookies    │ browser.GetCookies     │
+│ Maturity     │ Very mature              │ Newer                  │
+│ Binary size  │ No impact (system Chrome)│ No impact              │
+└──────────────┴──────────────────────────┴─────────────────────────┘
+```
+
+**chromedp implementation plan:**
+1. Launch Chrome with user data dir (like Playwright's persistent context)
+2. Navigate to `notebooklm.google.com`
+3. Wait for user to complete Google login
+4. Extract cookies via `network.GetAllCookies`
+5. Save to `~/.notebooklm/storage_state.json` (same format as Python)
+6. Extract CSRF token (`SNlM0e`) and session ID (`FdrFJe`) from page HTML
+
+### Testing: **stdlib + go-vcr**
+
+| Need | Go Solution |
+|------|-------------|
+| Unit tests | `testing` (stdlib) — table-driven tests |
+| HTTP mocking | `net/http/httptest` (stdlib) |
+| HTTP record/replay | `go-vcr/v4` (equivalent to vcrpy) |
+| Assertions | `testify/assert` or `is` |
+| Test coverage | `go test -cover` (built-in) |
+| Linting | `golangci-lint` (aggregates 50+ linters) |
+| Formatting | `gofmt` / `goimports` (built-in) |
+
+### JSON Handling: **encoding/json** + **gjson**
+
+- `encoding/json` for struct marshaling (API responses → Go structs)
+- `gjson` for navigating deeply nested RPC responses without full struct mapping
+  - Critical for batchexecute responses which are arbitrary nested arrays
+  - Example: `gjson.Get(resp, "0.2.0.1")` to extract notebook ID from nested list
+
+### Summary: Go Module Dependencies
+
+```
+go.mod dependencies (minimal):
+  github.com/spf13/cobra          # CLI framework
+  github.com/charmbracelet/lipgloss # Terminal styling
+  github.com/olekukonko/tablewriter # Tables
+  github.com/chromedp/chromedp     # Browser auth
+  github.com/tidwall/gjson         # JSON navigation
+  github.com/stretchr/testify      # Test assertions (dev)
+  gopkg.in/dnaeon/go-vcr.v4       # HTTP recording (dev)
+```
