@@ -169,3 +169,146 @@ go.mod dependencies (minimal):
   github.com/stretchr/testify      # Test assertions (dev)
   gopkg.in/dnaeon/go-vcr.v4       # HTTP recording (dev)
 ```
+
+---
+
+## Section 3: Go Project Structure
+
+### Repository Layout
+
+```
+notebooklm-go/
+├── cmd/
+│   └── notebooklm/
+│       └── main.go                 # Entry point
+├── internal/
+│   ├── cli/                        # Cobra command definitions
+│   │   ├── root.go                 # Root command + global flags
+│   │   ├── session.go              # login, use, status, clear
+│   │   ├── notebook.go             # list, create, delete, rename, summary
+│   │   ├── source.go               # source add, list, delete, rename, ...
+│   │   ├── artifact.go             # artifact list, get, delete, export, ...
+│   │   ├── generate.go             # generate audio, video, quiz, ...
+│   │   ├── download.go             # download audio, video, report, ...
+│   │   ├── chat.go                 # ask, configure, history
+│   │   ├── note.go                 # note create, list, get, save, ...
+│   │   ├── share.go                # share status, public, add, remove, ...
+│   │   ├── research.go             # research status, wait
+│   │   ├── language.go             # language list, get, set
+│   │   ├── helpers.go              # Shared: resolve IDs, output formatting
+│   │   └── options.go              # Reusable flag definitions
+│   ├── rpc/                        # RPC protocol layer
+│   │   ├── types.go                # Method IDs, enums, constants
+│   │   ├── encoder.go              # Request encoding (batchexecute format)
+│   │   ├── encoder_test.go
+│   │   ├── decoder.go              # Response parsing (anti-XSSI, chunked)
+│   │   └── decoder_test.go
+│   ├── core/                       # HTTP client + RPC abstraction
+│   │   ├── client.go               # HTTP client, RPC call, auth refresh
+│   │   └── client_test.go
+│   ├── auth/                       # Authentication
+│   │   ├── auth.go                 # Cookie loading, CSRF extraction
+│   │   ├── browser.go              # chromedp browser login flow
+│   │   ├── storage.go              # Read/write storage_state.json
+│   │   └── auth_test.go
+│   ├── api/                        # Domain API layer (like Python _*.py)
+│   │   ├── notebooks.go            # NotebooksAPI
+│   │   ├── sources.go              # SourcesAPI
+│   │   ├── artifacts.go            # ArtifactsAPI
+│   │   ├── chat.go                 # ChatAPI
+│   │   ├── research.go             # ResearchAPI
+│   │   ├── notes.go                # NotesAPI
+│   │   ├── sharing.go              # SharingAPI
+│   │   ├── settings.go             # SettingsAPI
+│   │   └── *_test.go               # One test file per API
+│   ├── config/                     # Configuration management
+│   │   ├── paths.go                # ~/.notebooklm/ paths, env vars
+│   │   └── context.go              # Notebook/conversation context persistence
+│   └── output/                     # Terminal output helpers
+│       ├── table.go                # Table rendering
+│       ├── json.go                 # JSON output mode
+│       └── spinner.go              # Progress spinners
+├── pkg/
+│   └── client/                     # Public SDK (for Go library consumers)
+│       ├── client.go               # NotebookLMClient (public API)
+│       └── client_test.go
+├── testdata/                       # Test fixtures
+│   ├── cassettes/                  # VCR recordings (go-vcr)
+│   ├── fixtures/                   # Static RPC response fixtures
+│   └── golden/                     # Golden file outputs
+├── .github/
+│   └── workflows/
+│       ├── test.yml                # CI: lint + test + coverage
+│       ├── release.yml             # GoReleaser on tag push
+│       └── upstream-check.yml      # Track Python project releases
+├── .goreleaser.yml                 # Multi-platform build config
+├── go.mod
+├── go.sum
+├── Makefile                        # dev commands: test, lint, build
+└── README.md
+```
+
+### Package Responsibilities
+
+| Package | Visibility | Purpose |
+|---------|-----------|---------|
+| `cmd/notebooklm` | binary | Entry point only — calls `internal/cli` |
+| `internal/cli` | internal | All Cobra commands, flags, output |
+| `internal/rpc` | internal | Encode/decode batchexecute protocol |
+| `internal/core` | internal | HTTP client, RPC call abstraction |
+| `internal/auth` | internal | Cookie/token management, browser login |
+| `internal/api` | internal | Domain APIs (notebooks, sources, etc.) |
+| `internal/config` | internal | Paths, context, user settings |
+| `internal/output` | internal | Tables, JSON, spinners |
+| `pkg/client` | **public** | Reusable Go SDK for library consumers |
+
+### Why `internal/` + `pkg/`
+
+- `internal/` = implementation details, free to refactor without breaking consumers
+- `pkg/client/` = stable public Go API for anyone importing `notebooklm-go` as a library
+- Same pattern as `gh` CLI, `kubectl`, `docker`
+
+### Key Design Decisions
+
+**1. No async/await — use goroutines naturally**
+```go
+// Python: await client.sources.wait_for_sources(nb_id, source_ids)
+// Go: use goroutines + errgroup
+g, ctx := errgroup.WithContext(ctx)
+for _, id := range sourceIDs {
+    g.Go(func() error {
+        return client.Sources.WaitUntilReady(ctx, nbID, id)
+    })
+}
+err := g.Wait()
+```
+
+**2. Context propagation for cancellation/timeouts**
+```go
+// Every API method takes context.Context as first arg
+func (s *SourcesAPI) Add(ctx context.Context, nbID, url string) (*Source, error)
+```
+
+**3. Functional options for generation parameters**
+```go
+// Clean API for optional parameters
+status, err := client.Artifacts.GenerateAudio(ctx, nbID,
+    WithAudioFormat(AudioFormatDeepDive),
+    WithAudioLength(AudioLengthLong),
+)
+```
+
+**4. Error types use Go idioms**
+```go
+// Sentinel errors + custom types
+var ErrAuth = errors.New("authentication failed")
+var ErrRateLimit = errors.New("rate limited")
+
+type RPCError struct {
+    MethodID string
+    Code     int
+    Message  string
+}
+
+// Usage: errors.Is(err, ErrRateLimit)
+```
