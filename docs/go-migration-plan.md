@@ -1004,3 +1004,255 @@ jobs:
         env:
           NOTEBOOKLM_AUTH_JSON: ${{ secrets.NOTEBOOKLM_AUTH_JSON }}
 ```
+
+---
+
+## Section 6: Distribution (npm, Homebrew, GitHub Releases)
+
+### 6a. GitHub Releases with GoReleaser
+
+**GoReleaser** builds multi-platform binaries and creates GitHub releases automatically on tag push.
+
+**`.goreleaser.yml`:**
+```yaml
+version: 2
+project_name: notebooklm-go
+
+builds:
+  - id: notebooklm
+    main: ./cmd/notebooklm
+    binary: notebooklm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+
+archives:
+  - id: default
+    formats: ['tar.gz']
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ['docs:', 'test:', 'ci:']
+
+brews:
+  - repository:
+      owner: <your-org>
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/<your-org>/notebooklm-go"
+    description: "CLI for Google NotebookLM"
+    license: "MIT"
+    install: |
+      bin.install "notebooklm"
+    test: |
+      system "#{bin}/notebooklm", "--version"
+```
+
+**Release workflow (`.github/workflows/release.yml`):**
+```yaml
+name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.23' }
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+```
+
+**Produced artifacts per release:**
+```
+notebooklm-go_0.1.0_linux_amd64.tar.gz
+notebooklm-go_0.1.0_linux_arm64.tar.gz
+notebooklm-go_0.1.0_darwin_amd64.tar.gz
+notebooklm-go_0.1.0_darwin_arm64.tar.gz   (Apple Silicon)
+notebooklm-go_0.1.0_windows_amd64.zip
+checksums.txt
+```
+
+### 6b. Homebrew Distribution
+
+**Option A: GoReleaser auto-publishes** (recommended)
+- GoReleaser's `brews` config auto-creates/updates the formula in a separate `homebrew-tap` repo
+- Users install: `brew install <your-org>/tap/notebooklm`
+
+**Option B: Manual Homebrew formula**
+- Create `<your-org>/homebrew-tap` repo
+- Add `Formula/notebooklm.rb`:
+
+```ruby
+class Notebooklm < Formula
+  desc "CLI for Google NotebookLM"
+  homepage "https://github.com/<your-org>/notebooklm-go"
+  version "0.1.0"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/<org>/notebooklm-go/releases/download/v0.1.0/notebooklm-go_0.1.0_darwin_arm64.tar.gz"
+      sha256 "..."
+    end
+    on_intel do
+      url "https://github.com/<org>/notebooklm-go/releases/download/v0.1.0/notebooklm-go_0.1.0_darwin_amd64.tar.gz"
+      sha256 "..."
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/<org>/notebooklm-go/releases/download/v0.1.0/notebooklm-go_0.1.0_linux_arm64.tar.gz"
+      sha256 "..."
+    end
+    on_intel do
+      url "https://github.com/<org>/notebooklm-go/releases/download/v0.1.0/notebooklm-go_0.1.0_linux_amd64.tar.gz"
+      sha256 "..."
+    end
+  end
+
+  def install
+    bin.install "notebooklm"
+  end
+
+  test do
+    system "#{bin}/notebooklm", "--version"
+  end
+end
+```
+
+**User experience:**
+```bash
+brew tap <your-org>/tap
+brew install notebooklm
+notebooklm --version
+```
+
+### 6c. npm Distribution (wrapper package)
+
+Create an npm package that downloads the correct Go binary for the user's platform.
+
+**Package structure:**
+```
+npm/
+├── package.json
+├── install.js          # Post-install: download correct binary
+├── run.js              # Wrapper: exec the Go binary
+└── bin/
+    └── notebooklm     # Symlink/wrapper script
+```
+
+**`package.json`:**
+```json
+{
+  "name": "notebooklm-go",
+  "version": "0.1.0",
+  "description": "CLI for Google NotebookLM",
+  "bin": {
+    "notebooklm": "./run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["x64", "arm64"]
+}
+```
+
+**`install.js`** (downloads correct binary):
+```javascript
+const os = require('os');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const VERSION = '0.1.0';
+const PLATFORM_MAP = {
+  darwin: { x64: 'darwin_amd64', arm64: 'darwin_arm64' },
+  linux:  { x64: 'linux_amd64',  arm64: 'linux_arm64' },
+  win32:  { x64: 'windows_amd64' },
+};
+
+const platform = os.platform();
+const arch = os.arch();
+const key = PLATFORM_MAP[platform]?.[arch];
+if (!key) { console.error(`Unsupported: ${platform}/${arch}`); process.exit(1); }
+
+const ext = platform === 'win32' ? 'zip' : 'tar.gz';
+const url = `https://github.com/<org>/notebooklm-go/releases/download/v${VERSION}/notebooklm-go_${VERSION}_${key}.${ext}`;
+
+// Download, extract, place binary in bin/
+```
+
+**`run.js`** (wrapper):
+```javascript
+#!/usr/bin/env node
+const { execFileSync } = require('child_process');
+const path = require('path');
+const bin = path.join(__dirname, 'bin', process.platform === 'win32' ? 'notebooklm.exe' : 'notebooklm');
+try {
+  execFileSync(bin, process.argv.slice(2), { stdio: 'inherit' });
+} catch (e) {
+  process.exit(e.status || 1);
+}
+```
+
+**User experience:**
+```bash
+npm install -g notebooklm-go
+notebooklm --version
+```
+
+**Alternative: Use `@aspect-build/bazel-lib`-style platform packages**
+- Publish separate npm packages per platform: `@notebooklm/darwin-arm64`, `@notebooklm/linux-x64`, etc.
+- Main package uses `optionalDependencies` to pull correct one
+- Cleaner but more complex to maintain
+
+### 6d. Other Distribution Channels
+
+| Channel | Effort | How |
+|---------|--------|-----|
+| **go install** | Free | `go install github.com/<org>/notebooklm-go/cmd/notebooklm@latest` |
+| **Docker** | Low | `FROM scratch` + binary, publish to GHCR |
+| **Scoop** (Windows) | Low | GoReleaser has `scoop` config |
+| **AUR** (Arch Linux) | Low | Community PKGBUILD |
+| **snap** | Medium | snapcraft.yaml |
+| **nix** | Medium | Flake with buildGoModule |
+
+### Distribution Matrix
+
+| Platform | brew | npm | go install | GitHub Release |
+|----------|------|-----|-----------|----------------|
+| macOS (Intel) | yes | yes | yes | `.tar.gz` |
+| macOS (ARM) | yes | yes | yes | `.tar.gz` |
+| Linux (x64) | yes | yes | yes | `.tar.gz` |
+| Linux (ARM) | yes | yes | yes | `.tar.gz` |
+| Windows (x64) | - | yes | yes | `.zip` |
