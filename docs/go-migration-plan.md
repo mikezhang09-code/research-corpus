@@ -312,3 +312,304 @@ type RPCError struct {
 
 // Usage: errors.Is(err, ErrRateLimit)
 ```
+
+---
+
+## Section 4: Migration Phases
+
+### Overview: Bottom-Up, Test-First
+
+Migrate from the **innermost layer outward**. Each phase is independently testable and shippable.
+
+```
+Phase 1: Foundation     (types, errors, config)        ~2 days
+Phase 2: RPC Layer      (encoder, decoder)              ~3 days
+Phase 3: Auth           (cookies, CSRF, browser login)  ~3 days
+Phase 4: Core Client    (HTTP, RPC calls, retry)        ~2 days
+Phase 5: Domain APIs    (notebooks, sources, etc.)      ~5 days
+Phase 6: CLI Commands   (cobra commands, output)        ~5 days
+Phase 7: Distribution   (goreleaser, npm, brew)         ~2 days
+Phase 8: CI/CD + Parity (upstream tracking, tests)      ~2 days
+                                                   Total: ~24 days
+```
+
+---
+
+### Phase 1: Foundation (types, errors, config)
+
+**Goal**: Define all data structures, error types, and config paths.
+
+**Files to create:**
+```
+internal/rpc/types.go       # RPCMethod enum, ArtifactTypeCode, SourceStatus, all format enums
+internal/config/paths.go    # ~/.notebooklm/ paths, NOTEBOOKLM_HOME env var
+internal/config/context.go  # context.json read/write
+internal/output/json.go     # JSON output helpers
+```
+
+**Port from Python:**
+| Python File | Go File | What to port |
+|-------------|---------|-------------|
+| `rpc/types.py` | `internal/rpc/types.go` | All 34 RPCMethod IDs, 25+ enums, constants |
+| `types.py` | `internal/api/types.go` | All 18 structs (Notebook, Source, Artifact, etc.) |
+| `exceptions.py` | `internal/errors/errors.go` | All 20 error types |
+| `paths.py` | `internal/config/paths.go` | Path resolution, env vars |
+
+**Key mapping: Python enums → Go constants**
+```go
+// Python: class RPCMethod(str, Enum): LIST_NOTEBOOKS = "wXbhsf"
+// Go:
+type RPCMethod string
+const (
+    RPCListNotebooks  RPCMethod = "wXbhsf"
+    RPCCreateNotebook RPCMethod = "CCqFvf"
+    RPCDeleteNotebook RPCMethod = "WWINqb"
+    // ... all 34 methods
+)
+```
+
+**Key mapping: Python dataclasses → Go structs**
+```go
+// Python: @dataclass class Notebook: id, title, created_at, sources_count, is_owner
+// Go:
+type Notebook struct {
+    ID           string     `json:"id"`
+    Title        string     `json:"title"`
+    CreatedAt    *time.Time `json:"created_at,omitempty"`
+    SourcesCount int        `json:"sources_count"`
+    IsOwner      bool       `json:"is_owner"`
+}
+
+func NotebookFromAPI(data []any) (*Notebook, error) { ... }
+```
+
+**Tests**: Unit tests for all struct parsing, enum string conversion, path resolution.
+
+**Exit criteria**: `go build ./...` passes, all types compile, 100% unit test coverage on types.
+
+---
+
+### Phase 2: RPC Layer (encoder + decoder)
+
+**Goal**: Encode/decode Google's batchexecute protocol identically to Python.
+
+**Files to create:**
+```
+internal/rpc/encoder.go       # EncodeRPCRequest, BuildRequestBody, BuildURLParams
+internal/rpc/encoder_test.go  # Table-driven tests with Python parity fixtures
+internal/rpc/decoder.go       # StripAntiXSSI, ParseChunkedResponse, DecodeResponse
+internal/rpc/decoder_test.go  # Golden file tests against real API responses
+```
+
+**Port from Python:**
+| Python Function | Go Function | Critical Details |
+|----------------|-------------|-----------------|
+| `encode_rpc_request()` | `EncodeRPCRequest()` | Triple-nested: `[[[id, json, null, "generic"]]]` |
+| `build_request_body()` | `BuildRequestBody()` | Form-encode: `f.req=...&at=csrf` |
+| `build_url_params()` | `BuildURLParams()` | `rpcids`, `source-path`, `f.sid`, `rt=c` |
+| `strip_anti_xssi()` | `StripAntiXSSI()` | Remove `)]}'\n` prefix |
+| `parse_chunked_response()` | `ParseChunkedResponse()` | Alternating byte_count/json lines |
+| `decode_response()` | `DecodeResponse()` | Full pipeline: strip → parse → extract |
+
+**Critical: JSON encoding must match Python exactly**
+```go
+// Python produces: [[[\"wXbhsf\",\"[]\",null,\"generic\"]]]
+// Go must produce identical output — test with fixtures from Python
+```
+
+**Testing strategy:**
+1. Capture real encoded requests from Python (`rpc/encoder.py`)
+2. Store as golden files in `testdata/fixtures/`
+3. Go encoder must produce byte-identical output
+4. Same for decoder: store real API responses, verify Go decodes identically
+
+**Exit criteria**: Encoder/decoder produce identical output to Python for all 34 RPC methods.
+
+---
+
+### Phase 3: Authentication
+
+**Goal**: Load cookies, extract CSRF/session tokens, browser login with chromedp.
+
+**Files to create:**
+```
+internal/auth/auth.go        # AuthTokens struct, LoadFromStorage, FetchTokens
+internal/auth/storage.go     # Read/write storage_state.json, cookie extraction
+internal/auth/browser.go     # chromedp login flow
+internal/auth/domains.go     # Regional Google domain whitelist (70+ domains)
+internal/auth/auth_test.go   # Mock HTML token extraction
+```
+
+**Port from Python:**
+| Python Function | Go Function |
+|----------------|-------------|
+| `AuthTokens.from_storage()` | `LoadAuthTokens(path)` |
+| `load_auth_from_storage()` | `LoadCookiesFromFile(path)` |
+| `extract_cookies_from_storage()` | `ExtractCookies(storageState)` |
+| `fetch_tokens()` | `FetchTokens(cookies)` |
+| `extract_csrf_from_html()` | `ExtractCSRF(html)` |
+| `extract_session_id_from_html()` | `ExtractSessionID(html)` |
+| `_is_google_domain()` | `IsGoogleDomain(domain)` |
+
+**chromedp browser login (replaces Playwright):**
+```go
+func BrowserLogin(ctx context.Context, storagePath string) error {
+    // 1. Create chromedp context with user data dir
+    opts := append(chromedp.DefaultExecAllocatorOptions[:],
+        chromedp.UserDataDir(browserProfileDir),
+        chromedp.Flag("disable-blink-features", "AutomationControlled"),
+    )
+    // 2. Navigate to notebooklm.google.com
+    // 3. Wait for user to login (poll for SID cookie)
+    // 4. Extract all cookies via network.GetAllCookies
+    // 5. Save to storage_state.json
+}
+```
+
+**Exit criteria**: Can login via browser, save cookies, load cookies, extract CSRF token.
+
+---
+
+### Phase 4: Core HTTP Client
+
+**Goal**: HTTP client with RPC call abstraction, auth refresh, retry logic.
+
+**Files to create:**
+```
+internal/core/client.go       # CoreClient: HTTP client, RPCCall(), auth refresh
+internal/core/client_test.go  # httptest mock server tests
+```
+
+**Port from Python `_core.py`:**
+| Python | Go |
+|--------|-----|
+| `ClientCore.__init__()` | `NewCoreClient(auth, opts...)` |
+| `ClientCore.rpc_call()` | `(c *CoreClient) RPCCall(ctx, method, params)` |
+| `ClientCore.open()` | Constructor (Go HTTP clients don't need explicit open) |
+| `ClientCore.close()` | `(c *CoreClient) Close()` |
+| `_build_url()` | `(c *CoreClient) buildURL(method, sourcePath)` |
+| Auth error detection | Middleware/retry with `ErrAuth` detection |
+| Request counter (`_reqid_counter`) | Atomic counter for chat API |
+| Conversation cache | `sync.Map` or `lru` cache |
+
+**Key difference from Python**: No async. Use `http.Client` directly.
+
+```go
+type CoreClient struct {
+    httpClient      *http.Client
+    auth            *AuthTokens
+    reqIDCounter    atomic.Int64
+    conversationLRU *lru.Cache
+    refreshMu       sync.Mutex  // prevents concurrent auth refresh
+}
+
+func (c *CoreClient) RPCCall(ctx context.Context, method RPCMethod, params []any) (any, error) {
+    body := rpc.BuildRequestBody(rpc.EncodeRPCRequest(method, params), c.auth.CSRFToken, c.auth.SessionID)
+    req, _ := http.NewRequestWithContext(ctx, "POST", rpc.BatchExecuteURL, strings.NewReader(body))
+    // ... set headers, cookies, execute, decode
+    // Auto-retry on auth error (refresh CSRF token)
+}
+```
+
+**Exit criteria**: Can make RPC calls, handle auth refresh, request counting works.
+
+---
+
+### Phase 5: Domain APIs (8 namespaces)
+
+**Goal**: Port all 8 API namespaces with full method parity.
+
+**Order** (by dependency — simplest first):
+
+| Order | API | Methods | Depends On |
+|-------|-----|---------|-----------|
+| 5a | Settings | 2 | core only |
+| 5b | Notebooks | 10 | core only |
+| 5c | Notes | 6 | notebooks |
+| 5d | Sources | 16 | notebooks |
+| 5e | Artifacts | 22 | notebooks, sources |
+| 5f | Chat | 4 | notebooks, sources |
+| 5g | Research | 3 | notebooks, sources |
+| 5h | Sharing | 6 | notebooks |
+
+**For each API namespace:**
+1. Create `internal/api/<name>.go` with all methods
+2. Create `internal/api/<name>_test.go` with table-driven tests
+3. Use `httptest` server that returns fixture responses
+4. Verify struct parsing matches Python behavior
+
+**Example: NotebooksAPI**
+```go
+type NotebooksAPI struct {
+    core *CoreClient
+}
+
+func (n *NotebooksAPI) List(ctx context.Context) ([]*Notebook, error) {
+    result, err := n.core.RPCCall(ctx, RPCListNotebooks, []any{})
+    if err != nil { return nil, err }
+    // Parse nested response into Notebook structs
+}
+
+func (n *NotebooksAPI) Create(ctx context.Context, title string) (*Notebook, error) { ... }
+func (n *NotebooksAPI) Delete(ctx context.Context, id string) error { ... }
+func (n *NotebooksAPI) Rename(ctx context.Context, id, title string) (*Notebook, error) { ... }
+// ... all 10 methods
+```
+
+**Exit criteria**: All 69 API methods ported, all unit tests passing.
+
+---
+
+### Phase 6: CLI Commands
+
+**Goal**: Port all ~60 CLI commands with identical UX.
+
+**Order** (mirrors user workflow):
+
+| Order | Commands | File |
+|-------|----------|------|
+| 6a | login, use, status, clear | `cli/session.go` |
+| 6b | list, create, delete, rename | `cli/notebook.go` |
+| 6c | source add/list/delete/... | `cli/source.go` |
+| 6d | ask, configure, history | `cli/chat.go` |
+| 6e | generate audio/video/... | `cli/generate.go` |
+| 6f | download audio/video/... | `cli/download.go` |
+| 6g | artifact list/get/delete/... | `cli/artifact.go` |
+| 6h | note create/list/get/... | `cli/note.go` |
+| 6i | share status/add/remove/... | `cli/share.go` |
+| 6j | research status/wait | `cli/research.go` |
+| 6k | language list/get/set | `cli/language.go` |
+
+**Reusable patterns (mirrors Python's `helpers.py` and `options.py`):**
+```go
+// Persistent flags (like Python's @notebook_option decorator)
+func addNotebookFlag(cmd *cobra.Command) {
+    cmd.PersistentFlags().StringP("notebook", "n", "", "Notebook ID (uses context if omitted)")
+}
+
+// Shared helper (like Python's require_notebook)
+func requireNotebook(cmd *cobra.Command) (string, error) {
+    nb, _ := cmd.Flags().GetString("notebook")
+    if nb != "" { return nb, nil }
+    return config.GetCurrentNotebook()
+}
+
+// JSON output mode (like Python's @json_option)
+func addJSONFlag(cmd *cobra.Command) {
+    cmd.PersistentFlags().Bool("json", false, "Output as JSON")
+}
+```
+
+**Exit criteria**: All commands work, `--help` matches Python, `--json` works everywhere.
+
+---
+
+### Phase 7: Distribution (see Section 6 for details)
+
+**Goal**: Ship binaries via GoReleaser, npm, brew.
+
+---
+
+### Phase 8: CI/CD + Upstream Tracking (see Section 7 for details)
+
+**Goal**: CI pipeline, coverage gates, upstream release monitoring.
