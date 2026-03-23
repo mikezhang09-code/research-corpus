@@ -613,3 +613,394 @@ func addJSONFlag(cmd *cobra.Command) {
 ### Phase 8: CI/CD + Upstream Tracking (see Section 7 for details)
 
 **Goal**: CI pipeline, coverage gates, upstream release monitoring.
+
+---
+
+## Section 5: Test Plan for 100% Feature Parity
+
+### Testing Strategy Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Level 1: Unit Tests (fast, no network)             │
+│  - Table-driven tests for all functions             │
+│  - Golden files for encoder/decoder                 │
+│  - Struct parsing from API response fixtures        │
+│  Coverage target: 90%+                              │
+├─────────────────────────────────────────────────────┤
+│  Level 2: Integration Tests (mock HTTP)             │
+│  - httptest server with fixture responses           │
+│  - go-vcr recorded cassettes                        │
+│  - Full API call → struct parsing pipeline          │
+│  Coverage: All 69 API methods                       │
+├─────────────────────────────────────────────────────┤
+│  Level 3: E2E Tests (real API, requires auth)       │
+│  - Real Google NotebookLM API calls                 │
+│  - Rate-limit aware (delays between tests)          │
+│  - Nightly CI run with auth secrets                 │
+│  Coverage: All user workflows                       │
+├─────────────────────────────────────────────────────┤
+│  Level 4: Parity Tests (Go vs Python comparison)    │
+│  - Same input → same output verification            │
+│  - CLI output snapshot comparison                   │
+│  - RPC encoding byte-identical check                │
+│  Coverage: Critical paths                           │
+└─────────────────────────────────────────────────────┘
+```
+
+### Level 1: Unit Tests
+
+**1a. RPC Encoder Tests** (`internal/rpc/encoder_test.go`)
+
+```go
+func TestEncodeRPCRequest(t *testing.T) {
+    tests := []struct {
+        name     string
+        method   RPCMethod
+        params   []any
+        wantJSON string // golden file path
+    }{
+        {"list notebooks", RPCListNotebooks, []any{}, "testdata/encode_list_notebooks.json"},
+        {"create notebook", RPCCreateNotebook, []any{"My Notebook"}, "testdata/encode_create.json"},
+        {"add source url", RPCAddSource, []any{"nb123", "https://example.com"}, "testdata/encode_add_url.json"},
+        // ... one entry per RPC method (34 total)
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := EncodeRPCRequest(tt.method, tt.params)
+            want := loadGoldenFile(t, tt.wantJSON)
+            assert.JSONEq(t, want, got)
+        })
+    }
+}
+```
+
+**1b. RPC Decoder Tests** (`internal/rpc/decoder_test.go`)
+
+```go
+func TestDecodeResponse(t *testing.T) {
+    tests := []struct {
+        name       string
+        fixture    string // raw API response from testdata/
+        rpcID      string
+        wantErr    bool
+        wantFields map[string]any
+    }{
+        {"notebook list", "testdata/resp_list_notebooks.txt", "wXbhsf", false, ...},
+        {"auth error", "testdata/resp_auth_error.txt", "wXbhsf", true, ...},
+        {"rate limited", "testdata/resp_rate_limit.txt", "R7cb6c", true, ...},
+        // ... one entry per response type
+    }
+}
+
+func TestStripAntiXSSI(t *testing.T) {
+    input := ")]}'\n[real data]"
+    assert.Equal(t, "[real data]", StripAntiXSSI(input))
+}
+
+func TestParseChunkedResponse(t *testing.T) {
+    // Test with real chunked response from fixture
+}
+```
+
+**1c. Struct Parsing Tests** (`internal/api/types_test.go`)
+
+```go
+func TestNotebookFromAPI(t *testing.T) {
+    // Raw nested array from real API response
+    raw := []any{"notebook-id-123", "My Notebook", nil, nil, 1234567890, 3, true}
+    nb, err := NotebookFromAPI(raw)
+    assert.NoError(t, err)
+    assert.Equal(t, "notebook-id-123", nb.ID)
+    assert.Equal(t, "My Notebook", nb.Title)
+    assert.Equal(t, 3, nb.SourcesCount)
+    assert.True(t, nb.IsOwner)
+}
+
+// Same pattern for: Source, Artifact, Note, ShareStatus, AskResult, etc.
+```
+
+**1d. Auth Tests** (`internal/auth/auth_test.go`)
+
+```go
+func TestExtractCSRF(t *testing.T) {
+    html := `<script>window.WIZ_global_data = {"SNlM0e":"AF1_QpN-abc123"}</script>`
+    csrf, err := ExtractCSRF(html)
+    assert.Equal(t, "AF1_QpN-abc123", csrf)
+}
+
+func TestIsGoogleDomain(t *testing.T) {
+    tests := []struct{ domain string; want bool }{
+        {".google.com", true},
+        {".google.co.uk", true},
+        {".google.com.sg", true},
+        {".evil.com", false},
+    }
+}
+
+func TestExtractCookies(t *testing.T) {
+    // Load sample storage_state.json, verify cookie extraction
+}
+```
+
+**1e. Config/Path Tests** (`internal/config/paths_test.go`)
+
+```go
+func TestGetHomeDirEnvOverride(t *testing.T) {
+    t.Setenv("NOTEBOOKLM_HOME", "/tmp/custom")
+    assert.Equal(t, "/tmp/custom", GetHomeDir())
+}
+
+func TestContextReadWrite(t *testing.T) {
+    dir := t.TempDir()
+    SetCurrentNotebook(dir, "nb-123", "Test Notebook")
+    id, _ := GetCurrentNotebook(dir)
+    assert.Equal(t, "nb-123", id)
+}
+```
+
+### Level 2: Integration Tests (go-vcr)
+
+**Recording cassettes (one-time, with real auth):**
+```bash
+NOTEBOOKLM_VCR_RECORD=1 go test ./internal/api/... -run TestIntegration
+```
+
+**Replaying (CI, no auth needed):**
+```bash
+go test ./internal/api/... -run TestIntegration
+```
+
+**Test structure:**
+```go
+func TestIntegration_NotebookList(t *testing.T) {
+    recorder := loadCassette(t, "testdata/cassettes/notebook_list")
+    defer recorder.Stop()
+
+    client := NewCoreClient(testAuth, WithHTTPClient(recorder.GetDefaultClient()))
+    notebooks := NewNotebooksAPI(client)
+
+    result, err := notebooks.List(context.Background())
+    assert.NoError(t, err)
+    assert.NotEmpty(t, result)
+    assert.NotEmpty(t, result[0].ID)
+}
+```
+
+**Cassettes to record (mirrors Python's `tests/cassettes/`):**
+- `notebook_list.yaml`, `notebook_create.yaml`, `notebook_delete.yaml`
+- `source_add_url.yaml`, `source_add_text.yaml`, `source_add_file.yaml`
+- `artifact_generate_audio.yaml`, `artifact_list.yaml`
+- `chat_ask.yaml`, `chat_followup.yaml`
+- `research_start.yaml`, `research_poll.yaml`
+- `note_create.yaml`, `note_list.yaml`
+- `sharing_status.yaml`, `sharing_add_user.yaml`
+- `settings_get_language.yaml`
+
+### Level 3: E2E Tests
+
+**Structure** (`tests/e2e/` — separate test binary):
+```go
+//go:build e2e
+
+func TestE2E_NotebookLifecycle(t *testing.T) {
+    client := mustCreateClient(t)
+
+    // Create
+    nb, err := client.Notebooks.Create(ctx, "E2E Test Notebook")
+    require.NoError(t, err)
+    defer client.Notebooks.Delete(ctx, nb.ID) // cleanup
+
+    // Rename
+    nb, err = client.Notebooks.Rename(ctx, nb.ID, "Renamed Notebook")
+    require.NoError(t, err)
+    assert.Equal(t, "Renamed Notebook", nb.Title)
+
+    // List
+    all, _ := client.Notebooks.List(ctx)
+    found := false
+    for _, n := range all { if n.ID == nb.ID { found = true } }
+    assert.True(t, found)
+}
+
+func TestE2E_SourceAddURL(t *testing.T) {
+    // Add URL source, wait for processing, verify ready
+}
+
+func TestE2E_ChatAsk(t *testing.T) {
+    // Ask question, verify answer, test follow-up
+}
+
+func TestE2E_GenerateAudio(t *testing.T) {
+    // Generate, poll, download
+}
+```
+
+**Rate limit handling (mirrors Python's delays):**
+```go
+const (
+    sourceProcessingDelay = 2 * time.Second
+    generationTestDelay   = 15 * time.Second
+    chatTestDelay         = 5 * time.Second
+)
+
+func TestE2E_GenerateAudio(t *testing.T) {
+    time.Sleep(generationTestDelay) // between generation tests
+    // ...
+}
+```
+
+**Running E2E:**
+```bash
+# Requires NOTEBOOKLM_AUTH_JSON secret
+go test -tags e2e ./tests/e2e/... -timeout 10m
+```
+
+### Level 4: Parity Tests (Go vs Python cross-validation)
+
+**Purpose**: Verify Go produces identical results to Python for critical operations.
+
+**4a. RPC Encoding Parity**
+```bash
+# Generate golden files from Python
+python -c "
+from notebooklm.rpc.encoder import encode_rpc_request
+from notebooklm.rpc.types import RPCMethod
+import json
+for method in RPCMethod:
+    result = encode_rpc_request(method, [])
+    with open(f'testdata/parity/encode_{method.name}.json', 'w') as f:
+        json.dump(result, f)
+"
+
+# Go tests verify against these golden files
+func TestParity_Encoding(t *testing.T) {
+    files, _ := filepath.Glob("testdata/parity/encode_*.json")
+    for _, f := range files {
+        // Compare Go output to Python golden file
+    }
+}
+```
+
+**4b. CLI Output Parity**
+```bash
+# Capture Python CLI output
+notebooklm list --json > testdata/parity/cli_list.json
+notebooklm source list --json -n $NB > testdata/parity/cli_source_list.json
+
+# Go CLI must produce identical JSON structure
+func TestParity_CLIListJSON(t *testing.T) {
+    golden := loadFile(t, "testdata/parity/cli_list.json")
+    // ... verify Go JSON output has same keys/structure
+}
+```
+
+**4c. Response Decoding Parity**
+```bash
+# Save raw API responses via Python
+# Go decoder must extract identical data from same raw response
+```
+
+### Feature Parity Checklist
+
+Every feature gets a test at each applicable level:
+
+| Feature | Unit | Integration | E2E | Parity |
+|---------|------|-------------|-----|--------|
+| **Notebooks** | | | | |
+| list | struct parsing | VCR cassette | real API | JSON output |
+| create | param encoding | VCR cassette | real API | - |
+| delete | param encoding | VCR cassette | real API | - |
+| rename | param encoding | VCR cassette | real API | - |
+| summary | response parsing | VCR cassette | real API | - |
+| metadata | struct + formatting | VCR cassette | real API | JSON output |
+| **Sources** | | | | |
+| add url | param encoding | VCR cassette | real API | - |
+| add text | param encoding | VCR cassette | real API | - |
+| add file | multipart encoding | VCR cassette | real API | - |
+| add youtube | URL detection | VCR cassette | real API | - |
+| list | struct parsing | VCR cassette | real API | JSON output |
+| delete | param encoding | VCR cassette | real API | - |
+| rename | param encoding | VCR cassette | real API | - |
+| refresh | param encoding | VCR cassette | real API | - |
+| fulltext | response parsing | VCR cassette | real API | - |
+| wait | polling logic | mock server | real API | - |
+| **Artifacts** | | | | |
+| generate audio | param encoding | VCR cassette | real API | - |
+| generate video | param encoding | VCR cassette | real API | - |
+| generate quiz | param encoding | VCR cassette | real API | - |
+| generate flashcards | param encoding | VCR cassette | real API | - |
+| generate infographic | param encoding | VCR cassette | real API | - |
+| generate slides | param encoding | VCR cassette | real API | - |
+| generate mind-map | param encoding | VCR cassette | real API | - |
+| generate data-table | param encoding | VCR cassette | real API | - |
+| generate report | param encoding | VCR cassette | real API | - |
+| download audio | file writing | VCR cassette | real API | - |
+| download video | file writing | VCR cassette | real API | - |
+| download infographic | file writing | VCR cassette | real API | - |
+| download slides | file writing | VCR cassette | real API | - |
+| list | struct parsing | VCR cassette | real API | JSON output |
+| wait/poll | polling logic | mock server | real API | - |
+| **Chat** | | | | |
+| ask | param encoding | VCR cassette | real API | - |
+| follow-up | conversation ID | VCR cassette | real API | - |
+| source filter | param encoding | VCR cassette | real API | - |
+| citations | reference parsing | VCR cassette | real API | - |
+| history | response parsing | VCR cassette | real API | - |
+| **Notes** | | | | |
+| create | param encoding | VCR cassette | real API | - |
+| list | struct parsing | VCR cassette | real API | JSON output |
+| update | param encoding | VCR cassette | real API | - |
+| delete | param encoding | VCR cassette | real API | - |
+| **Sharing** | | | | |
+| status | struct parsing | VCR cassette | real API | JSON output |
+| add user | param encoding | VCR cassette | real API | - |
+| update user | param encoding | VCR cassette | real API | - |
+| remove user | param encoding | VCR cassette | real API | - |
+| **Research** | | | | |
+| start | param encoding | VCR cassette | real API | - |
+| poll | response parsing | VCR cassette | real API | - |
+| import | param encoding | VCR cassette | real API | - |
+| **Auth** | | | | |
+| cookie loading | file parsing | - | browser login | - |
+| CSRF extraction | regex parsing | mock server | real API | - |
+| auth refresh | retry logic | mock server | real API | - |
+| regional domains | domain validation | - | - | - |
+| **CLI** | | | | |
+| all commands | flag parsing | - | manual | output parity |
+| --json mode | JSON formatting | - | manual | JSON parity |
+| --help | help text | - | - | - |
+| partial IDs | ID resolution | mock server | real API | - |
+| exit codes | error handling | - | - | - |
+
+### CI Pipeline
+
+```yaml
+# .github/workflows/test.yml
+name: Test
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: golangci/golangci-lint-action@v6
+
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ['1.22', '1.23']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-go@v5
+      - run: go test -race -coverprofile=coverage.txt ./...
+      - run: go tool cover -func=coverage.txt  # enforce 90%+
+
+  e2e:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'  # nightly only
+    steps:
+      - run: go test -tags e2e ./tests/e2e/... -timeout 10m
+        env:
+          NOTEBOOKLM_AUTH_JSON: ${{ secrets.NOTEBOOKLM_AUTH_JSON }}
+```
