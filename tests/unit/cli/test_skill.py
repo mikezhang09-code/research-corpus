@@ -148,7 +148,11 @@ class TestSkillStatus:
         """Test status when both targets are installed with the current version."""
         home = tmp_path / "home"
         version = "1.2.3"
-        for subdir in [".claude/skills/notebooklm", ".gemini/skills/notebooklm", ".agents/skills/notebooklm"]:
+        for subdir in [
+            ".claude/skills/notebooklm",
+            ".gemini/skills/notebooklm",
+            ".agents/skills/notebooklm",
+        ]:
             dest = home / subdir / "SKILL.md"
             dest.parent.mkdir(parents=True)
             dest.write_text(f"<!-- notebooklm-py v{version} -->\n# Test")
@@ -187,7 +191,11 @@ class TestSkillUninstall:
     def test_skill_uninstall_all_targets_removes_both(self, runner, tmp_path):
         """Test that uninstall --target all removes both targets and cleans empty dirs."""
         home = tmp_path / "home"
-        for subdir in [".claude/skills/notebooklm", ".gemini/skills/notebooklm", ".agents/skills/notebooklm"]:
+        for subdir in [
+            ".claude/skills/notebooklm",
+            ".gemini/skills/notebooklm",
+            ".agents/skills/notebooklm",
+        ]:
             dest = home / subdir / "SKILL.md"
             dest.parent.mkdir(parents=True)
             dest.write_text("# Test")
