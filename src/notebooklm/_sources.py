@@ -676,9 +676,9 @@ class SourcesAPI:
             source_id: The source ID to get fulltext for.
             format: Content format - ``"text"`` (default) returns flattened
                 plaintext, ``"markdown"`` returns the source with headings,
-                tables, links, and emphasis preserved.  The markdown path
+                tables, links, and emphasis preserved. The markdown format
                 requires the ``markdownify`` package (``pip install
-                markdownify``).
+                'notebooklm-py[markdown]'``).
 
         Returns:
             SourceFulltext object with content, title, source_type, url, and char_count.
