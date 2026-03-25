@@ -734,7 +734,13 @@ class SourcesAPI:
                 if len(result) > 4 and isinstance(result[4], list) and len(result[4]) > 1:
                     html_content = result[4][1]
                     if isinstance(html_content, str):
-                        from markdownify import markdownify as md
+                        try:
+                            from markdownify import markdownify as md
+                        except ImportError:
+                            raise ImportError(
+                                "The 'markdown' format requires the 'markdownify' package. "
+                                "Please install it with: pip install 'notebooklm-py[markdown]'"
+                            ) from None
 
                         content = md(html_content, heading_style="ATX")
             else:
