@@ -625,20 +625,28 @@ def source_add_research(
 )
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @click.option("--output", "-o", type=click.Path(), help="Write content to file")
+@click.option(
+    "--format",
+    "-f",
+    "content_format",
+    type=click.Choice(["text", "markdown"]),
+    default="text",
+    help="Content format: text (default) or markdown",
+)
 @with_client
-def source_fulltext(ctx, source_id, notebook_id, json_output, output, client_auth):
-    """Get full indexed text content of a source.
+def source_fulltext(ctx, source_id, notebook_id, json_output, output, content_format, client_auth):
+    """Get full content of a source.
 
-    Retrieves the complete text content as indexed by NotebookLM. This is the
-    actual text that NotebookLM uses when answering questions about this source.
+    Retrieves the complete content from NotebookLM. Use --format markdown to get
+    a rich version with headings, tables, links, and emphasis preserved.
 
     SOURCE_ID can be a full UUID or a partial prefix (e.g., 'abc' matches 'abc123...').
 
     \b
     Examples:
-      source fulltext abc123                    # Show fulltext in terminal
-      source fulltext abc123 --json             # Output as JSON
-      source fulltext abc123 -o content.txt     # Save to file
+      source fulltext abc123                        # Show plaintext in terminal
+      source fulltext abc123 -f markdown -o out.md  # Save markdown to file
+      source fulltext abc123 --json                 # Output as JSON
     """
     nb_id = require_notebook(notebook_id)
 
@@ -648,7 +656,9 @@ def source_fulltext(ctx, source_id, notebook_id, json_output, output, client_aut
             resolved_id = await resolve_source_id(client, nb_id_resolved, source_id)
 
             with console.status("Fetching fulltext content..."):
-                fulltext = await client.sources.get_fulltext(nb_id_resolved, resolved_id)
+                fulltext = await client.sources.get_fulltext(
+                    nb_id_resolved, resolved_id, format=content_format
+                )
 
             if json_output:
                 from dataclasses import asdict
