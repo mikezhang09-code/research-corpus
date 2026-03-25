@@ -49,7 +49,7 @@ dev = [
     "ruff>=0.4.0",
     "vcrpy>=6.0.0",
 ]
-all = ["notebooklm-py[browser,dev]"]
+all = ["notebooklm-py[browser,dev,markdown]"]
 
 [project.scripts]
 notebooklm = "notebooklm.notebooklm_cli:main"
