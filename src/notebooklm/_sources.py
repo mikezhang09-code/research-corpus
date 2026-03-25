@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from time import monotonic
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -667,14 +667,18 @@ class SourcesAPI:
         return {"summary": summary, "keywords": keywords}
 
     async def get_fulltext(
-        self, notebook_id: str, source_id: str, *, format: str = "text"
+        self,
+        notebook_id: str,
+        source_id: str,
+        *,
+        output_format: Literal["text", "markdown"] = "text",
     ) -> SourceFulltext:
         """Get the full content of a source.
 
         Args:
             notebook_id: The notebook ID.
             source_id: The source ID to get fulltext for.
-            format: Content format - ``"text"`` (default) returns flattened
+            output_format: Content format - ``"text"`` (default) returns flattened
                 plaintext, ``"markdown"`` returns the source with headings,
                 tables, links, and emphasis preserved. The markdown format
                 requires the ``markdownify`` package (``pip install
@@ -694,11 +698,11 @@ class SourcesAPI:
             from the API (params ``[3],[3]`` instead of ``[2],[2]``) and
             converting it via *markdownify*.
         """
-        if format not in ("text", "markdown"):
-            raise ValueError(f"Invalid format: '{format}'. Must be 'text' or 'markdown'.")
+        if output_format not in ("text", "markdown"):
+            raise ValueError(f"Invalid format: '{output_format}'. Must be 'text' or 'markdown'.")
 
         # [3],[3] returns HTML at result[4][1]; [2],[2] returns plaintext at result[3][0]
-        params = [[source_id], [3], [3]] if format == "markdown" else [[source_id], [2], [2]]
+        params = [[source_id], [3], [3]] if output_format == "markdown" else [[source_id], [2], [2]]
 
         result = await self._core.rpc_call(
             RPCMethod.GET_SOURCE,
@@ -732,7 +736,7 @@ class SourcesAPI:
                         if len(result[0][2][7]) > 0:
                             url = result[0][2][7][0]
 
-            if format == "markdown":
+            if output_format == "markdown":
                 # HTML content at result[4][1]
                 if len(result) > 4 and isinstance(result[4], list) and len(result[4]) > 1:
                     html_content = result[4][1]

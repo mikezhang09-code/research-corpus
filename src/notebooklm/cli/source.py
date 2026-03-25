@@ -657,7 +657,7 @@ def source_fulltext(ctx, source_id, notebook_id, json_output, output, content_fo
 
             with console.status("Fetching fulltext content..."):
                 fulltext = await client.sources.get_fulltext(
-                    nb_id_resolved, resolved_id, format=content_format
+                    nb_id_resolved, resolved_id, output_format=content_format
                 )
 
             if json_output:
