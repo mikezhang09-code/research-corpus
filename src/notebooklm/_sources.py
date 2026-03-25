@@ -694,6 +694,9 @@ class SourcesAPI:
             from the API (params ``[3],[3]`` instead of ``[2],[2]``) and
             converting it via *markdownify*.
         """
+        if format not in ("text", "markdown"):
+            raise ValueError(f"Invalid format: '{format}'. Must be 'text' or 'markdown'.")
+
         # [3],[3] returns HTML at result[4][1]; [2],[2] returns plaintext at result[3][0]
         params = [[source_id], [3], [3]] if format == "markdown" else [[source_id], [2], [2]]
 
