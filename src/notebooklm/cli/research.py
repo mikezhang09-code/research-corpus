@@ -12,6 +12,7 @@ import click
 from ..client import NotebookLMClient
 from .helpers import (
     console,
+    deduplicate_research_sources,
     display_report,
     display_research_sources,
     import_with_retry,
@@ -188,16 +189,27 @@ def research_wait(ctx, notebook_id, timeout, interval, import_all, json_output, 
                     "report": report,
                 }
                 if import_all and sources and task_id:
-                    imported = await import_with_retry(
+                    sources = await deduplicate_research_sources(
                         client,
                         nb_id_resolved,
-                        task_id,
                         sources,
-                        max_elapsed=timeout,
                         json_output=True,
                     )
-                    result["imported"] = len(imported)
-                    result["imported_sources"] = imported
+                    if sources:
+                        imported = await import_with_retry(
+                            client,
+                            nb_id_resolved,
+                            task_id,
+                            sources,
+                            max_elapsed=timeout,
+                            json_output=True,
+                        )
+                        result["imported"] = len(imported)
+                        result["imported_sources"] = imported
+                    else:
+                        result["imported"] = 0
+                        result["imported_sources"] = []
+                        result["deduplicated"] = True
                 json_output_response(result)
             else:
                 console.print(f"[green]✓ Research completed:[/green] {query}")
@@ -206,14 +218,22 @@ def research_wait(ctx, notebook_id, timeout, interval, import_all, json_output, 
                 display_report(report)
 
                 if import_all and sources and task_id:
-                    with console.status("Importing sources..."):
-                        imported = await import_with_retry(
-                            client,
-                            nb_id_resolved,
-                            task_id,
-                            sources,
-                            max_elapsed=timeout,
-                        )
-                    console.print(f"[green]Imported {len(imported)} sources[/green]")
+                    sources = await deduplicate_research_sources(
+                        client,
+                        nb_id_resolved,
+                        sources,
+                    )
+                    if sources:
+                        with console.status("Importing sources..."):
+                            imported = await import_with_retry(
+                                client,
+                                nb_id_resolved,
+                                task_id,
+                                sources,
+                                max_elapsed=timeout,
+                            )
+                        console.print(f"[green]Imported {len(imported)} sources[/green]")
+                    else:
+                        console.print("[green]All sources already in notebook[/green]")
 
     return _run()

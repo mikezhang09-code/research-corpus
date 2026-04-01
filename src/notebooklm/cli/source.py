@@ -27,6 +27,7 @@ from ..client import NotebookLMClient
 from ..types import source_status_to_str
 from .helpers import (
     console,
+    deduplicate_research_sources,
     display_report,
     display_research_sources,
     get_source_type_display,
@@ -601,13 +602,21 @@ def source_add_research(
                 display_report(status.get("report", ""), json_hint=False)
 
                 if import_all and sources and task_id:
-                    imported = await import_with_retry(
+                    sources = await deduplicate_research_sources(
                         client,
                         nb_id_resolved,
-                        task_id,
                         sources,
                     )
-                    console.print(f"[green]Imported {len(imported)} sources[/green]")
+                    if sources:
+                        imported = await import_with_retry(
+                            client,
+                            nb_id_resolved,
+                            task_id,
+                            sources,
+                        )
+                        console.print(f"[green]Imported {len(imported)} sources[/green]")
+                    else:
+                        console.print("[green]All sources already in notebook[/green]")
             else:
                 console.print(f"[yellow]Status: {status.get('status', 'unknown')}[/yellow]")
 

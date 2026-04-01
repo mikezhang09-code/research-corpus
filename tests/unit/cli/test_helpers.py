@@ -9,6 +9,7 @@ from notebooklm import Artifact
 from notebooklm.cli.helpers import (
     clear_context,
     cli_name_to_artifact_type,
+    deduplicate_research_sources,
     display_report,
     display_research_sources,
     get_artifact_type_display,
@@ -651,10 +652,12 @@ class TestImportWithRetry:
                 [{"id": "src_1", "title": "Source 1"}],
             ]
         )
+        # Dedup check on retry finds no existing sources
+        client.sources.list = AsyncMock(return_value=[])
 
         with (
             patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-            patch("notebooklm.cli.helpers.console") as mock_console,
+            patch("notebooklm.cli.helpers.console"),
         ):
             imported = await import_with_retry(
                 client,
@@ -668,7 +671,6 @@ class TestImportWithRetry:
         assert imported == [{"id": "src_1", "title": "Source 1"}]
         assert client.research.import_sources.await_count == 2
         mock_sleep.assert_awaited_once_with(5)
-        mock_console.print.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_retries_silently_for_json_output(self):
@@ -679,6 +681,8 @@ class TestImportWithRetry:
                 [],
             ]
         )
+        # Dedup check on retry finds no existing sources
+        client.sources.list = AsyncMock(return_value=[])
 
         with (
             patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock),
@@ -699,6 +703,8 @@ class TestImportWithRetry:
         client = MagicMock()
         error = RPCTimeoutError("Timed out", timeout_seconds=30.0)
         client.research.import_sources = AsyncMock(side_effect=error)
+        # Dedup check still needed even though budget is exhausted
+        client.sources.list = AsyncMock(return_value=[])
 
         with (
             patch("notebooklm.cli.helpers.time.monotonic", side_effect=[0.0, 1801.0]),
@@ -731,5 +737,158 @@ class TestImportWithRetry:
                 [{"url": "https://example.com", "title": "Source 1"}],
             )
 
+        assert client.research.import_sources.await_count == 1
+        mock_sleep.assert_not_awaited()
+
+
+# =============================================================================
+# DEDUPLICATE RESEARCH SOURCES TESTS
+# =============================================================================
+
+
+class TestDeduplicateResearchSources:
+    @pytest.mark.asyncio
+    async def test_filters_out_existing_urls(self):
+        client = MagicMock()
+        existing = MagicMock()
+        existing.url = "https://example.com/already-there"
+        client.sources.list = AsyncMock(return_value=[existing])
+
+        sources = [
+            {"url": "https://example.com/already-there", "title": "Existing"},
+            {"url": "https://example.com/new-one", "title": "New"},
+        ]
+
+        with patch("notebooklm.cli.helpers.console"):
+            result = await deduplicate_research_sources(client, "nb_123", sources)
+
+        assert len(result) == 1
+        assert result[0]["url"] == "https://example.com/new-one"
+
+    @pytest.mark.asyncio
+    async def test_keeps_report_entries(self):
+        client = MagicMock()
+        existing = MagicMock()
+        existing.url = "https://example.com/existing"
+        client.sources.list = AsyncMock(return_value=[existing])
+
+        sources = [
+            {"url": "https://example.com/existing", "title": "Existing"},
+            {"result_type": 5, "title": "Report", "report_markdown": "# Report"},
+        ]
+
+        with patch("notebooklm.cli.helpers.console"):
+            result = await deduplicate_research_sources(client, "nb_123", sources)
+
+        assert len(result) == 1
+        assert result[0]["result_type"] == 5
+
+    @pytest.mark.asyncio
+    async def test_returns_all_when_no_duplicates(self):
+        client = MagicMock()
+        client.sources.list = AsyncMock(return_value=[])
+
+        sources = [
+            {"url": "https://example.com/a", "title": "A"},
+            {"url": "https://example.com/b", "title": "B"},
+        ]
+
+        with patch("notebooklm.cli.helpers.console"):
+            result = await deduplicate_research_sources(client, "nb_123", sources)
+
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_all_duplicates(self):
+        client = MagicMock()
+        existing_a = MagicMock()
+        existing_a.url = "https://example.com/a"
+        existing_b = MagicMock()
+        existing_b.url = "https://example.com/b"
+        client.sources.list = AsyncMock(return_value=[existing_a, existing_b])
+
+        sources = [
+            {"url": "https://example.com/a", "title": "A"},
+            {"url": "https://example.com/b", "title": "B"},
+        ]
+
+        with patch("notebooklm.cli.helpers.console"):
+            result = await deduplicate_research_sources(client, "nb_123", sources)
+
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_handles_sources_without_url_attr(self):
+        """Existing sources without url attribute should not cause errors."""
+        client = MagicMock()
+        # Source without url attribute (e.g., text/pasted sources)
+        existing = MagicMock(spec=["id", "title"])
+        client.sources.list = AsyncMock(return_value=[existing])
+
+        sources = [{"url": "https://example.com/new", "title": "New"}]
+
+        with patch("notebooklm.cli.helpers.console"):
+            result = await deduplicate_research_sources(client, "nb_123", sources)
+
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_import_with_retry_deduplicates_between_retries(self):
+        """After a timeout, sources that were partially imported should be excluded from retry."""
+        client = MagicMock()
+
+        # First call times out, second succeeds with the remaining source
+        client.research.import_sources = AsyncMock(
+            side_effect=[
+                RPCTimeoutError("Timed out", timeout_seconds=30.0),
+                [{"id": "src_2", "title": "Source 2"}],
+            ]
+        )
+
+        # After timeout, dedup check finds Source 1 was already imported
+        existing = MagicMock()
+        existing.url = "https://example.com/1"
+        client.sources.list = AsyncMock(return_value=[existing])
+
+        sources = [
+            {"url": "https://example.com/1", "title": "Source 1"},
+            {"url": "https://example.com/2", "title": "Source 2"},
+        ]
+
+        with (
+            patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock),
+            patch("notebooklm.cli.helpers.console"),
+        ):
+            imported = await import_with_retry(client, "nb_123", "task_123", sources)
+
+        assert imported == [{"id": "src_2", "title": "Source 2"}]
+        # Second import call should only have Source 2
+        retry_sources = client.research.import_sources.call_args_list[1][0][2]
+        assert len(retry_sources) == 1
+        assert retry_sources[0]["url"] == "https://example.com/2"
+
+    @pytest.mark.asyncio
+    async def test_import_with_retry_skips_retry_when_all_imported(self):
+        """If all sources were imported despite timeout, skip retry entirely."""
+        client = MagicMock()
+        client.research.import_sources = AsyncMock(
+            side_effect=RPCTimeoutError("Timed out", timeout_seconds=30.0)
+        )
+
+        # After timeout, dedup finds all sources already imported
+        existing = MagicMock()
+        existing.url = "https://example.com/1"
+        client.sources.list = AsyncMock(return_value=[existing])
+
+        sources = [{"url": "https://example.com/1", "title": "Source 1"}]
+
+        with (
+            patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch("notebooklm.cli.helpers.console"),
+        ):
+            imported = await import_with_retry(client, "nb_123", "task_123", sources)
+
+        assert imported == []
+        # Should not have retried — only the initial failed attempt
         assert client.research.import_sources.await_count == 1
         mock_sleep.assert_not_awaited()

@@ -76,6 +76,60 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
+async def deduplicate_research_sources(
+    client,
+    notebook_id: str,
+    sources: list[dict],
+    *,
+    json_output: bool = False,
+) -> list[dict]:
+    """Filter out research sources that already exist in the notebook.
+
+    Compares research source URLs against existing notebook sources to prevent
+    duplicate imports. Report entries (result_type=5) are always kept since
+    they have no URL to deduplicate against.
+
+    This is intentionally CLI-only policy. Library consumers calling
+    `client.research.import_sources()` directly still get one-shot behavior.
+
+    Args:
+        client: NotebookLM client instance.
+        notebook_id: The notebook ID.
+        sources: Research sources to filter.
+        json_output: If True, suppress console output.
+
+    Returns:
+        Filtered list of sources not already present in the notebook.
+    """
+    existing_sources = await client.sources.list(notebook_id)
+    existing_urls = {getattr(s, "url", None) for s in existing_sources}
+    existing_urls.discard(None)
+
+    new_sources = []
+    skipped = 0
+    for src in sources:
+        # Always keep report entries (no URL to deduplicate)
+        if src.get("result_type") == 5:
+            new_sources.append(src)
+            continue
+        url = src.get("url")
+        if url and url in existing_urls:
+            skipped += 1
+        else:
+            new_sources.append(src)
+
+    if skipped > 0:
+        logger.info(
+            "Deduplicated %d source(s) already present in notebook %s",
+            skipped,
+            notebook_id,
+        )
+        if not json_output:
+            console.print(f"[dim]Skipped {skipped} source(s) already in notebook[/dim]")
+
+    return new_sources
+
+
 async def import_with_retry(
     client,
     notebook_id: str,
@@ -106,18 +160,36 @@ async def import_with_retry(
             if remaining <= 0:
                 raise
 
+            # Before retrying, remove sources that were already imported
+            # (the timed-out call may have partially succeeded server-side)
+            sources = await deduplicate_research_sources(
+                client,
+                notebook_id,
+                sources,
+                json_output=json_output,
+            )
+            if not sources:
+                logger.info(
+                    "All sources already imported after timeout; skipping retry for notebook %s",
+                    notebook_id,
+                )
+                if not json_output:
+                    console.print("[green]All sources already imported[/green]")
+                return []
+
             sleep_for = min(delay, max_delay, remaining)
             logger.warning(
-                "IMPORT_RESEARCH timed out for notebook %s; retrying in %.1fs (attempt %d, %.1fs elapsed)",
+                "IMPORT_RESEARCH timed out for notebook %s; retrying in %.1fs (attempt %d, %.1fs elapsed, %d sources remaining)",
                 notebook_id,
                 sleep_for,
                 attempt + 1,
                 elapsed,
+                len(sources),
             )
             if not json_output:
                 console.print(
                     f"[yellow]Import timed out; retrying in {sleep_for:.0f}s "
-                    f"(attempt {attempt + 1})[/yellow]"
+                    f"(attempt {attempt + 1}, {len(sources)} sources remaining)[/yellow]"
                 )
             await asyncio.sleep(sleep_for)
             delay = min(delay * backoff_factor, max_delay)
