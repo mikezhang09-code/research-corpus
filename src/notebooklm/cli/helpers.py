@@ -76,6 +76,51 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
+def filter_unsupported_sources(sources: list[dict], *, json_output: bool = False) -> list[dict]:
+    """Pre-filter sources that NotebookLM cannot import as web pages.
+
+    Removes direct PDF/document URLs and known bot-protected domains
+    that consistently result in error status after import.
+    """
+    PDF_EXTENSIONS = (".pdf", ".docx", ".xlsx", ".pptx", ".zip")
+    BLOCKED_PATTERNS = ("/fileadmin/", "/download/", "/sites/default/files/", "/SharedDocs/Downloads/")
+
+    filtered = []
+    skipped = []
+    for s in sources:
+        url = (s.get("url") or "").lower()
+        if url.endswith(PDF_EXTENSIONS) or any(p in url for p in BLOCKED_PATTERNS):
+            skipped.append(s)
+        else:
+            filtered.append(s)
+
+    if skipped and not json_output:
+        console.print(
+            f"[dim]Skipping {len(skipped)} unsupported source(s) (PDFs/downloads) before import[/dim]"
+        )
+    return filtered
+
+
+async def cleanup_error_sources(client, notebook_id: str, *, json_output: bool = False) -> int:
+    """Delete all sources with error status from a notebook.
+
+    Returns the number of deleted sources.
+    """
+    try:
+        sources = await client.sources.list(notebook_id)
+        error_ids = [s.get("id") for s in sources if s.get("status") == "error" and s.get("id")]
+        for source_id in error_ids:
+            try:
+                await client.sources.delete(notebook_id, source_id)
+            except Exception:
+                pass
+        if error_ids and not json_output:
+            console.print(f"[dim]Removed {len(error_ids)} failed source(s) after import[/dim]")
+        return len(error_ids)
+    except Exception:
+        return 0
+
+
 async def import_with_retry(
     client,
     notebook_id: str,
@@ -96,10 +141,11 @@ async def import_with_retry(
     started_at = time.monotonic()
     delay = initial_delay
     attempt = 1
+    pending_sources = list(sources)
 
     while True:
         try:
-            return await client.research.import_sources(notebook_id, task_id, sources)
+            return await client.research.import_sources(notebook_id, task_id, pending_sources)
         except RPCTimeoutError:
             elapsed = time.monotonic() - started_at
             remaining = max_elapsed - elapsed
@@ -107,6 +153,13 @@ async def import_with_retry(
                 raise
 
             sleep_for = min(delay, max_delay, remaining)
+            # Filter out sources already imported to avoid duplicates on retry
+            try:
+                existing = await client.sources.list(notebook_id)
+                existing_urls = {s.get("url") for s in existing if s.get("url")}
+                pending_sources = [s for s in pending_sources if s.get("url") not in existing_urls]
+            except Exception:
+                pass  # If listing fails, retry with original list
             logger.warning(
                 "IMPORT_RESEARCH timed out for notebook %s; retrying in %.1fs (attempt %d, %.1fs elapsed)",
                 notebook_id,

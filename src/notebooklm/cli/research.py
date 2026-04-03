@@ -11,9 +11,11 @@ import click
 
 from ..client import NotebookLMClient
 from .helpers import (
+    cleanup_error_sources,
     console,
     display_report,
     display_research_sources,
+    filter_unsupported_sources,
     import_with_retry,
     json_output_response,
     require_notebook,
@@ -188,16 +190,19 @@ def research_wait(ctx, notebook_id, timeout, interval, import_all, json_output, 
                     "report": report,
                 }
                 if import_all and sources and task_id:
+                    filtered_sources = filter_unsupported_sources(sources, json_output=True)
                     imported = await import_with_retry(
                         client,
                         nb_id_resolved,
                         task_id,
-                        sources,
+                        filtered_sources,
                         max_elapsed=timeout,
                         json_output=True,
                     )
+                    removed = await cleanup_error_sources(client, nb_id_resolved, json_output=True)
                     result["imported"] = len(imported)
                     result["imported_sources"] = imported
+                    result["error_sources_removed"] = removed
                 json_output_response(result)
             else:
                 console.print(f"[green]✓ Research completed:[/green] {query}")
@@ -206,14 +211,16 @@ def research_wait(ctx, notebook_id, timeout, interval, import_all, json_output, 
                 display_report(report)
 
                 if import_all and sources and task_id:
+                    filtered_sources = filter_unsupported_sources(sources)
                     with console.status("Importing sources..."):
                         imported = await import_with_retry(
                             client,
                             nb_id_resolved,
                             task_id,
-                            sources,
+                            filtered_sources,
                             max_elapsed=timeout,
                         )
                     console.print(f"[green]Imported {len(imported)} sources[/green]")
+                    await cleanup_error_sources(client, nb_id_resolved)
 
     return _run()
