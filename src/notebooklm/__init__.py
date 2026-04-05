@@ -47,7 +47,7 @@ from ._cache import CacheConfig, CacheMiddleware
 from ._living_docs import LivingDoc, LivingDocsAPI, StaleCheckResult, SyncResult
 
 # Public API: Authentication
-from .auth import DEFAULT_STORAGE_PATH, AuthTokens
+from .auth import DEFAULT_STORAGE_PATH, AuthTokens, check_auth_health
 
 # Public API: Client
 from .client import NotebookLMClient
@@ -149,6 +149,7 @@ __all__ = [
     # Auth
     "AuthTokens",
     "DEFAULT_STORAGE_PATH",
+    "check_auth_health",
     # Types
     "Notebook",
     "NotebookDescription",

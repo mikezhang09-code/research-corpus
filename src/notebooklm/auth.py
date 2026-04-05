@@ -642,3 +642,55 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str, str]:
 
         logger.debug("Authentication tokens obtained successfully")
         return csrf, session_id, build_label
+
+
+async def check_auth_health(cookies: dict[str, str] | None = None) -> dict[str, str]:
+    """Quick health check for NotebookLM authentication.
+
+    Makes a lightweight request to NotebookLM to verify cookies are still valid
+    without extracting full tokens. Useful for monitoring and worker health checks.
+
+    Args:
+        cookies: Dict of Google auth cookies. If None, loads from storage.
+
+    Returns:
+        Dict with status info: {"status": "ok"|"expired"|"error", "message": "..."}
+    """
+    try:
+        if cookies is None:
+            cookies = load_auth_from_storage()
+    except (FileNotFoundError, ValueError) as e:
+        return {"status": "error", "message": str(e)}
+
+    cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://notebooklm.google.com/",
+                headers={"Cookie": cookie_header},
+                follow_redirects=True,
+                timeout=15.0,
+            )
+
+            final_url = str(response.url)
+
+            if is_google_auth_redirect(final_url):
+                return {"status": "expired", "message": "Redirected to login page"}
+
+            if contains_google_auth_redirect(response.text):
+                return {"status": "expired", "message": "Page contains auth redirect"}
+
+            # Check if we can find the CSRF token (proves auth is working)
+            if re.search(r'"SNlM0e"\s*:\s*"([^"]+)"', response.text):
+                return {"status": "ok", "message": "Authentication valid"}
+
+            return {
+                "status": "expired",
+                "message": "CSRF token not found - session may be expired",
+            }
+
+    except httpx.HTTPError as e:
+        return {"status": "error", "message": f"HTTP error: {e}"}
+    except Exception as e:
+        return {"status": "error", "message": f"Unexpected error: {e}"}

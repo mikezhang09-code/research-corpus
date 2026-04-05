@@ -193,7 +193,7 @@ class NotebookLMClient:
             raise ValueError("Authentication expired. Run 'notebooklm login' to re-authenticate.")
 
         # Extract SNlM0e (CSRF token) - REQUIRED
-        csrf_match = re.search(r'"SNlM0e":"([^"]+)"', response.text)
+        csrf_match = re.search(r'"SNlM0e"\s*:\s*"([^"]+)"', response.text)
         if not csrf_match:
             raise ValueError(
                 "Failed to extract CSRF token (SNlM0e). "
@@ -202,7 +202,7 @@ class NotebookLMClient:
         self._core.auth.csrf_token = csrf_match.group(1)
 
         # Extract FdrFJe (Session ID) - REQUIRED
-        sid_match = re.search(r'"FdrFJe":"([^"]+)"', response.text)
+        sid_match = re.search(r'"FdrFJe"\s*:\s*"([^"]+)"', response.text)
         if not sid_match:
             raise ValueError(
                 "Failed to extract session ID (FdrFJe). "
