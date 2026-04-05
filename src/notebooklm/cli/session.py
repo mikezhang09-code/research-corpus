@@ -505,7 +505,7 @@ def register_session_commands(cli):
             try:
                 context = p.chromium.launch_persistent_context(**launch_kwargs)
 
-                page = context.pages[0] if context.pages else context.new_page()
+                page = context.pages[0] if context.pages else _recover_page(context, console)
 
                 # Retry navigation on transient connection errors with backoff
                 for attempt in range(1, LOGIN_MAX_RETRIES + 1):
@@ -529,12 +529,19 @@ def register_session_commands(cli):
                             logger.debug(
                                 f"Retryable error on attempt {attempt}/{LOGIN_MAX_RETRIES}: {error_str}"
                             )
-                            console.print(
-                                f"[yellow]Connection interrupted "
-                                f"(attempt {attempt}/{LOGIN_MAX_RETRIES}). "
-                                f"Retrying in {backoff_seconds}s...[/yellow]"
-                            )
-                            time.sleep(backoff_seconds)
+                            if is_target_closed:
+                                console.print(
+                                    f"[yellow]Browser page closed "
+                                    f"(attempt {attempt}/{LOGIN_MAX_RETRIES}). "
+                                    f"Retrying with fresh page...[/yellow]"
+                                )
+                            else:
+                                console.print(
+                                    f"[yellow]Connection interrupted "
+                                    f"(attempt {attempt}/{LOGIN_MAX_RETRIES}). "
+                                    f"Retrying in {backoff_seconds}s...[/yellow]"
+                                )
+                                time.sleep(backoff_seconds)
                         elif is_target_closed:
                             # Exhausted retries on browser-closed errors
                             logger.error(
@@ -858,7 +865,14 @@ def register_session_commands(cli):
                 shutil.rmtree(browser_profile)
                 removed_any = True
             except OSError:
+                partial = (
+                    "[yellow]Note: Auth file was removed, but browser profile "
+                    "could not be deleted.[/yellow]\n"
+                    if removed_any
+                    else ""
+                )
                 console.print(
+                    f"{partial}"
                     "[red]Cannot remove browser profile — it may be in use by another process.[/red]\n"
                     "Close any open browser windows and try again.\n"
                     f"If the problem persists, manually delete: {browser_profile}"

@@ -476,6 +476,24 @@ class TestLoginCommand:
         result = runner.invoke(cli, ["login", "--help"])
         assert "--fresh" in result.output
 
+    def test_login_fresh_oserror_on_rmtree(self, runner, tmp_path):
+        """Test --fresh handles OSError on rmtree gracefully."""
+        browser_dir = tmp_path / "profile"
+        browser_dir.mkdir()
+
+        with (
+            patch("notebooklm.cli.session.get_storage_path", return_value=tmp_path / "s.json"),
+            patch(
+                "notebooklm.cli.session.get_browser_profile_dir",
+                return_value=browser_dir,
+            ),
+            patch("notebooklm.cli.session.shutil.rmtree", side_effect=OSError("locked")),
+        ):
+            result = runner.invoke(cli, ["login", "--fresh"])
+
+        assert result.exit_code == 1
+        assert "Cannot clear browser profile" in result.output
+
     def test_login_recovers_from_target_closed_on_initial_navigation(self, runner, tmp_path):
         """Test login retries with fresh page when initial goto gets TargetClosedError (#246)."""
         storage_file = tmp_path / "storage.json"
