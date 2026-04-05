@@ -464,11 +464,12 @@ class TestLoginCommand:
 
     def test_login_fresh_ignored_with_browser_cookies(self, runner, tmp_path):
         """Test --fresh warns and is ignored when combined with --browser-cookies."""
+        # Pass explicit "auto" value for cross-platform Click compatibility.
         with (
             patch("notebooklm.cli.session._login_with_browser_cookies"),
             patch("notebooklm.cli.session.get_storage_path", return_value=tmp_path / "s.json"),
         ):
-            result = runner.invoke(cli, ["login", "--fresh", "--browser-cookies"])
+            result = runner.invoke(cli, ["login", "--fresh", "--browser-cookies", "auto"])
         assert "--fresh has no effect" in result.output
 
     def test_login_help_shows_fresh_option(self, runner):

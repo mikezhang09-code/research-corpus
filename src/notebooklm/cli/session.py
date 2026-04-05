@@ -527,7 +527,10 @@ def register_session_commands(cli):
 
                             backoff_seconds = attempt  # Linear backoff: 1s, 2s
                             logger.debug(
-                                f"Retryable error on attempt {attempt}/{LOGIN_MAX_RETRIES}: {error_str}"
+                                "Retryable error on attempt %d/%d: %s",
+                                attempt,
+                                LOGIN_MAX_RETRIES,
+                                error_str,
                             )
                             if is_target_closed:
                                 console.print(
@@ -545,8 +548,9 @@ def register_session_commands(cli):
                         elif is_target_closed:
                             # Exhausted retries on browser-closed errors
                             logger.error(
-                                f"Browser closed during login after {LOGIN_MAX_RETRIES} attempts. "
-                                f"Last error: {error_str}"
+                                "Browser closed during login after %d attempts. Last error: %s",
+                                LOGIN_MAX_RETRIES,
+                                error_str,
                             )
                             console.print(BROWSER_CLOSED_HELP)
                             raise SystemExit(1) from exc
