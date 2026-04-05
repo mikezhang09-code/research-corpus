@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -59,6 +60,17 @@ NOTEBOOKLM_HOST = "notebooklm.google.com"
 # Retryable Playwright connection errors
 RETRYABLE_CONNECTION_ERRORS = ("ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET")
 LOGIN_MAX_RETRIES = 3
+# Playwright TargetClosedError substring — verified against Playwright >= 1.40.
+# If a future Playwright version changes this message, the error will propagate
+# unhandled (safe fallback) rather than silently ignored.
+TARGET_CLOSED_ERROR = "Target page, context or browser has been closed"
+BROWSER_CLOSED_HELP = (
+    "[red]The browser window was closed during login.[/red]\n"
+    "This can happen when switching Google accounts in a persistent browser session.\n\n"
+    "Try:\n"
+    "  1. Run: notebooklm login --fresh\n"
+    "  2. Or run: notebooklm auth logout && notebooklm login"
+)
 CONNECTION_ERROR_HELP = (
     "[red]Failed to connect to NotebookLM after multiple retries.[/red]\n"
     "This may be caused by:\n"
@@ -198,9 +210,7 @@ def _login_with_browser_cookies(storage_path: Path, browser_name: str) -> None:
             storage_path.chmod(0o600)
     except OSError as e:
         logger.error("Failed to save authentication to %s: %s", storage_path, e)
-        console.print(
-            f"[red]Failed to save authentication to {storage_path}.[/red]\n" f"Details: {e}"
-        )
+        console.print(f"[red]Failed to save authentication to {storage_path}.[/red]\nDetails: {e}")
         raise SystemExit(1) from None
 
     console.print(f"\n[green]Authentication saved to:[/green] {storage_path}")
@@ -340,6 +350,23 @@ def _ensure_chromium_installed() -> None:
         )
 
 
+def _recover_page(context, console):
+    """Get a fresh page from a persistent browser context.
+
+    Used when the current page reference is stale (TargetClosedError).
+    A new page in a persistent context inherits all cookies and storage.
+
+    Returns a new Page, or raises SystemExit if the context/browser is dead.
+    """
+    from playwright.sync_api import Error as PlaywrightError
+
+    try:
+        return context.new_page()
+    except PlaywrightError as exc:
+        console.print(BROWSER_CLOSED_HELP)
+        raise SystemExit(1) from exc
+
+
 def register_session_commands(cli):
     """Register session commands on the main CLI group."""
 
@@ -368,7 +395,13 @@ def register_session_commands(cli):
             "Requires: pip install 'notebooklm[cookies]'"
         ),
     )
-    def login(storage, browser, browser_cookies):
+    @click.option(
+        "--fresh",
+        is_flag=True,
+        default=False,
+        help="Start with a clean browser session (deletes cached browser profile). Use to switch Google accounts.",
+    )
+    def login(storage, browser, browser_cookies, fresh):
         """Log in to NotebookLM via browser.
 
         Opens a browser window for Google login. After logging in,
@@ -393,12 +426,30 @@ def register_session_commands(cli):
 
         # rookiepy fast-path: skip Playwright entirely
         if browser_cookies is not None:
+            if fresh:
+                console.print(
+                    "[yellow]Warning: --fresh has no effect with --browser-cookies "
+                    "(no browser profile is used).[/yellow]"
+                )
             resolved_storage = Path(storage) if storage else get_storage_path()
             _login_with_browser_cookies(resolved_storage, browser_cookies)
             return
 
         storage_path = Path(storage) if storage else get_storage_path()
         browser_profile = get_browser_profile_dir()
+
+        if fresh and browser_profile.exists():
+            try:
+                shutil.rmtree(browser_profile)
+                console.print("[yellow]Cleared cached browser session (--fresh)[/yellow]")
+            except OSError as exc:
+                console.print(
+                    "[red]Cannot clear browser profile — it may be in use by another process.[/red]\n"
+                    "Close any open browser windows and try again.\n"
+                    f"If the problem persists, manually delete: {browser_profile}"
+                )
+                raise SystemExit(1) from exc
+
         if sys.platform == "win32":
             # On Windows < Python 3.13, mode= is ignored by mkdir(). On
             # Python 3.13+, mode= applies Windows ACLs that can be overly
@@ -466,13 +517,17 @@ def register_session_commands(cli):
                         is_retryable = any(
                             code in error_str for code in RETRYABLE_CONNECTION_ERRORS
                         )
+                        is_target_closed = TARGET_CLOSED_ERROR in error_str
 
                         # Check if we should retry
-                        if is_retryable and attempt < LOGIN_MAX_RETRIES:
-                            # Retryable error with attempts remaining: retry
+                        if (is_retryable or is_target_closed) and attempt < LOGIN_MAX_RETRIES:
+                            # For TargetClosedError, get a fresh page reference
+                            if is_target_closed:
+                                page = _recover_page(context, console)
+
                             backoff_seconds = attempt  # Linear backoff: 1s, 2s
                             logger.debug(
-                                f"Retryable connection error on attempt {attempt}/{LOGIN_MAX_RETRIES}: {error_str}"
+                                f"Retryable error on attempt {attempt}/{LOGIN_MAX_RETRIES}: {error_str}"
                             )
                             console.print(
                                 f"[yellow]Connection interrupted "
@@ -480,8 +535,16 @@ def register_session_commands(cli):
                                 f"Retrying in {backoff_seconds}s...[/yellow]"
                             )
                             time.sleep(backoff_seconds)
+                        elif is_target_closed:
+                            # Exhausted retries on browser-closed errors
+                            logger.error(
+                                f"Browser closed during login after {LOGIN_MAX_RETRIES} attempts. "
+                                f"Last error: {error_str}"
+                            )
+                            console.print(BROWSER_CLOSED_HELP)
+                            raise SystemExit(1) from exc
                         elif is_retryable:
-                            # Exhausted retries on a retryable error
+                            # Exhausted retries on network errors
                             logger.error(
                                 f"Failed to connect to NotebookLM after {LOGIN_MAX_RETRIES} attempts. "
                                 f"Last error: {error_str}"
@@ -508,7 +571,20 @@ def register_session_commands(cli):
                     try:
                         page.goto(url, wait_until="commit")
                     except PlaywrightError as exc:
-                        if "Navigation interrupted" not in str(exc):
+                        error_str = str(exc)
+                        if TARGET_CLOSED_ERROR in error_str:
+                            # Page was destroyed (e.g. user switched accounts) -- get fresh page
+                            page = _recover_page(context, console)
+                            try:
+                                page.goto(url, wait_until="commit")
+                            except PlaywrightError as inner_exc:
+                                if TARGET_CLOSED_ERROR in str(inner_exc):
+                                    # Recovered page also dead -- context/browser is gone
+                                    console.print(BROWSER_CLOSED_HELP)
+                                    raise SystemExit(1) from inner_exc
+                                elif "Navigation interrupted" not in str(inner_exc):
+                                    raise
+                        elif "Navigation interrupted" not in error_str:
                             raise
 
                 current_url = page.url
@@ -744,6 +820,55 @@ def register_session_commands(cli):
     def auth_group():
         """Authentication management commands."""
         pass
+
+    @auth_group.command("logout")
+    def auth_logout():
+        """Log out by clearing saved authentication.
+
+        Removes both the saved cookie file (storage_state.json) and the
+        cached browser profile. After logout, run 'notebooklm login' to
+        authenticate with a different Google account.
+
+        \b
+        Examples:
+          notebooklm auth logout           # Clear auth for active profile
+          notebooklm -p work auth logout   # Clear auth for 'work' profile
+        """
+        storage_path = get_storage_path()
+        browser_profile = get_browser_profile_dir()
+
+        removed_any = False
+
+        # Remove storage_state.json
+        if storage_path.exists():
+            try:
+                storage_path.unlink()
+                removed_any = True
+            except OSError:
+                console.print(
+                    "[red]Cannot remove auth file — it may be in use by another process.[/red]\n"
+                    "Close any running notebooklm commands and try again.\n"
+                    f"If the problem persists, manually delete: {storage_path}"
+                )
+                raise SystemExit(1) from None
+
+        # Remove browser profile directory
+        if browser_profile.exists():
+            try:
+                shutil.rmtree(browser_profile)
+                removed_any = True
+            except OSError:
+                console.print(
+                    "[red]Cannot remove browser profile — it may be in use by another process.[/red]\n"
+                    "Close any open browser windows and try again.\n"
+                    f"If the problem persists, manually delete: {browser_profile}"
+                )
+                raise SystemExit(1) from None
+
+        if removed_any:
+            console.print("[green]Logged out.[/green] Run 'notebooklm login' to sign in again.")
+        else:
+            console.print("[yellow]No active session found.[/yellow] Already logged out.")
 
     @auth_group.command("check")
     @click.option(
