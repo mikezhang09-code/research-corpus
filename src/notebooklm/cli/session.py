@@ -228,6 +228,18 @@ def register_session_commands(cli):
                     context.close()
                     raise SystemExit(1)
 
+            # Visit gemini.google.com to capture Gemini-specific cookies
+            # The NLM login sets Google-wide cookies (.google.com) but Gemini
+            # may require additional domain-specific cookies only set when visited
+            console.print("[dim]Collecting Gemini cookies...[/dim]")
+            try:
+                page.goto(
+                    "https://gemini.google.com/app", wait_until="domcontentloaded", timeout=15000
+                )
+                page.wait_for_timeout(2000)  # Let cookies settle
+            except Exception as e:
+                console.print(f"[dim]Note: Gemini cookie collection skipped ({e})[/dim]")
+
             context.storage_state(path=str(storage_path))
             # Restrict permissions to owner only (contains sensitive cookies)
             storage_path.chmod(0o600)
