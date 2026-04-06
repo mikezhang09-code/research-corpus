@@ -18,11 +18,15 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 import httpx
 from rich.table import Table
+
+if TYPE_CHECKING:
+    from playwright.sync_api import BrowserContext, Page
+    from rich.console import Console
 
 from ..auth import (
     ALLOWED_COOKIE_DOMAINS,
@@ -60,9 +64,9 @@ NOTEBOOKLM_HOST = "notebooklm.google.com"
 # Retryable Playwright connection errors
 RETRYABLE_CONNECTION_ERRORS = ("ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET")
 LOGIN_MAX_RETRIES = 3
-# Playwright TargetClosedError substring — verified against Playwright >= 1.40.
-# If a future Playwright version changes this message, the error will propagate
-# unhandled (safe fallback) rather than silently ignored.
+# Playwright TargetClosedError substring — matches the default message from
+# Playwright's TargetClosedError class (introduced in v1.41). If a future
+# version changes this message, the error will propagate unhandled (safe fallback).
 TARGET_CLOSED_ERROR = "Target page, context or browser has been closed"
 BROWSER_CLOSED_HELP = (
     "[red]The browser window was closed during login.[/red]\n"
@@ -350,21 +354,28 @@ def _ensure_chromium_installed() -> None:
         )
 
 
-def _recover_page(context, console):
+def _recover_page(context: "BrowserContext", console: "Console") -> "Page":
     """Get a fresh page from a persistent browser context.
 
     Used when the current page reference is stale (TargetClosedError).
     A new page in a persistent context inherits all cookies and storage.
 
     Returns a new Page, or raises SystemExit if the context/browser is dead.
+    Raises the original PlaywrightError for non-TargetClosed failures.
     """
     from playwright.sync_api import Error as PlaywrightError
 
     try:
         return context.new_page()
     except PlaywrightError as exc:
-        console.print(BROWSER_CLOSED_HELP)
-        raise SystemExit(1) from exc
+        error_str = str(exc)
+        if TARGET_CLOSED_ERROR in error_str:
+            logger.error("Browser context is dead, cannot recover page: %s", error_str)
+            console.print(BROWSER_CLOSED_HELP)
+            raise SystemExit(1) from exc
+        # Not a TargetClosedError — don't mask the real problem
+        logger.error("Failed to create new page for recovery: %s", error_str)
+        raise
 
 
 def register_session_commands(cli):
@@ -443,8 +454,9 @@ def register_session_commands(cli):
                 shutil.rmtree(browser_profile)
                 console.print("[yellow]Cleared cached browser session (--fresh)[/yellow]")
             except OSError as exc:
+                logger.error("Failed to clear browser profile %s: %s", browser_profile, exc)
                 console.print(
-                    "[red]Cannot clear browser profile — it may be in use by another process.[/red]\n"
+                    f"[red]Cannot clear browser profile: {exc}[/red]\n"
                     "Close any open browser windows and try again.\n"
                     f"If the problem persists, manually delete: {browser_profile}"
                 )
@@ -845,6 +857,13 @@ def register_session_commands(cli):
           notebooklm auth logout           # Clear auth for active profile
           notebooklm -p work auth logout   # Clear auth for 'work' profile
         """
+        # Warn if env-based auth will remain active after logout
+        if os.environ.get("NOTEBOOKLM_AUTH_JSON"):
+            console.print(
+                "[yellow]Note: NOTEBOOKLM_AUTH_JSON is set — env-based auth will "
+                "remain active after logout. Unset it to fully log out.[/yellow]"
+            )
+
         storage_path = get_storage_path()
         browser_profile = get_browser_profile_dir()
 
@@ -855,20 +874,22 @@ def register_session_commands(cli):
             try:
                 storage_path.unlink()
                 removed_any = True
-            except OSError:
+            except OSError as exc:
+                logger.error("Failed to remove auth file %s: %s", storage_path, exc)
                 console.print(
-                    "[red]Cannot remove auth file — it may be in use by another process.[/red]\n"
+                    f"[red]Cannot remove auth file: {exc}[/red]\n"
                     "Close any running notebooklm commands and try again.\n"
                     f"If the problem persists, manually delete: {storage_path}"
                 )
-                raise SystemExit(1) from None
+                raise SystemExit(1) from exc
 
         # Remove browser profile directory
         if browser_profile.exists():
             try:
                 shutil.rmtree(browser_profile)
                 removed_any = True
-            except OSError:
+            except OSError as exc:
+                logger.error("Failed to remove browser profile %s: %s", browser_profile, exc)
                 partial = (
                     "[yellow]Note: Auth file was removed, but browser profile "
                     "could not be deleted.[/yellow]\n"
@@ -877,11 +898,11 @@ def register_session_commands(cli):
                 )
                 console.print(
                     f"{partial}"
-                    "[red]Cannot remove browser profile — it may be in use by another process.[/red]\n"
+                    f"[red]Cannot remove browser profile: {exc}[/red]\n"
                     "Close any open browser windows and try again.\n"
                     f"If the problem persists, manually delete: {browser_profile}"
                 )
-                raise SystemExit(1) from None
+                raise SystemExit(1) from exc
 
         if removed_any:
             console.print("[green]Logged out.[/green] Run 'notebooklm login' to sign in again.")

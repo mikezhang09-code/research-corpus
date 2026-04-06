@@ -641,6 +641,62 @@ class TestLoginCommand:
         assert "browser" in result.output.lower() and "closed" in result.output.lower()
         assert "Network connectivity" not in result.output
 
+    def test_login_cookie_forcing_double_failure_shows_browser_closed(self, runner, tmp_path):
+        """Test cookie-forcing shows BROWSER_CLOSED_HELP when recovered page also raises TargetClosedError (#246).
+
+        This is the final safety net: if the recovered page is also dead during
+        cookie-forcing, the user should see BROWSER_CLOSED_HELP, not a traceback.
+        """
+        storage_file = tmp_path / "storage.json"
+        browser_dir = tmp_path / "profile"
+
+        with (
+            patch("notebooklm.cli.session._ensure_chromium_installed"),
+            patch("playwright.sync_api.sync_playwright") as mock_pw,
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch(
+                "notebooklm.cli.session.get_browser_profile_dir",
+                return_value=browser_dir,
+            ),
+            patch("notebooklm.cli.session._sync_server_language_to_config"),
+            patch("builtins.input", return_value=""),
+        ):
+            from playwright.sync_api import Error as PlaywrightError
+
+            mock_context = MagicMock()
+            mock_page_stale = MagicMock()
+            mock_page_recovered = MagicMock()
+
+            # Initial navigation succeeds
+            goto_call_count = 0
+
+            def stale_goto_side_effect(url, **kwargs):
+                nonlocal goto_call_count
+                goto_call_count += 1
+                if goto_call_count == 1:
+                    return  # initial navigation OK
+                raise PlaywrightError("Page.goto: Target page, context or browser has been closed")
+
+            mock_page_stale.goto.side_effect = stale_goto_side_effect
+            mock_page_stale.url = "https://notebooklm.google.com/"
+            # Recovered page also raises TargetClosedError on goto
+            mock_page_recovered.goto.side_effect = PlaywrightError(
+                "Page.goto: Target page, context or browser has been closed"
+            )
+            mock_context.pages = [mock_page_stale]
+            mock_context.new_page.return_value = mock_page_recovered
+            mock_context.storage_state.side_effect = lambda path: Path(path).write_text("{}")
+
+            mock_launch = (
+                mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
+            )
+            mock_launch.return_value = mock_context
+
+            result = runner.invoke(cli, ["login"])
+
+        assert result.exit_code == 1
+        assert "browser" in result.output.lower() and "closed" in result.output.lower()
+
 
 # =============================================================================
 # USE COMMAND TESTS
