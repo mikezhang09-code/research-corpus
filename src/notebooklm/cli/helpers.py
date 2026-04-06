@@ -96,15 +96,35 @@ async def import_with_retry(
     started_at = time.monotonic()
     delay = initial_delay
     attempt = 1
+    pending_sources = list(sources)
 
     while True:
         try:
-            return await client.research.import_sources(notebook_id, task_id, sources)
+            return await client.research.import_sources(notebook_id, task_id, pending_sources)
         except RPCTimeoutError:
             elapsed = time.monotonic() - started_at
             remaining = max_elapsed - elapsed
             if remaining <= 0:
                 raise
+
+            try:
+                existing_sources = await client.sources.list(notebook_id)
+                existing_urls = {source.url for source in existing_sources if getattr(source, "url", None)}
+                pending_sources = [
+                    source for source in pending_sources if source.get("url") not in existing_urls
+                ]
+                if not pending_sources:
+                    logger.info(
+                        "IMPORT_RESEARCH timeout for notebook %s but all sources are already present; stopping retries",
+                        notebook_id,
+                    )
+                    return []
+            except Exception as e:  # pragma: no cover - defensive: retry original pending batch
+                logger.debug(
+                    "Failed to list existing sources before retrying research import for %s: %s",
+                    notebook_id,
+                    e,
+                )
 
             sleep_for = min(delay, max_delay, remaining)
             logger.warning(

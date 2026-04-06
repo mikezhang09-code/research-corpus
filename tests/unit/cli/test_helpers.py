@@ -651,6 +651,7 @@ class TestImportWithRetry:
                 [{"id": "src_1", "title": "Source 1"}],
             ]
         )
+        client.sources.list = AsyncMock(return_value=[])
 
         with (
             patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
@@ -667,6 +668,7 @@ class TestImportWithRetry:
 
         assert imported == [{"id": "src_1", "title": "Source 1"}]
         assert client.research.import_sources.await_count == 2
+        client.sources.list.assert_awaited_once_with("nb_123")
         mock_sleep.assert_awaited_once_with(5)
         mock_console.print.assert_called_once()
 
@@ -679,6 +681,7 @@ class TestImportWithRetry:
                 [],
             ]
         )
+        client.sources.list = AsyncMock(return_value=[])
 
         with (
             patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock),
@@ -713,6 +716,52 @@ class TestImportWithRetry:
                 max_elapsed=1800,
             )
 
+        mock_sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retries_only_pending_sources_after_timeout(self):
+        client = MagicMock()
+        client.research.import_sources = AsyncMock(
+            side_effect=[
+                RPCTimeoutError("Timed out", timeout_seconds=30.0),
+                [{"id": "src_2", "title": "Source 2"}],
+            ]
+        )
+        client.sources.list = AsyncMock(
+            return_value=[MagicMock(url="https://example.com/already-imported")]
+        )
+        sources = [
+            {"url": "https://example.com/already-imported", "title": "Source 1"},
+            {"url": "https://example.com/still-pending", "title": "Source 2"},
+        ]
+
+        with patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock):
+            imported = await import_with_retry(client, "nb_123", "task_123", sources)
+
+        assert imported == [{"id": "src_2", "title": "Source 2"}]
+        assert client.research.import_sources.await_args_list[0].args[2] == sources
+        assert client.research.import_sources.await_args_list[1].args[2] == [sources[1]]
+
+    @pytest.mark.asyncio
+    async def test_stops_retrying_when_all_sources_already_imported(self):
+        client = MagicMock()
+        client.research.import_sources = AsyncMock(
+            side_effect=[RPCTimeoutError("Timed out", timeout_seconds=30.0)]
+        )
+        client.sources.list = AsyncMock(
+            return_value=[MagicMock(url="https://example.com/already-imported")]
+        )
+
+        with patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            imported = await import_with_retry(
+                client,
+                "nb_123",
+                "task_123",
+                [{"url": "https://example.com/already-imported", "title": "Source 1"}],
+            )
+
+        assert imported == []
+        assert client.research.import_sources.await_count == 1
         mock_sleep.assert_not_awaited()
 
     @pytest.mark.asyncio
