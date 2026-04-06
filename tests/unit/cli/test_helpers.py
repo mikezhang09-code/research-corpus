@@ -702,6 +702,7 @@ class TestImportWithRetry:
         client = MagicMock()
         error = RPCTimeoutError("Timed out", timeout_seconds=30.0)
         client.research.import_sources = AsyncMock(side_effect=error)
+        client.sources.list = AsyncMock(return_value=[])
 
         with (
             patch("notebooklm.cli.helpers.time.monotonic", side_effect=[0.0, 1801.0]),
@@ -763,6 +764,75 @@ class TestImportWithRetry:
         assert imported == []
         assert client.research.import_sources.await_count == 1
         mock_sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_continues_retrying_when_sources_list_fails(self):
+        client = MagicMock()
+        sources = [{"url": "https://example.com", "title": "Source 1"}]
+        client.research.import_sources = AsyncMock(
+            side_effect=[
+                RPCTimeoutError("Timed out", timeout_seconds=30.0),
+                [{"id": "src_1", "title": "Source 1"}],
+            ]
+        )
+        client.sources.list = AsyncMock(side_effect=Exception("API error"))
+
+        with patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock):
+            imported = await import_with_retry(client, "nb_123", "task_123", sources)
+
+        assert imported == [{"id": "src_1", "title": "Source 1"}]
+        assert client.research.import_sources.await_args_list[1].args[2] == sources
+
+    @pytest.mark.asyncio
+    async def test_skips_report_sources_already_imported_after_timeout(self):
+        client = MagicMock()
+        report_source = {
+            "title": "Research report",
+            "result_type": 5,
+            "report_markdown": "# Deep report body",
+        }
+        client.research.import_sources = AsyncMock(
+            side_effect=[RPCTimeoutError("Timed out", timeout_seconds=30.0)]
+        )
+        client.sources.list = AsyncMock(
+            return_value=[
+                MagicMock(
+                    title="Research report",
+                    result_type=5,
+                    report_markdown="# Deep report body",
+                    url=None,
+                )
+            ]
+        )
+
+        with patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            imported = await import_with_retry(client, "nb_123", "task_123", [report_source])
+
+        assert imported == []
+        assert client.research.import_sources.await_count == 1
+        mock_sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_timeout_reconciliation_only_returns_final_successful_batch(self):
+        client = MagicMock()
+        sources = [
+            {"url": "https://example.com/already-imported", "title": "Source 1"},
+            {"url": "https://example.com/still-pending", "title": "Source 2"},
+        ]
+        client.research.import_sources = AsyncMock(
+            side_effect=[
+                RPCTimeoutError("Timed out", timeout_seconds=30.0),
+                [{"id": "src_2", "title": "Source 2"}],
+            ]
+        )
+        client.sources.list = AsyncMock(
+            return_value=[MagicMock(url="https://example.com/already-imported")]
+        )
+
+        with patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock):
+            imported = await import_with_retry(client, "nb_123", "task_123", sources)
+
+        assert imported == [{"id": "src_2", "title": "Source 2"}]
 
     @pytest.mark.asyncio
     async def test_does_not_retry_non_timeout_error(self):

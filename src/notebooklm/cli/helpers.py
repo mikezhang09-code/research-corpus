@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Iterable
 from functools import wraps
 from typing import TYPE_CHECKING
 
@@ -76,6 +77,42 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
+def _source_identity(source: dict) -> tuple[str, str] | None:
+    """Return a stable dedupe key for research import sources.
+
+    URL-backed sources dedupe by URL. Deep-research report entries do not have a
+    URL, so we fall back to the report body and title to avoid resubmitting the
+    same synthesized report after a timeout.
+    """
+    url = source.get("url")
+    if isinstance(url, str) and url:
+        return ("url", url)
+
+    if source.get("result_type") == 5:
+        report_markdown = source.get("report_markdown")
+        title = source.get("title")
+        if isinstance(report_markdown, str) and report_markdown:
+            return ("report", f"{title or ''}\n{report_markdown}")
+
+    return None
+
+
+def _existing_source_identities(existing_sources: Iterable[object]) -> set[tuple[str, str]]:
+    """Build dedupe keys from notebook sources returned by the API."""
+    identities: set[tuple[str, str]] = set()
+    for source in existing_sources:
+        url = getattr(source, "url", None)
+        if isinstance(url, str) and url:
+            identities.add(("url", url))
+
+        result_type = getattr(source, "result_type", None)
+        report_markdown = getattr(source, "report_markdown", None)
+        if result_type == 5 and isinstance(report_markdown, str) and report_markdown:
+            identities.add(("report", f"{getattr(source, 'title', '') or ''}\n{report_markdown}"))
+
+    return identities
+
+
 async def import_with_retry(
     client,
     notebook_id: str,
@@ -109,15 +146,21 @@ async def import_with_retry(
 
             try:
                 existing_sources = await client.sources.list(notebook_id)
-                existing_urls = {source.url for source in existing_sources if getattr(source, "url", None)}
+                existing_identities = _existing_source_identities(existing_sources)
                 pending_sources = [
-                    source for source in pending_sources if source.get("url") not in existing_urls
+                    source
+                    for source in pending_sources
+                    if (identity := _source_identity(source)) is None
+                    or identity not in existing_identities
                 ]
                 if not pending_sources:
                     logger.info(
                         "IMPORT_RESEARCH timeout for notebook %s but all sources are already present; stopping retries",
                         notebook_id,
                     )
+                    # Preserve the existing CLI contract: if every source already
+                    # landed during a timed-out attempt, return an empty list
+                    # rather than fabricating imported records we do not have.
                     return []
             except Exception as e:  # pragma: no cover - defensive: retry original pending batch
                 logger.debug(
