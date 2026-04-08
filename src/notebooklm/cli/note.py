@@ -51,8 +51,9 @@ def note():
     default=None,
     help="Notebook ID (uses current if not set)",
 )
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @with_client
-def note_list(ctx, notebook_id, client_auth):
+def note_list(ctx, notebook_id, json_output, client_auth):
     """List all notes in a notebook."""
     nb_id = require_notebook(notebook_id)
 
@@ -62,11 +63,24 @@ def note_list(ctx, notebook_id, client_auth):
             notes = await client.notes.list(nb_id_resolved)
 
             if not notes:
-                console.print("[yellow]No notes found[/yellow]")
+                if json_output:
+                    from ..cli.helpers import json_output_response
+                    json_output_response([])
+                else:
+                    console.print("[yellow]No notes found[/yellow]")
+                return
+
+            if json_output:
+                from ..cli.helpers import json_output_response
+                json_output_response([
+                    {"id": n.id, "title": n.title or "", "preview": (n.content or "")[:100]}
+                    for n in notes
+                    if isinstance(n, Note)
+                ])
                 return
 
             table = Table(title=f"Notes in {nb_id_resolved}")
-            table.add_column("ID", style="cyan")
+            table.add_column("ID", style="cyan", no_wrap=True)
             table.add_column("Title", style="green")
             table.add_column("Preview", style="dim", max_width=50)
 
