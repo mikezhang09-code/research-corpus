@@ -195,7 +195,11 @@ async def main():
         await client.artifacts.download_quiz(nb.id, "quiz.json", output_format="json")
 
         # Generate mind map and export
-        result = await client.artifacts.generate_mind_map(nb.id)
+        result = await client.artifacts.generate_mind_map(
+            nb.id,
+            language="ja",
+            instructions="Focus on chronology and causal links",
+        )
         await client.artifacts.download_mind_map(nb.id, "mindmap.json")
 
 asyncio.run(main())

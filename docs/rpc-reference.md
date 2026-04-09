@@ -725,7 +725,7 @@ params = [
     None,                                         # 2
     None,                                         # 3
     None,                                         # 4
-    ["interactive_mindmap", [["[CONTEXT]", ""]], ""],  # 5: Mind map command
+    ["interactive_mindmap", [["[CONTEXT]", instructions or ""]], language],  # 5: Mind map command
     None,                                         # 6
     [2, None, [1]],                               # 7: Fixed config
 ]
