@@ -541,13 +541,20 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @click.option("--import-all", is_flag=True, help="Import all found sources")
 @click.option(
+    "--timeout",
+    type=float,
+    default=1800.0,
+    show_default=True,
+    help="Retry budget in seconds when --import-all is used",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     help="Start research and return immediately (use 'research status/wait' to monitor)",
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, no_wait, client_auth
+    ctx, query, notebook_id, search_source, mode, import_all, timeout, no_wait, client_auth
 ):
     """Search web or drive and add sources from results.
 
@@ -555,9 +562,10 @@ def source_add_research(
     Examples:
       source add-research "machine learning"              # Search web
       source add-research "project docs" --from drive     # Search Google Drive
-      source add-research "AI papers" --mode deep         # Deep search
-      source add-research "tutorials" --import-all        # Auto-import all results
-      source add-research "topic" --mode deep --no-wait   # Non-blocking deep search
+      source add-research "AI papers" --mode deep                   # Deep search
+      source add-research "tutorials" --import-all                  # Auto-import all results
+      source add-research "tutorials" --import-all --timeout 600    # Limit import retry budget
+      source add-research "topic" --mode deep --no-wait             # Non-blocking deep search
     """
     nb_id = require_notebook(notebook_id)
 
@@ -606,6 +614,7 @@ def source_add_research(
                         nb_id_resolved,
                         task_id,
                         sources,
+                        max_elapsed=timeout,
                     )
                     console.print(f"[green]Imported {len(imported)} sources[/green]")
             else:
