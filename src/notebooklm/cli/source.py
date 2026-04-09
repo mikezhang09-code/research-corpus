@@ -900,3 +900,88 @@ def source_wait(ctx, source_id, notebook_id, timeout, json_output, client_auth):
                 raise SystemExit(2) from None
 
     return _run()
+
+
+@source.command("clean")
+@click.option(
+    "-n",
+    "--notebook",
+    "notebook_id",
+    default=None,
+    help="Notebook ID (uses current if not set)",
+)
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted without actually deleting")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@with_client
+def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
+    """Automatically remove duplicate, error, and access-blocked sources."""
+    from urllib.parse import urlparse, urlunparse
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        async with NotebookLMClient(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id)
+            with console.status("Fetching sources for cleanup..."):
+                sources = await client.sources.list(nb_id_resolved)
+
+            to_delete = set()
+
+            GATEWAY_PATTERNS = re.compile(
+                r'^\s*(access denied|403|404|forbidden|not found|502|just a moment|attention required|security check|captcha)',
+                re.IGNORECASE
+            )
+
+            # Process oldest first so we keep the oldest copy of each URL
+            sorted_sources = sorted(sources, key=lambda s: s.created_at.timestamp() if s.created_at else 0)
+            seen_urls: set[str] = set()
+
+            for s in sorted_sources:
+                title = (s.title or "").strip()
+                status = str(s.status).lower() if s.status else "unknown"
+
+                # Remove sources in error or unknown state
+                if status in ["error", "unknown"]:
+                    to_delete.add(s.id)
+                    continue
+
+                # Remove sources blocked by gateways or anti-bot pages
+                if GATEWAY_PATTERNS.match(title) or title.startswith(("http://", "https://")):
+                    to_delete.add(s.id)
+                    continue
+
+                # Deduplicate by normalized URL (strip query string and fragment)
+                url = s.url or ""
+                if url:
+                    parsed = urlparse(url)
+                    normalized = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+                    if normalized in seen_urls:
+                        to_delete.add(s.id)
+                        continue
+                    seen_urls.add(normalized)
+
+            if not to_delete:
+                console.print("[green]Notebook is already clean. No junk sources found.[/green]")
+                return
+
+            if dry_run:
+                console.print(f"[yellow]Would delete {len(to_delete)} junk source(s) (dry run).[/yellow]")
+                return
+
+            if not yes and not click.confirm(f"Delete {len(to_delete)} junk source(s)?"):
+                return
+
+            console.print(f"[dim]Cleaning {len(to_delete)} source(s) (in chunks of 10)...[/dim]")
+
+            # Chunk deletions to avoid rate limiting
+            delete_list = list(to_delete)
+            chunk_size = 10
+            for i in range(0, len(delete_list), chunk_size):
+                chunk = delete_list[i:i + chunk_size]
+                delete_tasks = [client.sources.delete(nb_id_resolved, sid) for sid in chunk]
+                await asyncio.gather(*delete_tasks, return_exceptions=True)
+                if i + chunk_size < len(delete_list):
+                    await asyncio.sleep(0.5)
+
+            console.print(f"[green]Successfully cleaned {len(to_delete)} source(s).[/green]")
+
+    return _run()
