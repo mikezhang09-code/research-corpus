@@ -910,12 +910,15 @@ def source_wait(ctx, source_id, notebook_id, timeout, json_output, client_auth):
     default=None,
     help="Notebook ID (uses current if not set)",
 )
-@click.option("--dry-run", is_flag=True, help="Show what would be deleted without actually deleting")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be deleted without actually deleting"
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
 @with_client
 def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
     """Automatically remove duplicate, error, and access-blocked sources."""
     from urllib.parse import urlparse, urlunparse
+
     nb_id = require_notebook(notebook_id)
 
     async def _run():
@@ -927,12 +930,14 @@ def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
             to_delete = set()
 
             GATEWAY_PATTERNS = re.compile(
-                r'^\s*(access denied|403|404|forbidden|not found|502|just a moment|attention required|security check|captcha)',
-                re.IGNORECASE
+                r"^\s*(access denied|403|404|forbidden|not found|502|just a moment|attention required|security check|captcha)",
+                re.IGNORECASE,
             )
 
             # Process oldest first so we keep the oldest copy of each URL
-            sorted_sources = sorted(sources, key=lambda s: s.created_at.timestamp() if s.created_at else 0)
+            sorted_sources = sorted(
+                sources, key=lambda s: s.created_at.timestamp() if s.created_at else 0
+            )
             seen_urls: set[str] = set()
 
             for s in sorted_sources:
@@ -964,7 +969,9 @@ def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
                 return
 
             if dry_run:
-                console.print(f"[yellow]Would delete {len(to_delete)} junk source(s) (dry run).[/yellow]")
+                console.print(
+                    f"[yellow]Would delete {len(to_delete)} junk source(s) (dry run).[/yellow]"
+                )
                 return
 
             if not yes and not click.confirm(f"Delete {len(to_delete)} junk source(s)?"):
@@ -976,7 +983,7 @@ def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
             delete_list = list(to_delete)
             chunk_size = 10
             for i in range(0, len(delete_list), chunk_size):
-                chunk = delete_list[i:i + chunk_size]
+                chunk = delete_list[i : i + chunk_size]
                 delete_tasks = [client.sources.delete(nb_id_resolved, sid) for sid in chunk]
                 await asyncio.gather(*delete_tasks, return_exceptions=True)
                 if i + chunk_size < len(delete_list):
