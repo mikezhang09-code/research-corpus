@@ -111,7 +111,7 @@ Supported source types: URLs, YouTube videos, files (PDF, text, Markdown, Word, 
 | `list` | - | - | `source list` |
 | `add <content>` | URL/file/text | - | `source add "https://..."` |
 | `add-drive <id> <title>` | Drive file ID | - | `source add-drive abc123 "Doc"` |
-| `add-research <query>` | Search query | `--mode [fast|deep]`, `--from [web|drive]`, `--import-all`, `--timeout FLOAT`, `--no-wait` | `source add-research "AI" --mode deep --timeout 600` |
+| `add-research <query>` | Search query | `--mode [fast\|deep]`, `--from [web\|drive]`, `--import-all`, `--timeout FLOAT`, `--no-wait` | `source add-research "AI" --mode deep --import-all --timeout 600` |
 | `get <id>` | Source ID | - | `source get src123` |
 | `fulltext <id>` | Source ID | `--json`, `-o FILE` | `source fulltext src123 -o content.txt` |
 | `guide <id>` | Source ID | `--json` | `source guide src123` |
