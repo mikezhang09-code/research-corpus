@@ -527,7 +527,11 @@ class TestArtifactsSourceSelection:
 
         params = mock_core.rpc_call.call_args.args[1]
 
-        assert params[5] == ["interactive_mindmap", [["[CONTEXT]", "Focus on chronology"]], "zh_Hans"]
+        assert params[5] == [
+            "interactive_mindmap",
+            [["[CONTEXT]", "Focus on chronology"]],
+            "zh_Hans",
+        ]
 
     @pytest.mark.asyncio
     async def test_suggest_reports_uses_get_suggested_reports(self, mock_core, mock_notes_api):

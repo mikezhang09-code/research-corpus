@@ -999,7 +999,9 @@ def generate_data_table(
 @click.option("--source", "-s", "source_ids", multiple=True, help="Limit to specific source IDs")
 @json_option
 @with_client
-def generate_mind_map(ctx, description, notebook_id, language, source_ids, json_output, client_auth):
+def generate_mind_map(
+    ctx, description, notebook_id, language, source_ids, json_output, client_auth
+):
     """Generate mind map.
 
     \b
@@ -1015,22 +1017,24 @@ def generate_mind_map(ctx, description, notebook_id, language, source_ids, json_
         async with NotebookLMClient(client_auth) as client:
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
             sources = await resolve_source_ids(client, nb_id_resolved, source_ids)
+            resolved_language = resolve_language(language)
+            instructions = description or None
 
             # Show status spinner only for console output
             if json_output:
                 result = await client.artifacts.generate_mind_map(
                     nb_id_resolved,
                     source_ids=sources,
-                    language=resolve_language(language),
-                    instructions=description or None,
+                    language=resolved_language,
+                    instructions=instructions,
                 )
             else:
                 with console.status("Generating mind map..."):
                     result = await client.artifacts.generate_mind_map(
                         nb_id_resolved,
                         source_ids=sources,
-                        language=resolve_language(language),
-                        instructions=description or None,
+                        language=resolved_language,
+                        instructions=instructions,
                     )
 
             _output_mind_map_result(result, json_output)
