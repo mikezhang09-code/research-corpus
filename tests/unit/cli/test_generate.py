@@ -419,6 +419,10 @@ class TestGenerateDataTable:
 
 class TestGenerateMindMap:
     def test_generate_mind_map(self, runner, mock_auth):
+        import importlib
+
+        generate_module = importlib.import_module("notebooklm.cli.generate")
+
         with patch_client_for_module("generate") as mock_client_cls:
             mock_client = create_mock_client()
             mock_client.artifacts.generate_mind_map = AsyncMock(
@@ -427,7 +431,7 @@ class TestGenerateMindMap:
             mock_client_cls.return_value = mock_client
 
             with (
-                patch("notebooklm.cli.generate.get_language", return_value=None),
+                patch.object(generate_module, "get_language", return_value=None),
                 patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch,
             ):
                 mock_fetch.return_value = ("csrf", "session")
