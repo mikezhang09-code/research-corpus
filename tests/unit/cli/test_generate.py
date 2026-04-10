@@ -432,6 +432,36 @@ class TestGenerateMindMap:
 
             assert result.exit_code == 0
 
+    def test_generate_mind_map_with_language(self, runner, mock_auth):
+        with patch_client_for_module("generate") as mock_client_cls:
+            mock_client = create_mock_client()
+            mock_client.artifacts.generate_mind_map = AsyncMock(
+                return_value={"mind_map": {"name": "Root", "children": []}, "note_id": "n1"}
+            )
+            mock_client_cls.return_value = mock_client
+
+            with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch:
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(
+                    cli,
+                    [
+                        "generate",
+                        "mind-map",
+                        "--language",
+                        "zh_Hans",
+                        "-n",
+                        "nb_123",
+                    ],
+                )
+
+            assert result.exit_code == 0
+            mock_client.artifacts.generate_mind_map.assert_awaited_once_with(
+                "nb_123",
+                source_ids=None,
+                language="zh_Hans",
+                instructions=None,
+            )
+
 
 # =============================================================================
 # GENERATE REPORT TESTS

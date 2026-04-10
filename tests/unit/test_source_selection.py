@@ -510,6 +510,26 @@ class TestArtifactsSourceSelection:
         assert source_ids_nested == [[["src_mm_1"]], [["src_mm_2"]]]
 
     @pytest.mark.asyncio
+    async def test_generate_mind_map_includes_language_and_instructions(
+        self, mock_core, mock_notes_api
+    ):
+        """Test generate_mind_map encodes language and instructions in config."""
+        api = ArtifactsAPI(mock_core, mock_notes_api)
+
+        mock_core.rpc_call.return_value = [['{"name": "Mind Map", "children": []}']]
+
+        await api.generate_mind_map(
+            notebook_id="nb_123",
+            source_ids=["src_mm_1"],
+            language="zh_Hans",
+            instructions="Focus on chronology",
+        )
+
+        params = mock_core.rpc_call.call_args.args[1]
+
+        assert params[5] == ["interactive_mindmap", [["[CONTEXT]", "Focus on chronology"]], "zh_Hans"]
+
+    @pytest.mark.asyncio
     async def test_suggest_reports_uses_get_suggested_reports(self, mock_core, mock_notes_api):
         """Test suggest_reports uses GET_SUGGESTED_REPORTS RPC."""
         from notebooklm.rpc.types import RPCMethod
