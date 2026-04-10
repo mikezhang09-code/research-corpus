@@ -431,7 +431,7 @@ class TestGenerateMindMap:
             mock_client_cls.return_value = mock_client
 
             with (
-                patch.object(generate_module, "get_language", return_value=None),
+                patch.object(generate_module, "get_language", return_value="en"),
                 patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch,
             ):
                 mock_fetch.return_value = ("csrf", "session")
