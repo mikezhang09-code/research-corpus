@@ -426,12 +426,12 @@ class TestGenerateMindMap:
             )
             mock_client_cls.return_value = mock_client
 
-            with patch("notebooklm.cli.generate.get_language", return_value=None):
-                with patch(
-                    "notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock
-                ) as mock_fetch:
-                    mock_fetch.return_value = ("csrf", "session")
-                    result = runner.invoke(cli, ["generate", "mind-map", "-n", "nb_123"])
+            with (
+                patch("notebooklm.cli.generate.get_language", return_value=None),
+                patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock_fetch,
+            ):
+                mock_fetch.return_value = ("csrf", "session")
+                result = runner.invoke(cli, ["generate", "mind-map", "-n", "nb_123"])
 
             assert result.exit_code == 0
             mock_client.artifacts.generate_mind_map.assert_awaited_once()
