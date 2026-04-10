@@ -200,7 +200,11 @@ async def main():
             language="ja",
             instructions="Focus on chronology and causal links",
         )
-        await client.artifacts.download_mind_map(nb.id, "mindmap.json")
+        await client.artifacts.download_mind_map(
+            nb.id,
+            "mindmap.json",
+            artifact_id=result["note_id"],
+        )
 
 asyncio.run(main())
 ```
