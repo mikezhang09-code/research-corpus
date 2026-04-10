@@ -1003,7 +1003,9 @@ def generate_data_table(
 )
 @json_option
 @with_client
-def generate_mind_map(ctx, notebook_id, source_ids, language, instructions, json_output, client_auth):
+def generate_mind_map(
+    ctx, notebook_id, source_ids, language, instructions, json_output, client_auth
+):
     """Generate mind map.
 
     \b
@@ -1024,9 +1026,7 @@ def generate_mind_map(ctx, notebook_id, source_ids, language, instructions, json
             }
 
             if json_output:
-                result = await client.artifacts.generate_mind_map(
-                    nb_id_resolved, **generate_kwargs
-                )
+                result = await client.artifacts.generate_mind_map(nb_id_resolved, **generate_kwargs)
             else:
                 with console.status("Generating mind map..."):
                     result = await client.artifacts.generate_mind_map(
