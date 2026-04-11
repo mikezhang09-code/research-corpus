@@ -231,6 +231,28 @@ class TestSourceListParsing:
         core.rpc_call = AsyncMock()
         return SourcesAPI(core)
 
+    def test_source_from_api_response_extracts_youtube_url_from_metadata_slot(self):
+        """Source.from_api_response should read YouTube URLs from metadata[5][0]."""
+        source = Source.from_api_response(
+            [
+                [
+                    ["src_yt"],
+                    "YouTube Video",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        9,
+                        ["https://youtube.com/watch?v=abc", "abc", "Channel"],
+                    ],
+                ]
+            ]
+        )
+
+        assert source.url == "https://youtube.com/watch?v=abc"
+        assert source.kind == "youtube"
+
     @pytest.mark.asyncio
     async def test_list_extracts_youtube_url_from_youtube_metadata_slot(self, sources_api):
         """YouTube sources should read their URL from metadata[5][0]."""
@@ -252,8 +274,8 @@ class TestSourceListParsing:
                             None,
                         ],
                         [None, SourceStatus.READY],
-                    ]
-                ]
+                    ],
+                ],
             ]
         ]
 

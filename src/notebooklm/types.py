@@ -615,9 +615,17 @@ class Source:
                     source_id = entry[0][0] if isinstance(entry[0], list) else entry[0]
                     title = entry[1] if len(entry) > 1 else None
 
-                    url = _extract_source_url(entry[2] if len(entry) > 2 else None)
+                    metadata = entry[2] if len(entry) > 2 else None
+                    url = _extract_source_url(metadata)
+                    type_code = None
+                    if (
+                        isinstance(metadata, list)
+                        and len(metadata) > 4
+                        and isinstance(metadata[4], int)
+                    ):
+                        type_code = metadata[4]
 
-                    return cls(id=str(source_id), title=title, url=url, _type_code=None)
+                    return cls(id=str(source_id), title=title, url=url, _type_code=type_code)
 
                 # Deeply nested: continue with URL and type code extraction
                 url = None
