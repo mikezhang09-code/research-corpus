@@ -111,7 +111,11 @@ class SourcesAPI:
                             url = url_list[0]
                     if not url and len(src[2]) > 5:
                         yt_data = src[2][5]
-                        if isinstance(yt_data, list) and len(yt_data) > 0 and isinstance(yt_data[0], str):
+                        if (
+                            isinstance(yt_data, list)
+                            and len(yt_data) > 0
+                            and isinstance(yt_data[0], str)
+                        ):
                             url = yt_data[0]
                     if not url and len(src[2]) > 0:
                         if isinstance(src[2][0], str) and src[2][0].startswith("http"):

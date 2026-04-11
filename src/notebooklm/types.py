@@ -589,7 +589,11 @@ class Source:
                             url = entry[2][7][0] if entry[2][7] else None
                         if not url and len(entry[2]) > 5:
                             yt_data = entry[2][5]
-                            if isinstance(yt_data, list) and len(yt_data) > 0 and isinstance(yt_data[0], str):
+                            if (
+                                isinstance(yt_data, list)
+                                and len(yt_data) > 0
+                                and isinstance(yt_data[0], str)
+                            ):
                                 url = yt_data[0]
 
                     return cls(id=str(source_id), title=title, url=url, _type_code=None)
@@ -604,7 +608,11 @@ class Source:
                             url = url_list[0]
                     if not url and len(entry[2]) > 5:
                         yt_data = entry[2][5]
-                        if isinstance(yt_data, list) and len(yt_data) > 0 and isinstance(yt_data[0], str):
+                        if (
+                            isinstance(yt_data, list)
+                            and len(yt_data) > 0
+                            and isinstance(yt_data[0], str)
+                        ):
                             url = yt_data[0]
                     if not url and len(entry[2]) > 0:
                         if isinstance(entry[2][0], str) and entry[2][0].startswith("http"):

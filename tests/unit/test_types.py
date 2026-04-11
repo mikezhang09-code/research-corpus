@@ -178,7 +178,11 @@ class TestSource:
                         None,
                         None,
                         9,
-                        ["https://www.youtube.com/watch?v=dcWU-qD8ISQ", "dcWU-qD8ISQ", "john newquist"],
+                        [
+                            "https://www.youtube.com/watch?v=dcWU-qD8ISQ",
+                            "dcWU-qD8ISQ",
+                            "john newquist",
+                        ],
                         None,
                         None,
                     ],
