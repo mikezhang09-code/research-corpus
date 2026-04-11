@@ -17,8 +17,8 @@ Commands:
 
 import asyncio
 import re
-from pathlib import Path
 from collections.abc import Awaitable
+from pathlib import Path
 from typing import Literal
 
 import click
