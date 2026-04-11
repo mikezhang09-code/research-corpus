@@ -230,9 +230,18 @@ def source_list(ctx, notebook_id, json_output, client_auth):
 )
 @click.option("--title", help="Title for text sources")
 @click.option("--mime-type", help="MIME type for file sources")
+@click.option(
+    "--timeout",
+    default=30,
+    type=int,
+    show_default=True,
+    help="HTTP request timeout in seconds for adding the source",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @with_client
-def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_output, client_auth):
+def source_add(
+    ctx, content, notebook_id, source_type, title, mime_type, timeout, json_output, client_auth
+):
     """Add a source to a notebook.
 
     \b
@@ -272,7 +281,7 @@ def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_ou
             file_title = title or "Pasted Text"
 
     async def _run():
-        async with NotebookLMClient(client_auth) as client:
+        async with NotebookLMClient(client_auth, timeout=float(timeout)) as client:
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
             if detected_type == "url" or detected_type == "youtube":
                 src = await client.sources.add_url(nb_id_resolved, content)
@@ -541,13 +550,20 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @click.option("--import-all", is_flag=True, help="Import all found sources")
 @click.option(
+    "--timeout",
+    default=1800,
+    type=int,
+    show_default=True,
+    help="Maximum seconds to keep retrying source import when --import-all is used",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     help="Start research and return immediately (use 'research status/wait' to monitor)",
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, no_wait, client_auth
+    ctx, query, notebook_id, search_source, mode, import_all, timeout, no_wait, client_auth
 ):
     """Search web or drive and add sources from results.
 
@@ -606,6 +622,7 @@ def source_add_research(
                         nb_id_resolved,
                         task_id,
                         sources,
+                        max_elapsed=float(timeout),
                     )
                     console.print(f"[green]Imported {len(imported)} sources[/green]")
             else:
