@@ -222,6 +222,48 @@ class TestWaitUntilReady:
         assert sleep_intervals[1] >= sleep_intervals[0] * 1.5
 
 
+class TestSourceListParsing:
+    """Tests for parsing source metadata in SourcesAPI.list()."""
+
+    @pytest.fixture
+    def sources_api(self):
+        core = MagicMock()
+        core.rpc_call = AsyncMock()
+        return SourcesAPI(core)
+
+    @pytest.mark.asyncio
+    async def test_list_extracts_youtube_url_from_youtube_metadata_slot(self, sources_api):
+        """YouTube sources should read their URL from metadata[5][0]."""
+        sources_api._core.rpc_call.return_value = [
+            [
+                None,
+                [
+                    [
+                        ["src_yt"],
+                        "YouTube Video",
+                        [
+                            None,
+                            None,
+                            None,
+                            None,
+                            9,
+                            ["https://youtube.com/watch?v=abc", "abc", "Channel"],
+                            None,
+                            None,
+                        ],
+                        [None, SourceStatus.READY],
+                    ]
+                ]
+            ]
+        ]
+
+        sources = await sources_api.list("nb_123")
+
+        assert len(sources) == 1
+        assert sources[0].url == "https://youtube.com/watch?v=abc"
+        assert sources[0].kind == "youtube"
+
+
 class TestWaitForSources:
     """Tests for wait_for_sources method."""
 
