@@ -18,11 +18,13 @@ Commands:
 import asyncio
 import re
 from pathlib import Path
+from typing import Literal
 
 import click
 from rich.table import Table
 
 from .._url_utils import is_youtube_url
+from ..auth import AuthTokens
 from ..client import NotebookLMClient
 from ..types import source_status_to_str
 from .helpers import (
@@ -233,15 +235,23 @@ def source_list(ctx, notebook_id, json_output, client_auth):
 @click.option(
     "--timeout",
     default=30,
-    type=int,
+    type=click.IntRange(min=1),
     show_default=True,
     help="HTTP request timeout in seconds for adding the source",
 )
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @with_client
 def source_add(
-    ctx, content, notebook_id, source_type, title, mime_type, timeout, json_output, client_auth
-):
+    ctx: click.Context,
+    content: str,
+    notebook_id: str | None,
+    source_type: Literal["url", "text", "file", "youtube"] | None,
+    title: str | None,
+    mime_type: str | None,
+    timeout: int,
+    json_output: bool,
+    client_auth: AuthTokens,
+) -> None:
     """Add a source to a notebook.
 
     \b
@@ -552,9 +562,9 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 @click.option(
     "--timeout",
     default=1800,
-    type=int,
+    type=click.IntRange(min=1),
     show_default=True,
-    help="Maximum seconds to keep retrying source import when --import-all is used",
+    help="Maximum seconds to wait for research and source import to complete",
 )
 @click.option(
     "--no-wait",
@@ -563,8 +573,16 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, timeout, no_wait, client_auth
-):
+    ctx: click.Context,
+    query: str,
+    notebook_id: str | None,
+    search_source: Literal["web", "drive"],
+    mode: Literal["fast", "deep"],
+    import_all: bool,
+    timeout: int,
+    no_wait: bool,
+    client_auth: AuthTokens,
+) -> None:
     """Search web or drive and add sources from results.
 
     \b

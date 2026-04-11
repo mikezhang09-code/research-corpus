@@ -245,6 +245,12 @@ class TestSourceAdd:
             assert result.exit_code == 0
             assert mock_client_cls.call_args.kwargs["timeout"] == 90.0
 
+    def test_source_add_rejects_non_positive_timeout(self, runner, mock_auth):
+        result = runner.invoke(cli, ["source", "add", "https://example.com", "--timeout", "0"])
+
+        assert result.exit_code == 2
+        assert "x>=1" in result.output
+
 
 # =============================================================================
 # SOURCE GET TESTS
@@ -735,6 +741,12 @@ class TestSourceAddResearch:
             [{"title": "Source 1", "url": "http://example.com"}],
             max_elapsed=90.0,
         )
+
+    def test_add_research_rejects_non_positive_timeout(self, runner, mock_auth):
+        result = runner.invoke(cli, ["source", "add-research", "AI papers", "--timeout", "0"])
+
+        assert result.exit_code == 2
+        assert "x>=1" in result.output
 
 
 # =============================================================================
