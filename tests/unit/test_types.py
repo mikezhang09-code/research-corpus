@@ -161,6 +161,36 @@ class TestSource:
         assert source.kind == SourceType.YOUTUBE
         assert source.kind == "youtube"  # str enum comparison
 
+    def test_from_api_response_youtube_url_at_index_5(self):
+        """Test that YouTube sources store URL at src[2][5], not src[2][7].
+
+        The NotebookLM API stores YouTube URLs at index 5 of the metadata array
+        as [url, video_id, channel_name], while web/PDF sources use index 7.
+        """
+        data = [
+            [
+                [
+                    ["src_yt2"],
+                    "YouTube Video Title",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        9,
+                        ["https://www.youtube.com/watch?v=dcWU-qD8ISQ", "dcWU-qD8ISQ", "john newquist"],
+                        None,
+                        None,
+                    ],
+                ]
+            ]
+        ]
+        source = Source.from_api_response(data)
+
+        assert source.id == "src_yt2"
+        assert source.url == "https://www.youtube.com/watch?v=dcWU-qD8ISQ"
+        assert source.kind == SourceType.YOUTUBE
+
     def test_from_api_response_web_page_source(self):
         """Test that web page sources are parsed with type code 5."""
         data = [
