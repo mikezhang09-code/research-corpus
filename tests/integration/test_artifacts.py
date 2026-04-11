@@ -1531,6 +1531,39 @@ class TestGenerateMindMapParsing:
         assert result["note_id"] == "note_dict_001"
 
     @pytest.mark.asyncio
+    async def test_generate_mind_map_language_and_instructions(
+        self,
+        auth_tokens,
+        httpx_mock: HTTPXMock,
+        build_rpc_response,
+    ):
+        """generate_mind_map passes language and instructions to the RPC payload."""
+        captured_params = []
+
+        async with NotebookLMClient(auth_tokens) as client:
+            async def capturing_rpc_call(method, params, **kwargs):
+                if method == RPCMethod.GENERATE_MIND_MAP:
+                    captured_params.append(params)
+                return None
+
+            with patch.object(
+                client.artifacts._core,
+                "rpc_call",
+                side_effect=capturing_rpc_call,
+            ):
+                await client.artifacts.generate_mind_map(
+                    "nb_123",
+                    source_ids=["src_001"],
+                    language="ja",
+                    instructions="Focus on key relationships",
+                )
+
+        assert len(captured_params) == 1
+        mind_map_config = captured_params[0][5]
+        assert mind_map_config[2] == "ja"
+        assert mind_map_config[1][0][1] == "Focus on key relationships"
+
+    @pytest.mark.asyncio
     async def test_generate_mind_map_with_source_ids_none_fetches_sources(
         self,
         auth_tokens,
