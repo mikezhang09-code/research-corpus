@@ -999,7 +999,9 @@ def generate_data_table(
 @click.option("--instructions", default=None, help="Custom instructions for mind map generation")
 @json_option
 @with_client
-def generate_mind_map(ctx, notebook_id, source_ids, language, instructions, json_output, client_auth):
+def generate_mind_map(
+    ctx, notebook_id, source_ids, language, instructions, json_output, client_auth
+):
     """Generate mind map.
 
     \b
@@ -1016,12 +1018,18 @@ def generate_mind_map(ctx, notebook_id, source_ids, language, instructions, json
             # Show status spinner only for console output
             if json_output:
                 result = await client.artifacts.generate_mind_map(
-                    nb_id_resolved, source_ids=sources, language=resolved_language, instructions=instructions
+                    nb_id_resolved,
+                    source_ids=sources,
+                    language=resolved_language,
+                    instructions=instructions,
                 )
             else:
                 with console.status("Generating mind map..."):
                     result = await client.artifacts.generate_mind_map(
-                        nb_id_resolved, source_ids=sources, language=resolved_language, instructions=instructions
+                        nb_id_resolved,
+                        source_ids=sources,
+                        language=resolved_language,
+                        instructions=instructions,
                     )
 
             _output_mind_map_result(result, json_output)

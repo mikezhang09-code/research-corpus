@@ -1541,6 +1541,7 @@ class TestGenerateMindMapParsing:
         captured_params = []
 
         async with NotebookLMClient(auth_tokens) as client:
+
             async def capturing_rpc_call(method, params, **kwargs):
                 if method == RPCMethod.GENERATE_MIND_MAP:
                     captured_params.append(params)
