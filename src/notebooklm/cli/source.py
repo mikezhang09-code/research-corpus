@@ -18,6 +18,7 @@ Commands:
 import asyncio
 import re
 from pathlib import Path
+from collections.abc import Awaitable
 from typing import Literal
 
 import click
@@ -251,7 +252,7 @@ def source_add(
     timeout: int,
     json_output: bool,
     client_auth: AuthTokens,
-) -> None:
+) -> Awaitable[None]:
     """Add a source to a notebook.
 
     \b
@@ -564,7 +565,7 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
     default=1800,
     type=click.IntRange(min=1),
     show_default=True,
-    help="Maximum seconds to wait for research and source import to complete",
+    help="Maximum seconds for --import-all source import retries after research completes",
 )
 @click.option(
     "--no-wait",
@@ -582,7 +583,7 @@ def source_add_research(
     timeout: int,
     no_wait: bool,
     client_auth: AuthTokens,
-) -> None:
+) -> Awaitable[None]:
     """Search web or drive and add sources from results.
 
     \b
