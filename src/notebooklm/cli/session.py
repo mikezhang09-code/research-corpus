@@ -369,7 +369,7 @@ def _clear_auth_files(storage_path: Path, browser_profile: Path) -> list[Path]:
 
     removed: list[Path] = []
     for path in paths_to_remove:
-        if not path.exists():
+        if not path.exists() and not path.is_symlink():
             continue
         if path.is_symlink() or path.is_file():
             path.unlink()

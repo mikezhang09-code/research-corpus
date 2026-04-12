@@ -215,8 +215,10 @@ class TestWaitUntilReady:
                 max_interval=1.0,
             )
 
-        # Check that intervals increase exponentially
-        assert len(sleep_intervals) >= 2
+        # Check that intervals grow with backoff
+        assert len(sleep_intervals) >= 3
+        assert sleep_intervals[1] > sleep_intervals[0]
+        assert sleep_intervals[2] > sleep_intervals[1]
         # With initial_interval=0.05 and backoff_factor=2.0:
 
 
