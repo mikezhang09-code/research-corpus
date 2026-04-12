@@ -647,46 +647,6 @@ class TestStatusCommand:
         assert output_data["has_context"] is True
         assert output_data["notebook"]["id"] == "nb_json_test"
 
-
-# =============================================================================
-# AUTH COMMAND TESTS
-# =============================================================================
-
-
-class TestAuthCommands:
-    def test_auth_logout_removes_profile_auth_files(self, runner, tmp_path):
-        """Test auth logout deletes saved storage state and browser profile."""
-        storage_file = tmp_path / "storage_state.json"
-        storage_file.write_text("{}")
-        browser_profile = tmp_path / "browser_profile"
-        browser_profile.mkdir()
-        (browser_profile / "Cookies").write_text("cookie-db")
-
-        with (
-            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
-            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
-            patch.object(session_module, "_clear_auth_files", return_value=[storage_file, browser_profile]),
-        ):
-            result = runner.invoke(cli, ["auth", "logout"])
-
-        assert result.exit_code == 0
-        assert "Logged out" in result.output
-
-    def test_auth_logout_is_noop_when_nothing_saved(self, runner, tmp_path):
-        """Test auth logout reports cleanly when there is nothing to remove."""
-        storage_file = tmp_path / "missing-storage.json"
-        browser_profile = tmp_path / "missing-browser-profile"
-
-        with (
-            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
-            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
-            patch.object(session_module, "_clear_auth_files", return_value=[]),
-        ):
-            result = runner.invoke(cli, ["auth", "logout"])
-
-        assert result.exit_code == 0
-        assert "No saved auth state found" in result.output
-
     def test_status_json_output_no_context(self, runner, mock_context_file):
         """Test status --json outputs valid JSON when no context."""
         if mock_context_file.exists():
@@ -708,6 +668,48 @@ class TestAuthCommands:
 
         # Should not crash, should show minimal info or no context
         assert result.exit_code == 0
+
+
+# =============================================================================
+# AUTH COMMAND TESTS
+# =============================================================================
+
+
+class TestAuthCommands:
+    def test_auth_logout_removes_profile_auth_files(self, runner, tmp_path):
+        """Test auth logout deletes saved storage state and browser profile."""
+        storage_file = tmp_path / "storage_state.json"
+        storage_file.write_text("{}")
+        browser_profile = tmp_path / "browser_profile"
+        browser_profile.mkdir()
+        (browser_profile / "Cookies").write_text("cookie-db")
+
+        with (
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch.object(
+                session_module, "_clear_auth_files", return_value=[storage_file, browser_profile]
+            ),
+        ):
+            result = runner.invoke(cli, ["auth", "logout"])
+
+        assert result.exit_code == 0
+        assert "Logged out" in result.output
+
+    def test_auth_logout_is_noop_when_nothing_saved(self, runner, tmp_path):
+        """Test auth logout reports cleanly when there is nothing to remove."""
+        storage_file = tmp_path / "missing-storage.json"
+        browser_profile = tmp_path / "missing-browser-profile"
+
+        with (
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch.object(session_module, "_clear_auth_files", return_value=[]),
+        ):
+            result = runner.invoke(cli, ["auth", "logout"])
+
+        assert result.exit_code == 0
+        assert "No saved auth state found" in result.output
 
 
 # =============================================================================

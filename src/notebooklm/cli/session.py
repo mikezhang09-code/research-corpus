@@ -34,9 +34,9 @@ from ..auth import (
 )
 from ..client import NotebookLMClient
 from ..paths import (
-    get_home_dir,
     get_browser_profile_dir,
     get_context_path,
+    get_home_dir,
     get_path_info,
     get_storage_path,
 )
@@ -360,21 +360,23 @@ def _clear_auth_files(storage_path: Path, browser_profile: Path) -> list[Path]:
     for path in paths_to_remove:
         if not path.exists():
             continue
-        if path.is_dir():
+        if path.is_symlink():
+            path.unlink()
+        elif path.is_dir():
             shutil.rmtree(path)
         else:
-            path.unlink()
+            path.unlink(missing_ok=True)
         removed.append(path)
 
     return removed
 
 
-def _get_recovered_page(context: Any, current_page: Any):
+def _get_recovered_page(context: Any, current_page: Any) -> Any:
     """Recover a live page when the original Playwright page was closed."""
-    pages = [page for page in context.pages if not getattr(page, "is_closed", lambda: False)()]
+    pages = [page for page in context.pages if not page.is_closed()]
     if pages:
         return pages[0]
-    if current_page and not getattr(current_page, "is_closed", lambda: False)():
+    if current_page and not current_page.is_closed():
         return current_page
     return context.new_page()
 
@@ -447,7 +449,7 @@ def register_session_commands(cli):
         if fresh:
             try:
                 removed = _clear_auth_files(storage_path, browser_profile)
-            except PermissionError as e:
+            except OSError as e:
                 console.print(
                     "[red]Could not clear the saved browser session.[/red]\n"
                     "Close any running NotebookLM/Chromium windows and try again.\n"
@@ -1034,7 +1036,7 @@ def register_session_commands(cli):
 
         try:
             removed = _clear_auth_files(storage_path, browser_profile)
-        except PermissionError as e:
+        except OSError as e:
             console.print(
                 "[red]Could not remove saved auth files.[/red]\n"
                 "Close any running browser windows for this profile and try again.\n"
@@ -1043,6 +1045,8 @@ def register_session_commands(cli):
             raise SystemExit(1) from e
 
         if removed:
-            console.print("[green]Logged out. Removed saved browser session and auth state.[/green]")
+            console.print(
+                "[green]Logged out. Removed saved browser session and auth state.[/green]"
+            )
         else:
             console.print("[yellow]No saved auth state found for the active profile.[/yellow]")
