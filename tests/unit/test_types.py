@@ -169,7 +169,14 @@ class TestSource:
                 [
                     ["src_yt"],
                     "YouTube Video",
-                    [None, None, None, None, 9, ["https://youtube.com/watch?v=slot5", "slot5", "Channel"]],
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        9,
+                        ["https://youtube.com/watch?v=slot5", "slot5", "Channel"],
+                    ],
                 ]
             ]
         ]

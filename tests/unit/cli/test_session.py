@@ -665,7 +665,9 @@ class TestAuthCommands:
         with (
             patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
             patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
-            patch.object(session_module, "_clear_auth_files", return_value=[storage_file, browser_profile]),
+            patch.object(
+                session_module, "_clear_auth_files", return_value=[storage_file, browser_profile]
+            ),
         ):
             result = runner.invoke(cli, ["auth", "logout"])
 

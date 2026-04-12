@@ -238,10 +238,17 @@ class TestSourceUrlExtraction:
                     [
                         ["src_yt"],
                         "YouTube Video",
-                        [None, None, [1710000000, 0], None, 9, ["https://youtube.com/watch?v=list-slot5", "vid", "channel"]],
+                        [
+                            None,
+                            None,
+                            [1710000000, 0],
+                            None,
+                            9,
+                            ["https://youtube.com/watch?v=list-slot5", "vid", "channel"],
+                        ],
                         [None, SourceStatus.READY],
                     ]
-                ]
+                ],
             ],
         ]
 
@@ -257,7 +264,14 @@ class TestSourceUrlExtraction:
             [
                 ["src_yt"],
                 "YouTube Video",
-                [None, None, None, None, 9, ["https://youtube.com/watch?v=get-slot5", "vid", "channel"]],
+                [
+                    None,
+                    None,
+                    None,
+                    None,
+                    9,
+                    ["https://youtube.com/watch?v=get-slot5", "vid", "channel"],
+                ],
             ],
             None,
             None,

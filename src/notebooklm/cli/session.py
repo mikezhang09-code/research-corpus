@@ -1063,6 +1063,8 @@ def register_session_commands(cli):
             raise SystemExit(1) from e
 
         if removed:
-            console.print("[green]Logged out. Removed saved browser session and auth state.[/green]")
+            console.print(
+                "[green]Logged out. Removed saved browser session and auth state.[/green]"
+            )
         else:
             console.print("[yellow]No saved auth state found for the active profile.[/yellow]")
