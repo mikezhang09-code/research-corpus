@@ -175,6 +175,33 @@ _SOURCE_TYPE_COMPAT_MAP: dict[SourceType, str] = {
 }
 
 
+def _extract_source_url(metadata: list[Any] | None) -> str | None:
+    """Extract a source URL from NotebookLM source metadata.
+
+    NotebookLM stores URLs in different slots depending on source type:
+    - metadata[7][0] for web pages and PDFs
+    - metadata[5][0] for YouTube sources
+    - metadata[0] as a legacy/fallback flat URL
+    """
+    if not isinstance(metadata, list):
+        return None
+
+    if len(metadata) > 7 and isinstance(metadata[7], list) and metadata[7]:
+        first = metadata[7][0]
+        if isinstance(first, str) and first:
+            return first
+
+    if len(metadata) > 5 and isinstance(metadata[5], list) and metadata[5]:
+        first = metadata[5][0]
+        if isinstance(first, str) and first:
+            return first
+
+    if len(metadata) > 0 and isinstance(metadata[0], str) and metadata[0].startswith("http"):
+        return metadata[0]
+
+    return None
+
+
 def _safe_source_type(type_code: int | None) -> SourceType:
     """Convert internal type code to user-facing SourceType enum.
 
@@ -583,10 +610,7 @@ class Source:
                     title = entry[1] if len(entry) > 1 else None
 
                     # Try to extract URL if present
-                    url = None
-                    if len(entry) > 2 and isinstance(entry[2], list):
-                        if len(entry[2]) > 7 and isinstance(entry[2][7], list):
-                            url = entry[2][7][0] if entry[2][7] else None
+                    url = _extract_source_url(entry[2] if len(entry) > 2 else None)
 
                     return cls(id=str(source_id), title=title, url=url, _type_code=None)
 
@@ -594,13 +618,7 @@ class Source:
                 url = None
                 type_code = None
                 if len(entry) > 2 and isinstance(entry[2], list):
-                    if len(entry[2]) > 7:
-                        url_list = entry[2][7]
-                        if isinstance(url_list, list) and len(url_list) > 0:
-                            url = url_list[0]
-                    if not url and len(entry[2]) > 0:
-                        if isinstance(entry[2][0], str) and entry[2][0].startswith("http"):
-                            url = entry[2][0]
+                    url = _extract_source_url(entry[2])
                     # Extract type code at entry[2][4] if available
                     if len(entry[2]) > 4 and isinstance(entry[2][4], int):
                         type_code = entry[2][4]

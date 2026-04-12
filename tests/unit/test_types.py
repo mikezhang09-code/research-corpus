@@ -160,6 +160,24 @@ class TestSource:
 
         assert source.kind == SourceType.YOUTUBE
         assert source.kind == "youtube"  # str enum comparison
+        assert source.url == "https://youtube.com/watch?v=abc"
+
+    def test_from_api_response_youtube_source_uses_youtube_metadata_slot(self):
+        """Test that YouTube sources can read the URL from metadata[5][0]."""
+        data = [
+            [
+                [
+                    ["src_yt"],
+                    "YouTube Video",
+                    [None, None, None, None, 9, ["https://youtube.com/watch?v=slot5", "slot5", "Channel"]],
+                ]
+            ]
+        ]
+
+        source = Source.from_api_response(data)
+
+        assert source.kind == SourceType.YOUTUBE
+        assert source.url == "https://youtube.com/watch?v=slot5"
 
     def test_from_api_response_web_page_source(self):
         """Test that web page sources are parsed with type code 5."""

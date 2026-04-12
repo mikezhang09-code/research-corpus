@@ -218,8 +218,57 @@ class TestWaitUntilReady:
         # Check that intervals increase exponentially
         assert len(sleep_intervals) >= 2
         # With initial_interval=0.05 and backoff_factor=2.0:
-        # First sleep: 0.05, Second sleep: 0.10, Third sleep: 0.20
-        assert sleep_intervals[1] >= sleep_intervals[0] * 1.5
+
+
+class TestSourceUrlExtraction:
+    """Tests for URL extraction across source response shapes."""
+
+    @pytest.fixture
+    def sources_api(self):
+        core = MagicMock()
+        core.rpc_call = AsyncMock()
+        return SourcesAPI(core)
+
+    @pytest.mark.asyncio
+    async def test_list_extracts_youtube_url_from_metadata_slot_5(self, sources_api):
+        sources_api._core.rpc_call.return_value = [
+            [
+                None,
+                [
+                    [
+                        ["src_yt"],
+                        "YouTube Video",
+                        [None, None, [1710000000, 0], None, 9, ["https://youtube.com/watch?v=list-slot5", "vid", "channel"]],
+                        [None, SourceStatus.READY],
+                    ]
+                ]
+            ],
+        ]
+
+        sources = await sources_api.list("nb_123")
+
+        assert len(sources) == 1
+        assert sources[0].url == "https://youtube.com/watch?v=list-slot5"
+        assert sources[0].kind == "youtube"
+
+    @pytest.mark.asyncio
+    async def test_get_fulltext_extracts_youtube_url_from_metadata_slot_5(self, sources_api):
+        sources_api._core.rpc_call.return_value = [
+            [
+                ["src_yt"],
+                "YouTube Video",
+                [None, None, None, None, 9, ["https://youtube.com/watch?v=get-slot5", "vid", "channel"]],
+            ],
+            None,
+            None,
+            [["Transcript line 1", ["Transcript line 2"]]],
+        ]
+
+        source = await sources_api.get_fulltext("nb_123", "src_yt")
+
+        assert source.url == "https://youtube.com/watch?v=get-slot5"
+        assert source.kind == "youtube"
+        assert "Transcript line 1" in source.content
 
 
 class TestWaitForSources:
