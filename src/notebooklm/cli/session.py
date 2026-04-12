@@ -34,9 +34,9 @@ from ..auth import (
 )
 from ..client import NotebookLMClient
 from ..paths import (
-    get_home_dir,
     get_browser_profile_dir,
     get_context_path,
+    get_home_dir,
     get_path_info,
     get_storage_path,
 )
@@ -345,22 +345,35 @@ def _ensure_chromium_installed() -> None:
 def _clear_auth_files(storage_path: Path, browser_profile: Path) -> list[Path]:
     """Delete auth files/directories for the active profile.
 
-    Also checks legacy default-profile paths when the resolved paths are profile-based.
+    Clears the active profile's storage, context, and browser profile paths.
+    Home-root legacy paths are only removed when the active profile resolves to
+    the default profile's legacy-compatible locations.
     Returns the paths that were actually removed.
     """
-    paths_to_remove = [storage_path, browser_profile]
+    context_path = get_context_path()
+    paths_to_remove = [storage_path, context_path, browser_profile]
 
-    legacy_storage = get_home_dir() / "storage_state.json"
-    legacy_browser = get_home_dir() / "browser_profile"
-    for legacy_path in (legacy_storage, legacy_browser):
-        if legacy_path not in paths_to_remove:
-            paths_to_remove.append(legacy_path)
+    default_storage = get_storage_path("default")
+    default_context = get_context_path("default")
+    default_browser = get_browser_profile_dir("default")
+    if (
+        storage_path == default_storage
+        and context_path == default_context
+        and browser_profile == default_browser
+    ):
+        legacy_storage = get_home_dir() / "storage_state.json"
+        legacy_browser = get_home_dir() / "browser_profile"
+        for legacy_path in (legacy_storage, legacy_browser):
+            if legacy_path not in paths_to_remove:
+                paths_to_remove.append(legacy_path)
 
     removed: list[Path] = []
     for path in paths_to_remove:
         if not path.exists():
             continue
-        if path.is_dir():
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        elif path.is_dir():
             shutil.rmtree(path)
         else:
             path.unlink()
@@ -1029,6 +1042,13 @@ def register_session_commands(cli):
     @auth_group.command("logout")
     def auth_logout():
         """Clear saved authentication state for the active profile."""
+        if os.environ.get("NOTEBOOKLM_AUTH_JSON"):
+            console.print(
+                "[red]Cannot run 'auth logout' when NOTEBOOKLM_AUTH_JSON is set.[/red]\n"
+                "Unset NOTEBOOKLM_AUTH_JSON to disable inline authentication."
+            )
+            raise SystemExit(1)
+
         storage_path = get_storage_path()
         browser_profile = get_browser_profile_dir()
 

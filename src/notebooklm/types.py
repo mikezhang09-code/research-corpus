@@ -178,22 +178,18 @@ _SOURCE_TYPE_COMPAT_MAP: dict[SourceType, str] = {
 def _extract_source_url(metadata: list[Any] | None) -> str | None:
     """Extract a source URL from NotebookLM source metadata.
 
-    NotebookLM stores URLs in different slots depending on source type:
-    - metadata[7][0] for web pages and PDFs
-    - metadata[5][0] for YouTube sources
-    - metadata[0] as a legacy/fallback flat URL
+    NotebookLM stores URLs in different slots depending on source type, so we
+    check the known nested slots first and only accept values that look like
+    actual URLs before falling back to the legacy flat field.
     """
     if not isinstance(metadata, list):
         return None
 
-    if len(metadata) > 7 and isinstance(metadata[7], list) and metadata[7]:
-        first = metadata[7][0]
-        if isinstance(first, str) and first:
-            return first
-
-    if len(metadata) > 5 and isinstance(metadata[5], list) and metadata[5]:
-        first = metadata[5][0]
-        if isinstance(first, str) and first:
+    for index in (7, 5):
+        if len(metadata) <= index or not isinstance(metadata[index], list) or not metadata[index]:
+            continue
+        first = metadata[index][0]
+        if isinstance(first, str) and first.startswith("http"):
             return first
 
     if len(metadata) > 0 and isinstance(metadata[0], str) and metadata[0].startswith("http"):
