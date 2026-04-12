@@ -10,6 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
+import notebooklm.cli.session as session_module
 from notebooklm.notebooklm_cli import cli
 from notebooklm.types import Notebook
 
@@ -234,6 +235,39 @@ class TestLoginCommand:
         assert result.exit_code == 0
         assert "Authentication saved" in result.output
 
+    def test_login_fresh_clears_saved_auth_state(self, runner, tmp_path):
+        """Test login --fresh removes both storage and browser profile before launch."""
+        storage_file = tmp_path / "storage.json"
+        storage_file.write_text("{}")
+        browser_profile = tmp_path / "browser_profile"
+        browser_profile.mkdir()
+        (browser_profile / "Cookies").write_text("cookie-db")
+
+        with (
+            patch("notebooklm.cli.session._ensure_chromium_installed"),
+            patch("playwright.sync_api.sync_playwright") as mock_pw,
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch("notebooklm.cli.session._sync_server_language_to_config"),
+            patch("builtins.input", return_value=""),
+        ):
+            mock_context = MagicMock()
+            mock_page = MagicMock()
+            mock_page.url = "https://notebooklm.google.com/"
+            mock_context.pages = [mock_page]
+            mock_context.storage_state.side_effect = lambda path: Path(path).write_text("{}")
+            mock_launch = (
+                mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
+            )
+            mock_launch.return_value = mock_context
+
+            result = runner.invoke(cli, ["login", "--fresh"])
+
+        assert result.exit_code == 0
+        assert storage_file.exists()
+        assert "Cleared saved browser session" in result.output
+        assert mock_launch.call_args.kwargs["user_data_dir"] == str(browser_profile)
+
     def test_login_reraises_non_navigation_playwright_errors(
         self, runner, mock_login_browser_with_storage
     ):
@@ -267,6 +301,56 @@ class TestLoginCommand:
         assert len(goto_calls) == 3
         assert goto_calls[1].kwargs.get("wait_until") == "commit"
         assert goto_calls[2].kwargs.get("wait_until") == "commit"
+
+    def test_login_recovers_from_target_closed_error(self, runner, tmp_path):
+        """Test login retries with a fresh page when account switching closes the page."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        storage_file = tmp_path / "storage.json"
+        browser_profile = tmp_path / "browser_profile"
+
+        with (
+            patch("notebooklm.cli.session._ensure_chromium_installed"),
+            patch("playwright.sync_api.sync_playwright") as mock_pw,
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch("notebooklm.cli.session._sync_server_language_to_config"),
+            patch("builtins.input", return_value=""),
+            patch("notebooklm.cli.session.time.sleep"),
+        ):
+            mock_context = MagicMock()
+            first_page = MagicMock()
+            first_page.url = "https://notebooklm.google.com/"
+            replacement_page = MagicMock()
+            replacement_page.url = "https://notebooklm.google.com/"
+            replacement_page.is_closed.return_value = False
+            mock_context.pages = [replacement_page]
+            mock_context.storage_state.side_effect = lambda path: Path(path).write_text("{}")
+
+            call_count = 0
+
+            def goto_side_effect(url, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    first_page.is_closed.return_value = True
+                    raise PlaywrightError(
+                        "Page.goto: Target page, context or browser has been closed"
+                    )
+
+            first_page.goto.side_effect = goto_side_effect
+            mock_context.new_page.return_value = replacement_page
+            mock_context.pages = [first_page]
+            mock_launch = (
+                mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
+            )
+            mock_launch.return_value = mock_context
+
+            result = runner.invoke(cli, ["login"])
+
+        assert result.exit_code == 0
+        assert replacement_page.goto.called
+        assert "Authentication saved" in result.output
 
     def test_login_retries_on_connection_closed_error(
         self, runner, mock_login_browser_with_storage
@@ -559,10 +643,49 @@ class TestStatusCommand:
         result = runner.invoke(cli, ["status", "--json"])
 
         assert result.exit_code == 0
-        # Should be valid JSON
         output_data = json.loads(result.output)
         assert output_data["has_context"] is True
         assert output_data["notebook"]["id"] == "nb_json_test"
+
+
+# =============================================================================
+# AUTH COMMAND TESTS
+# =============================================================================
+
+
+class TestAuthCommands:
+    def test_auth_logout_removes_profile_auth_files(self, runner, tmp_path):
+        """Test auth logout deletes saved storage state and browser profile."""
+        storage_file = tmp_path / "storage_state.json"
+        storage_file.write_text("{}")
+        browser_profile = tmp_path / "browser_profile"
+        browser_profile.mkdir()
+        (browser_profile / "Cookies").write_text("cookie-db")
+
+        with (
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch.object(session_module, "_clear_auth_files", return_value=[storage_file, browser_profile]),
+        ):
+            result = runner.invoke(cli, ["auth", "logout"])
+
+        assert result.exit_code == 0
+        assert "Logged out" in result.output
+
+    def test_auth_logout_is_noop_when_nothing_saved(self, runner, tmp_path):
+        """Test auth logout reports cleanly when there is nothing to remove."""
+        storage_file = tmp_path / "missing-storage.json"
+        browser_profile = tmp_path / "missing-browser-profile"
+
+        with (
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch.object(session_module, "_clear_auth_files", return_value=[]),
+        ):
+            result = runner.invoke(cli, ["auth", "logout"])
+
+        assert result.exit_code == 0
+        assert "No saved auth state found" in result.output
 
     def test_status_json_output_no_context(self, runner, mock_context_file):
         """Test status --json outputs valid JSON when no context."""

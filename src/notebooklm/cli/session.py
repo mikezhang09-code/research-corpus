@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -33,6 +34,7 @@ from ..auth import (
 )
 from ..client import NotebookLMClient
 from ..paths import (
+    get_home_dir,
     get_browser_profile_dir,
     get_context_path,
     get_path_info,
@@ -340,6 +342,43 @@ def _ensure_chromium_installed() -> None:
         )
 
 
+def _clear_auth_files(storage_path: Path, browser_profile: Path) -> list[Path]:
+    """Delete auth files/directories for the active profile.
+
+    Also checks legacy default-profile paths when the resolved paths are profile-based.
+    Returns the paths that were actually removed.
+    """
+    paths_to_remove = [storage_path, browser_profile]
+
+    legacy_storage = get_home_dir() / "storage_state.json"
+    legacy_browser = get_home_dir() / "browser_profile"
+    for legacy_path in (legacy_storage, legacy_browser):
+        if legacy_path not in paths_to_remove:
+            paths_to_remove.append(legacy_path)
+
+    removed: list[Path] = []
+    for path in paths_to_remove:
+        if not path.exists():
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        removed.append(path)
+
+    return removed
+
+
+def _get_recovered_page(context: Any, current_page: Any):
+    """Recover a live page when the original Playwright page was closed."""
+    pages = [page for page in context.pages if not getattr(page, "is_closed", lambda: False)()]
+    if pages:
+        return pages[0]
+    if current_page and not getattr(current_page, "is_closed", lambda: False)():
+        return current_page
+    return context.new_page()
+
+
 def register_session_commands(cli):
     """Register session commands on the main CLI group."""
 
@@ -368,7 +407,12 @@ def register_session_commands(cli):
             "Requires: pip install 'notebooklm[cookies]'"
         ),
     )
-    def login(storage, browser, browser_cookies):
+    @click.option(
+        "--fresh",
+        is_flag=True,
+        help="Delete saved browser session before login so you can choose a different account.",
+    )
+    def login(storage, browser, browser_cookies, fresh):
         """Log in to NotebookLM via browser.
 
         Opens a browser window for Google login. After logging in,
@@ -399,6 +443,20 @@ def register_session_commands(cli):
 
         storage_path = Path(storage) if storage else get_storage_path()
         browser_profile = get_browser_profile_dir()
+
+        if fresh:
+            try:
+                removed = _clear_auth_files(storage_path, browser_profile)
+            except PermissionError as e:
+                console.print(
+                    "[red]Could not clear the saved browser session.[/red]\n"
+                    "Close any running NotebookLM/Chromium windows and try again.\n"
+                    f"Details: {e}"
+                )
+                raise SystemExit(1) from e
+            if removed:
+                console.print("[yellow]Cleared saved browser session for a fresh login.[/yellow]")
+
         if sys.platform == "win32":
             # On Windows < Python 3.13, mode= is ignored by mkdir(). On
             # Python 3.13+, mode= applies Windows ACLs that can be overly
@@ -463,12 +521,31 @@ def register_session_commands(cli):
                         break
                     except PlaywrightError as exc:
                         error_str = str(exc)
+                        is_target_closed = (
+                            "target page, context or browser has been closed" in error_str.lower()
+                        )
                         is_retryable = any(
                             code in error_str for code in RETRYABLE_CONNECTION_ERRORS
                         )
 
                         # Check if we should retry
-                        if is_retryable and attempt < LOGIN_MAX_RETRIES:
+                        if is_target_closed and attempt < LOGIN_MAX_RETRIES:
+                            page = _get_recovered_page(context, page)
+                            backoff_seconds = attempt
+                            console.print(
+                                f"[yellow]Browser page was replaced during login "
+                                f"(attempt {attempt}/{LOGIN_MAX_RETRIES}). "
+                                f"Retrying in {backoff_seconds}s...[/yellow]"
+                            )
+                            time.sleep(backoff_seconds)
+                        elif is_target_closed:
+                            logger.error("Login page kept closing during account switch")
+                            console.print(
+                                "[red]The login page kept closing while switching accounts.[/red]\n"
+                                "Retry with 'notebooklm login --fresh' to start from a clean browser session."
+                            )
+                            raise SystemExit(1) from None
+                        elif is_retryable and attempt < LOGIN_MAX_RETRIES:
                             # Retryable error with attempts remaining: retry
                             backoff_seconds = attempt  # Linear backoff: 1s, 2s
                             logger.debug(
@@ -948,3 +1025,24 @@ def register_session_commands(cli):
             console.print(
                 "\n[yellow]Cookies may be expired. Run 'notebooklm login' to refresh.[/yellow]"
             )
+
+    @auth_group.command("logout")
+    def auth_logout():
+        """Clear saved authentication state for the active profile."""
+        storage_path = get_storage_path()
+        browser_profile = get_browser_profile_dir()
+
+        try:
+            removed = _clear_auth_files(storage_path, browser_profile)
+        except PermissionError as e:
+            console.print(
+                "[red]Could not remove saved auth files.[/red]\n"
+                "Close any running browser windows for this profile and try again.\n"
+                f"Details: {e}"
+            )
+            raise SystemExit(1) from e
+
+        if removed:
+            console.print("[green]Logged out. Removed saved browser session and auth state.[/green]")
+        else:
+            console.print("[yellow]No saved auth state found for the active profile.[/yellow]")
