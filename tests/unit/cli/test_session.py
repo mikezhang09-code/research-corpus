@@ -199,6 +199,7 @@ class TestLoginCommand:
             mock_context = MagicMock()
             mock_page = MagicMock()
             mock_page.url = "https://notebooklm.google.com/"
+            mock_page.is_closed.return_value = False
             mock_context.pages = [mock_page]
             # Make storage_state create the file so chmod succeeds
             mock_context.storage_state.side_effect = lambda path: Path(path).write_text("{}")
@@ -254,6 +255,7 @@ class TestLoginCommand:
             mock_context = MagicMock()
             mock_page = MagicMock()
             mock_page.url = "https://notebooklm.google.com/"
+            mock_page.is_closed.return_value = False
             mock_context.pages = [mock_page]
             mock_context.storage_state.side_effect = lambda path: Path(path).write_text("{}")
             mock_launch = (
@@ -321,6 +323,7 @@ class TestLoginCommand:
             mock_context = MagicMock()
             first_page = MagicMock()
             first_page.url = "https://notebooklm.google.com/"
+            first_page.is_closed.return_value = False
             replacement_page = MagicMock()
             replacement_page.url = "https://notebooklm.google.com/"
             replacement_page.is_closed.return_value = False
@@ -350,6 +353,56 @@ class TestLoginCommand:
 
         assert result.exit_code == 0
         assert replacement_page.goto.called
+        assert "Authentication saved" in result.output
+
+    def test_login_recovers_page_after_enter_and_cookie_loop(self, runner, tmp_path):
+        """Test login refreshes the page after ENTER and retries cookie sync on page closure."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        storage_file = tmp_path / "storage.json"
+        browser_profile = tmp_path / "browser_profile"
+
+        with (
+            patch("notebooklm.cli.session._ensure_chromium_installed"),
+            patch("playwright.sync_api.sync_playwright") as mock_pw,
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch("notebooklm.cli.session._sync_server_language_to_config"),
+            patch("builtins.input", return_value=""),
+        ):
+            mock_context = MagicMock()
+            initial_page = MagicMock()
+            initial_page.url = "https://notebooklm.google.com/"
+            initial_page.is_closed.return_value = True
+            recovered_page = MagicMock()
+            recovered_page.url = "https://notebooklm.google.com/"
+            recovered_page.is_closed.return_value = False
+            mock_context.pages = [recovered_page]
+            mock_context.storage_state.side_effect = lambda path: Path(path).write_text("{}")
+
+            cookie_retry = {"raised": False}
+
+            def recovered_goto(url, **kwargs):
+                if (
+                    url == "https://accounts.google.com/"
+                    and kwargs.get("wait_until") == "commit"
+                    and not cookie_retry["raised"]
+                ):
+                    cookie_retry["raised"] = True
+                    raise PlaywrightError(
+                        "Page.goto: Target page, context or browser has been closed"
+                    )
+
+            recovered_page.goto.side_effect = recovered_goto
+            mock_launch = (
+                mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
+            )
+            mock_launch.return_value = mock_context
+
+            result = runner.invoke(cli, ["login"])
+
+        assert result.exit_code == 0
+        assert recovered_page.goto.call_count >= 3
         assert "Authentication saved" in result.output
 
     def test_login_retries_on_connection_closed_error(
@@ -710,6 +763,22 @@ class TestAuthCommands:
 
         assert result.exit_code == 0
         assert "No saved auth state found" in result.output
+
+    def test_auth_logout_warns_when_inline_auth_is_set(self, runner, tmp_path, monkeypatch):
+        """Test auth logout warns when NOTEBOOKLM_AUTH_JSON still keeps inline auth active."""
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", '{"cookies":[]}')
+        storage_file = tmp_path / "storage_state.json"
+        browser_profile = tmp_path / "browser_profile"
+
+        with (
+            patch("notebooklm.cli.session.get_storage_path", return_value=storage_file),
+            patch("notebooklm.cli.session.get_browser_profile_dir", return_value=browser_profile),
+            patch.object(session_module, "_clear_auth_files", return_value=[]),
+        ):
+            result = runner.invoke(cli, ["auth", "logout"])
+
+        assert result.exit_code == 0
+        assert "NOTEBOOKLM_AUTH_JSON is still set" in result.output
 
 
 # =============================================================================

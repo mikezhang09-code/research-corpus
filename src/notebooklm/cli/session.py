@@ -578,6 +578,7 @@ def register_session_commands(cli):
                 console.print("3. Press [bold]ENTER[/bold] here to save and close\n")
 
                 input("[Press ENTER when logged in] ")
+                page = _get_recovered_page(context, page)
 
                 # Force .google.com cookies for regional users (e.g. UK lands on
                 # .google.co.uk). Use "commit" to resolve once response headers
@@ -587,7 +588,11 @@ def register_session_commands(cli):
                     try:
                         page.goto(url, wait_until="commit")
                     except PlaywrightError as exc:
-                        if "Navigation interrupted" not in str(exc):
+                        error_str = str(exc).lower()
+                        if "target page, context or browser has been closed" in error_str:
+                            page = _get_recovered_page(context, page)
+                            page.goto(url, wait_until="commit")
+                        elif "navigation interrupted" not in error_str:
                             raise
 
                 current_url = page.url
@@ -1031,6 +1036,7 @@ def register_session_commands(cli):
     @auth_group.command("logout")
     def auth_logout():
         """Clear saved authentication state for the active profile."""
+        has_inline_auth = bool(os.environ.get("NOTEBOOKLM_AUTH_JSON"))
         storage_path = get_storage_path()
         browser_profile = get_browser_profile_dir()
 
@@ -1050,3 +1056,9 @@ def register_session_commands(cli):
             )
         else:
             console.print("[yellow]No saved auth state found for the active profile.[/yellow]")
+
+        if has_inline_auth:
+            console.print(
+                "[yellow]NOTEBOOKLM_AUTH_JSON is still set, so inline auth remains active.[/yellow]\n"
+                "Unset NOTEBOOKLM_AUTH_JSON (or restart your shell) to fully log out."
+            )
