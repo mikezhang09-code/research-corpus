@@ -16,7 +16,7 @@ import json
 from collections.abc import Awaitable, Callable
 from functools import partial
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Optional, Tuple, TypedDict
 
 import click
 
@@ -113,13 +113,13 @@ async def _download_artifacts_generic(
     artifact_kind: ArtifactType,
     file_extension: str,
     default_output_dir: str,
-    output_path: str | None,
-    notebook: str | None,
+    output_path: Optional[str],
+    notebook: Optional[str],
     latest: bool,
     earliest: bool,
     download_all: bool,
-    name: str | None,
-    artifact_id: str | None,
+    name: Optional[str],
+    artifact_id: Optional[str],
     json_output: bool,
     dry_run: bool,
     force: bool,
@@ -192,7 +192,7 @@ async def _download_artifacts_generic(
                 "mind-map": client.artifacts.download_mind_map,
                 "data-table": client.artifacts.download_data_table,
             }
-            download_fn: _DownloadFn | None = download_methods.get(artifact_type_name)
+            download_fn: Optional[_DownloadFn] = download_methods.get(artifact_type_name)
             if not download_fn:
                 raise ValueError(f"Unknown artifact type: {artifact_type_name}")
 
@@ -212,7 +212,7 @@ async def _download_artifacts_generic(
                 }
 
             # Helper for file conflict resolution
-            def _resolve_conflict(path: Path) -> tuple[Path | None, dict | None]:
+            def _resolve_conflict(path: Path) -> Tuple[Optional[Path], Optional[dict]]:
                 if not path.exists():
                     return path, None
 
@@ -782,10 +782,10 @@ def download_data_table(ctx, **kwargs):
 async def _download_interactive(
     ctx,
     artifact_type: str,
-    output_path: str | None,
-    notebook: str | None,
+    output_path: Optional[str],
+    notebook: Optional[str],
     output_format: str,
-    artifact_id: str | None,
+    artifact_id: Optional[str],
 ) -> str:
     """Download quiz or flashcard artifact.
 

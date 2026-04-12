@@ -15,7 +15,7 @@ Commands:
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Optional
 
 import click
 
@@ -91,11 +91,11 @@ def calculate_backoff_delay(
 
 
 async def generate_with_retry(
-    generate_fn: Callable[[], Awaitable[GenerationStatus | None]],
+    generate_fn: Callable[[], Awaitable[Optional[GenerationStatus]]],
     max_retries: int,
     artifact_type: str,
     json_output: bool = False,
-) -> GenerationStatus | None:
+) -> Optional[GenerationStatus]:
     """Generate artifact with retry on rate limit.
 
     Retries the generation call with exponential backoff when rate limited.
@@ -134,7 +134,7 @@ async def generate_with_retry(
     return None
 
 
-def resolve_language(language: str | None) -> str:
+def resolve_language(language: Optional[str]) -> str:
     """Resolve language from CLI flag, config, or default.
 
     Priority: CLI flag > config file > "en" default.
@@ -163,7 +163,7 @@ async def handle_generation_result(
     wait: bool = False,
     json_output: bool = False,
     timeout: float = 300.0,
-) -> GenerationStatus | None:
+) -> Optional[GenerationStatus]:
     """Handle generation result with optional waiting and output formatting.
 
     Consolidates common pattern across all generate commands:
@@ -210,7 +210,7 @@ async def handle_generation_result(
         return result
 
     # Extract task_id from various result formats
-    task_id: str | None = None
+    task_id: Optional[str] = None
     status: Any = result
     if isinstance(result, GenerationStatus):
         task_id = result.task_id
@@ -234,7 +234,7 @@ async def handle_generation_result(
     return status if isinstance(status, GenerationStatus) else None
 
 
-def _extract_task_id(status: Any) -> str | None:
+def _extract_task_id(status: Any) -> Optional[str]:
     """Extract task ID from various status formats.
 
     Handles GenerationStatus objects, dicts with task_id/artifact_id keys,

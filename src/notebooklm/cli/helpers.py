@@ -15,7 +15,7 @@ import logging
 import os
 import time
 from functools import wraps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 import click
 from rich.console import Console
@@ -42,7 +42,7 @@ _CLI_ARTIFACT_ALIASES = {
 }
 
 
-def cli_name_to_artifact_type(name: str) -> ArtifactType | None:
+def cli_name_to_artifact_type(name: str) -> Optional[ArtifactType]:
     """Convert CLI artifact type name to ArtifactType enum.
 
     Args:
@@ -165,7 +165,7 @@ def get_auth_tokens(ctx) -> AuthTokens:
 # =============================================================================
 
 
-def _get_context_value(key: str) -> str | None:
+def _get_context_value(key: str) -> Optional[str]:
     """Read a single value from context.json."""
     context_file = get_context_path()
     if not context_file.exists():
@@ -185,7 +185,7 @@ def _get_context_value(key: str) -> str | None:
         return None
 
 
-def _set_context_value(key: str, value: str | None) -> None:
+def _set_context_value(key: str, value: Optional[str]) -> None:
     """Set or clear a single value in context.json."""
     context_file = get_context_path()
     if not context_file.exists():
@@ -207,16 +207,16 @@ def _set_context_value(key: str, value: str | None) -> None:
         logger.warning("Failed to write context file %s for key '%s': %s", context_file, key, e)
 
 
-def get_current_notebook() -> str | None:
+def get_current_notebook() -> Optional[str]:
     """Get the current notebook ID from context."""
     return _get_context_value("notebook_id")
 
 
 def set_current_notebook(
     notebook_id: str,
-    title: str | None = None,
-    is_owner: bool | None = None,
-    created_at: str | None = None,
+    title: Optional[str] = None,
+    is_owner: Optional[bool] = None,
+    created_at: Optional[str] = None,
 ):
     """Set the current notebook context.
 
@@ -226,7 +226,7 @@ def set_current_notebook(
     context_file = get_context_path()
     context_file.parent.mkdir(parents=True, exist_ok=True)
 
-    data: dict[str, str | bool] = {"notebook_id": notebook_id}
+    data: dict[str, Union[str, bool]] = {"notebook_id": notebook_id}
     if title:
         data["title"] = title
     if is_owner is not None:
@@ -244,12 +244,12 @@ def clear_context():
         context_file.unlink()
 
 
-def get_current_conversation() -> str | None:
+def get_current_conversation() -> Optional[str]:
     """Get the current conversation ID from context."""
     return _get_context_value("conversation_id")
 
 
-def set_current_conversation(conversation_id: str | None):
+def set_current_conversation(conversation_id: Optional[str]):
     """Set or clear the current conversation ID in context."""
     _set_context_value("conversation_id", conversation_id)
 
@@ -272,7 +272,7 @@ def validate_id(entity_id: str, entity_name: str = "ID") -> str:
     return entity_id.strip()
 
 
-def require_notebook(notebook_id: str | None) -> str:
+def require_notebook(notebook_id: Optional[str]) -> str:
     """Get notebook ID from argument or context, raise if neither.
 
     Args:
@@ -392,7 +392,7 @@ async def resolve_note_id(client, notebook_id: str, partial_id: str) -> str:
 
 async def resolve_source_ids(
     client, notebook_id: str, source_ids: tuple[str, ...]
-) -> list[str] | None:
+) -> Optional[list[str]]:
     """Resolve multiple partial source IDs to full IDs.
 
     Args:
@@ -542,7 +542,7 @@ def json_output_response(data: dict) -> None:
     click.echo(json.dumps(data, indent=2, default=str))
 
 
-def json_error_response(code: str, message: str, extra: dict | None = None) -> None:
+def json_error_response(code: str, message: str, extra: Optional[dict] = None) -> None:
     """Print JSON error and exit (no colors for machine parsing).
 
     Args:
@@ -588,7 +588,7 @@ def display_research_sources(sources: list[dict], max_display: int = 10) -> None
         for src in sources[:max_display]:
             row = [src.get("title", "Untitled")[:50]]
             if has_types:
-                rt: int | None = src.get("result_type")
+                rt: Optional[int] = src.get("result_type")
                 label = (
                     _RESULT_TYPE_LABELS.get(rt, str(rt) if rt is not None else "")
                     if rt is not None

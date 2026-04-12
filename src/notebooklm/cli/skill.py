@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import click
 
@@ -25,7 +26,7 @@ TARGETS = {
 SCOPES = ("user", "project")
 
 
-def get_skill_source_content() -> str | None:
+def get_skill_source_content() -> Optional[str]:
     """Read the skill source file from package data."""
     return get_agent_source_content("claude")
 
@@ -40,7 +41,7 @@ def get_package_version() -> str:
         return "unknown"
 
 
-def get_skill_version(skill_path: Path) -> str | None:
+def get_skill_version(skill_path: Path) -> Optional[str]:
     """Extract version from skill file header comment."""
     if not skill_path.exists():
         return None
@@ -91,7 +92,7 @@ def remove_empty_parents(skill_path: Path, scope: str) -> None:
         current = current.parent
 
 
-def get_installed_content(target: str, scope: str) -> str | None:
+def get_installed_content(target: str, scope: str) -> Optional[str]:
     """Read an installed skill file."""
     skill_path = get_skill_path(target, scope)
     if not skill_path.exists():

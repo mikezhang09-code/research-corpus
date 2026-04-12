@@ -1,7 +1,7 @@
 """Helper functions for download commands."""
 
 import re
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 # Reserve space for " (999)" suffix when handling duplicate filenames
 DUPLICATE_SUFFIX_RESERVE = 7
@@ -48,8 +48,8 @@ def select_artifact(
     artifacts: list[ArtifactDict],
     latest: bool = True,
     earliest: bool = False,
-    name: str | None = None,
-    artifact_id: str | None = None,
+    name: Optional[str] = None,
+    artifact_id: Optional[str] = None,
 ) -> tuple[ArtifactDict, str]:
     """
     Select an artifact from a list based on criteria.
