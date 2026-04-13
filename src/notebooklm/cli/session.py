@@ -371,12 +371,17 @@ def _clear_auth_files(storage_path: Path, browser_profile: Path) -> list[Path]:
     for path in paths_to_remove:
         if not path.exists() and not path.is_symlink():
             continue
-        if path.is_symlink() or path.is_file():
-            path.unlink()
-        elif path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink()
+        try:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        except FileNotFoundError:
+            # Another process may clear the auth artifact between our existence
+            # check and the delete call. That race is benign for logout/fresh-login.
+            continue
         removed.append(path)
 
     return removed

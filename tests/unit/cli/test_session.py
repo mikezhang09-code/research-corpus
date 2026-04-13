@@ -654,6 +654,30 @@ class TestStatusCommand:
 
 
 class TestAuthCommands:
+    def test_clear_auth_files_ignores_concurrent_file_removal(self, tmp_path):
+        """_clear_auth_files should tolerate a benign delete race."""
+        storage_file = tmp_path / "storage_state.json"
+        storage_file.write_text("{}")
+        browser_profile = tmp_path / "browser_profile"
+        browser_profile.mkdir()
+
+        original_unlink = Path.unlink
+        call_count = 0
+
+        def flaky_unlink(self, *args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if self == storage_file and call_count == 1:
+                original_unlink(storage_file, missing_ok=True)
+                raise FileNotFoundError
+            return original_unlink(self, *args, **kwargs)
+
+        with patch.object(Path, "unlink", new=flaky_unlink):
+            removed = session_module._clear_auth_files(storage_file, browser_profile)
+
+        assert removed == [browser_profile]
+        assert not browser_profile.exists()
+
     def test_auth_logout_removes_profile_auth_files(self, runner, tmp_path):
         """Test auth logout deletes saved storage state and browser profile."""
         storage_file = tmp_path / "storage_state.json"
