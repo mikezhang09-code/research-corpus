@@ -590,7 +590,7 @@ class Source:
         if not data or not isinstance(data, list):
             raise ValueError(f"Invalid source data: {data}")
 
-        # Try deeply nested format: [[[[id], title, metadata, ...]]]
+        # Try nested formats: [[[id], title, metadata, ...]] or [[[[id], ...]]]
         if isinstance(data[0], list) and len(data[0]) > 0:
             if isinstance(data[0][0], list) and len(data[0][0]) > 0:
                 # Check if deeply nested vs medium nested
@@ -600,8 +600,8 @@ class Source:
                     source_id = entry[0][0] if isinstance(entry[0], list) else entry[0]
                     title = entry[1] if len(entry) > 1 else None
                 else:
-                    # Medium nested: [[['id'], 'title', ...]]
-                    entry = data[0][0]
+                    # Medium nested: [[[id], 'title', ...]]
+                    entry = data[0]
                     source_id = entry[0][0] if isinstance(entry[0], list) else entry[0]
                     title = entry[1] if len(entry) > 1 else None
 
