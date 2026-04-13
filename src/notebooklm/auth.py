@@ -49,6 +49,7 @@ MINIMUM_REQUIRED_COOKIES = {"SID"}
 # Includes googleusercontent.com for authenticated media downloads
 ALLOWED_COOKIE_DOMAINS = {
     ".google.com",
+    "accounts.google.com",
     "notebooklm.google.com",
     ".googleusercontent.com",
 }
@@ -659,15 +660,9 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
         ValueError: If tokens cannot be extracted from response
     """
     logger.debug("Fetching CSRF and session tokens from NotebookLM")
-    cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://notebooklm.google.com/",
-            headers={"Cookie": cookie_header},
-            follow_redirects=True,
-            timeout=30.0,
-        )
+    async with httpx.AsyncClient(cookies=cookies, follow_redirects=True, timeout=30.0) as client:
+        response = await client.get("https://notebooklm.google.com/")
         response.raise_for_status()
 
         final_url = str(response.url)

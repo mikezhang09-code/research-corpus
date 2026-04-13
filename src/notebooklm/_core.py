@@ -141,8 +141,8 @@ class ClientCore:
             self._http_client = httpx.AsyncClient(
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-                    "Cookie": self.auth.cookie_header,
                 },
+                cookies=self.auth.cookies,
                 timeout=timeout,
             )
 
@@ -171,7 +171,8 @@ class ClientCore:
         """
         if not self._http_client:
             raise RuntimeError("Client not initialized. Use 'async with' context.")
-        self._http_client.headers["Cookie"] = self.auth.cookie_header
+        self._http_client.cookies.clear()
+        self._http_client.cookies.update(self.auth.cookies)
 
     def _build_url(self, rpc_method: RPCMethod, source_path: str = "/") -> str:
         """Build the batchexecute URL for an RPC call.

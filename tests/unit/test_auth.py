@@ -68,6 +68,11 @@ class TestExtractCookies:
                     "value": "osid_value",
                     "domain": "notebooklm.google.com",
                 },
+                {
+                    "name": "ACCOUNT_CHOOSER",
+                    "value": "chooser_value",
+                    "domain": "accounts.google.com",
+                },
                 {"name": "OTHER", "value": "other_value", "domain": "other.com"},
             ]
         }
@@ -78,6 +83,7 @@ class TestExtractCookies:
         assert cookies["HSID"] == "hsid_value"
         assert cookies["__Secure-1PSID"] == "secure_value"
         assert cookies["OSID"] == "osid_value"
+        assert cookies["ACCOUNT_CHOOSER"] == "chooser_value"
         assert "OTHER" not in cookies
 
     def test_raises_if_missing_sid(self):
@@ -541,8 +547,8 @@ class TestFetchTokens:
             await fetch_tokens(cookies)
 
     @pytest.mark.asyncio
-    async def test_fetch_tokens_includes_cookie_header(self, httpx_mock: HTTPXMock):
-        """Test that fetch_tokens includes cookie header."""
+    async def test_fetch_tokens_includes_cookie_jar_cookies(self, httpx_mock: HTTPXMock):
+        """Test that fetch_tokens sends cookies via the client cookie jar."""
         html = '"SNlM0e":"csrf" "FdrFJe":"sess"'
         httpx_mock.add_response(content=html.encode())
 

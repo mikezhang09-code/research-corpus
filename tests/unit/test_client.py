@@ -53,6 +53,45 @@ class TestNotebookLMClientInit:
 # =============================================================================
 
 
+class TestClientCoreCookies:
+    @pytest.mark.asyncio
+    async def test_open_uses_cookie_jar(self, mock_auth):
+        """Test ClientCore initializes httpx with auth cookies in the cookie jar."""
+        core = ClientCore(mock_auth)
+
+        await core.open()
+        try:
+            assert core._http_client is not None
+            assert core._http_client.headers.get("Cookie") is None
+            assert core._http_client.cookies.get("SID") == "test_sid"
+            assert core._http_client.cookies.get("HSID") == "test_hsid"
+        finally:
+            await core.close()
+
+    @pytest.mark.asyncio
+    async def test_update_auth_headers_refreshes_cookie_jar(self, mock_auth):
+        """Test auth refresh updates the cookie jar, not a raw Cookie header."""
+        core = ClientCore(mock_auth)
+
+        await core.open()
+        try:
+            core.auth = AuthTokens(
+                cookies={"SID": "new_sid", "SAPISID": "new_sapisid"},
+                csrf_token="new_csrf",
+                session_id="new_session",
+            )
+
+            core.update_auth_headers()
+
+            assert core._http_client is not None
+            assert core._http_client.headers.get("Cookie") is None
+            assert core._http_client.cookies.get("SID") == "new_sid"
+            assert core._http_client.cookies.get("SAPISID") == "new_sapisid"
+            assert core._http_client.cookies.get("HSID") is None
+        finally:
+            await core.close()
+
+
 class TestClientContextManager:
     @pytest.mark.asyncio
     async def test_context_manager_opens_and_closes(self, mock_auth):
