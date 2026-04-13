@@ -994,14 +994,21 @@ def generate_data_table(
     default=None,
     help="Notebook ID (uses current if not set)",
 )
+@click.argument("description", default="", required=False)
+@click.option("--language", default=None, help="Output language (default: from config or 'en')")
 @click.option("--source", "-s", "source_ids", multiple=True, help="Limit to specific source IDs")
 @json_option
 @with_client
-def generate_mind_map(ctx, notebook_id, source_ids, json_output, client_auth):
+def generate_mind_map(ctx, notebook_id, description, language, source_ids, json_output, client_auth):
     """Generate mind map.
 
     \b
     Use --json for machine-readable output.
+
+    \b
+    Example:
+      notebooklm generate mind-map "focus on causal relationships"
+      notebooklm generate mind-map --language zh-CN
     """
     nb_id = require_notebook(notebook_id)
 
@@ -1013,12 +1020,18 @@ def generate_mind_map(ctx, notebook_id, source_ids, json_output, client_auth):
             # Show status spinner only for console output
             if json_output:
                 result = await client.artifacts.generate_mind_map(
-                    nb_id_resolved, source_ids=sources
+                    nb_id_resolved,
+                    source_ids=sources,
+                    language=resolve_language(language),
+                    instructions=description or None,
                 )
             else:
                 with console.status("Generating mind map..."):
                     result = await client.artifacts.generate_mind_map(
-                        nb_id_resolved, source_ids=sources
+                        nb_id_resolved,
+                        source_ids=sources,
+                        language=resolve_language(language),
+                        instructions=description or None,
                     )
 
             _output_mind_map_result(result, json_output)
