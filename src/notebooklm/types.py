@@ -601,7 +601,7 @@ class Source:
                     title = entry[1] if len(entry) > 1 else None
                 else:
                     # Medium nested: [[['id'], 'title', ...]]
-                    entry = data[0]
+                    entry = data[0][0]
                     source_id = entry[0][0] if isinstance(entry[0], list) else entry[0]
                     title = entry[1] if len(entry) > 1 else None
 

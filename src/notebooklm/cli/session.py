@@ -382,7 +382,7 @@ def _clear_auth_files(storage_path: Path, browser_profile: Path) -> list[Path]:
     return removed
 
 
-def _get_recovered_page(context: Any, current_page: Any):
+def _get_recovered_page(context: Any, current_page: Any) -> Any:
     """Recover a live page when the original Playwright page was closed."""
     pages = [page for page in context.pages if not getattr(page, "is_closed", lambda: False)()]
     if pages:
@@ -398,7 +398,7 @@ def register_session_commands(cli):
     @cli.command("login")
     @click.option(
         "--storage",
-        type=click.Path(),
+        type=click.Path(dir_okay=False),
         default=None,
         help="Where to save storage_state.json (default: profile-specific location)",
     )
