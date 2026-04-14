@@ -16,6 +16,7 @@ from ..client import NotebookLMClient
 from ..types import Note
 from .helpers import (
     console,
+    json_output_response,
     require_notebook,
     resolve_note_id,
     resolve_notebook_id,
@@ -62,21 +63,25 @@ def note_list(ctx, notebook_id, json_output, client_auth):
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
             notes = await client.notes.list(nb_id_resolved)
 
-            if not notes:
-                if json_output:
-                    from ..cli.helpers import json_output_response
-                    json_output_response([])
-                else:
-                    console.print("[yellow]No notes found[/yellow]")
+            if json_output:
+                data = {
+                    "notebook_id": nb_id_resolved,
+                    "notes": [
+                        {
+                            "id": n.id,
+                            "title": n.title or "Untitled",
+                            "preview": (n.content or "")[:100],
+                        }
+                        for n in notes
+                        if isinstance(n, Note)
+                    ],
+                    "count": len(notes),
+                }
+                json_output_response(data)
                 return
 
-            if json_output:
-                from ..cli.helpers import json_output_response
-                json_output_response([
-                    {"id": n.id, "title": n.title or "", "preview": (n.content or "")[:100]}
-                    for n in notes
-                    if isinstance(n, Note)
-                ])
+            if not notes:
+                console.print("[yellow]No notes found[/yellow]")
                 return
 
             table = Table(title=f"Notes in {nb_id_resolved}")
