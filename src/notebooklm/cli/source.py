@@ -942,7 +942,7 @@ def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
 
             for s in sorted_sources:
                 title = (s.title or "").strip()
-                status = str(s.status).lower() if s.status else "unknown"
+                status = source_status_to_str(s.status) if s.status else "unknown"
 
                 # Remove sources in error or unknown state
                 if status in ["error", "unknown"]:
@@ -982,13 +982,23 @@ def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
             # Chunk deletions to avoid rate limiting
             delete_list = list(to_delete)
             chunk_size = 10
+            deleted = 0
+            failed = 0
             for i in range(0, len(delete_list), chunk_size):
                 chunk = delete_list[i : i + chunk_size]
                 delete_tasks = [client.sources.delete(nb_id_resolved, sid) for sid in chunk]
-                await asyncio.gather(*delete_tasks, return_exceptions=True)
+                results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+                for r in results:
+                    if isinstance(r, Exception):
+                        failed += 1
+                    else:
+                        deleted += 1
                 if i + chunk_size < len(delete_list):
                     await asyncio.sleep(0.5)
 
-            console.print(f"[green]Successfully cleaned {len(to_delete)} source(s).[/green]")
+            if failed:
+                console.print(f"[yellow]Cleaned {deleted} source(s). {failed} deletion(s) failed.[/yellow]")
+            else:
+                console.print(f"[green]Successfully cleaned {deleted} source(s).[/green]")
 
     return _run()
