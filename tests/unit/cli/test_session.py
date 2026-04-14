@@ -1,6 +1,7 @@
 """Tests for session CLI commands (login, use, status, clear)."""
 
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -48,6 +49,54 @@ def mock_context_file(tmp_path):
 # =============================================================================
 # LOGIN COMMAND TESTS
 # =============================================================================
+
+
+class TestChromiumPreflight:
+    def test_ensure_chromium_installed_uses_current_python(self):
+        """Use the current Python env so venv/pipx installs work without PATH hacks."""
+        from notebooklm.cli.session import _ensure_chromium_installed
+
+        dry_run = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch("notebooklm.cli.session.subprocess.run", return_value=dry_run) as mock_run:
+            _ensure_chromium_installed()
+
+        mock_run.assert_called_once_with(
+            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_ensure_chromium_installed_uses_current_python_for_install(self):
+        """Auto-install should reuse the same interpreter as the running CLI."""
+        from notebooklm.cli.session import _ensure_chromium_installed
+
+        dry_run = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="chromium will download if not already installed",
+            stderr="",
+        )
+        install = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch(
+            "notebooklm.cli.session.subprocess.run", side_effect=[dry_run, install]
+        ) as mock_run:
+            _ensure_chromium_installed()
+
+        assert mock_run.call_args_list[0].args[0] == [
+            sys.executable,
+            "-m",
+            "playwright",
+            "install",
+            "--dry-run",
+            "chromium",
+        ]
+        assert mock_run.call_args_list[1].args[0] == [
+            sys.executable,
+            "-m",
+            "playwright",
+            "install",
+            "chromium",
+        ]
 
 
 class TestLoginCommand:

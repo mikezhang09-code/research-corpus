@@ -301,14 +301,16 @@ def _windows_playwright_event_loop() -> Iterator[None]:
 def _ensure_chromium_installed() -> None:
     """Check if Chromium is installed and install if needed.
 
-    This pre-flight check runs `playwright install --dry-run chromium` to detect
-    if the browser needs installation, then auto-installs if necessary.
+    This pre-flight check runs `python -m playwright install --dry-run chromium`
+    to detect if the browser needs installation, then auto-installs if necessary.
 
     Silently proceeds on any errors - Playwright will handle them during launch.
     """
+    playwright_cmd = [sys.executable, "-m", "playwright"]
+
     try:
         result = subprocess.run(
-            ["playwright", "install", "--dry-run", "chromium"],
+            [*playwright_cmd, "install", "--dry-run", "chromium"],
             capture_output=True,
             text=True,
         )
@@ -319,22 +321,21 @@ def _ensure_chromium_installed() -> None:
 
         console.print("[yellow]Chromium browser not installed. Installing now...[/yellow]")
         install_result = subprocess.run(
-            ["playwright", "install", "chromium"],
+            [*playwright_cmd, "install", "chromium"],
             capture_output=True,
             text=True,
         )
         if install_result.returncode != 0:
             console.print(
                 "[red]Failed to install Chromium browser.[/red]\n"
-                "Run manually: playwright install chromium"
+                f"Run manually: {sys.executable} -m playwright install chromium"
             )
             raise SystemExit(1)
         console.print("[green]Chromium installed successfully.[/green]\n")
     except SystemExit:
         raise
     except Exception as e:
-        # FileNotFoundError: playwright CLI not found but sync_playwright imported
-        # Other exceptions: dry-run check failed - let Playwright handle it during launch
+        # Other exceptions: dry-run check failed - let Playwright handle them during launch
         console.print(
             f"[dim]Warning: Chromium pre-flight check failed: {e}. Proceeding anyway.[/dim]"
         )
