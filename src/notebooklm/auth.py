@@ -164,6 +164,18 @@ class AuthTokens:
         """
         return "; ".join(f"{k}={v}" for k, v in self.cookies.items())
 
+    def to_cookie_jar(self) -> "httpx.Cookies":
+        """Create an httpx cookie jar from auth cookies.
+
+        Uses httpx.Cookies instead of raw Cookie headers so that cookies
+        are correctly sent on cross-domain redirects (e.g., when Google
+        redirects to accounts.google.com to refresh short-lived cookies).
+
+        Returns:
+            httpx.Cookies jar with all auth cookies set on .google.com domain.
+        """
+        return _build_cookie_jar(self.cookies)
+
     @classmethod
     async def from_storage(
         cls, path: Path | None = None, profile: str | None = None
@@ -642,6 +654,19 @@ def load_httpx_cookies(path: Path | None = None) -> "httpx.Cookies":
     return cookies
 
 
+def _build_cookie_jar(cookies: dict[str, str]) -> httpx.Cookies:
+    """Build an httpx cookie jar from a flat cookies dict.
+
+    Uses httpx.Cookies instead of raw Cookie headers so that cookies
+    are correctly sent on cross-domain redirects (e.g., when Google
+    redirects to accounts.google.com to refresh short-lived cookies).
+    """
+    jar = httpx.Cookies()
+    for name, value in cookies.items():
+        jar.set(name, value, domain=".google.com")
+    return jar
+
+
 async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
     """Fetch CSRF token and session ID from NotebookLM homepage.
 
@@ -660,13 +685,7 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
     """
     logger.debug("Fetching CSRF and session tokens from NotebookLM")
 
-    # Use httpx cookie jar instead of raw Cookie header.
-    # Raw headers are dropped on cross-domain redirects (e.g., when Google
-    # redirects to accounts.google.com to refresh short-lived cookies).
-    # The cookie jar correctly sends domain-appropriate cookies on redirects.
-    jar = httpx.Cookies()
-    for name, value in cookies.items():
-        jar.set(name, value, domain=".google.com")
+    jar = _build_cookie_jar(cookies)
 
     async with httpx.AsyncClient(cookies=jar) as client:
         response = await client.get(
