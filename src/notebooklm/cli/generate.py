@@ -995,7 +995,9 @@ def generate_data_table(
     help="Notebook ID (uses current if not set)",
 )
 @click.option("--source", "-s", "source_ids", multiple=True, help="Limit to specific source IDs")
-@click.option("--language", "-l", default="en", help="Language code (default: en)")
+@click.option(
+    "--language", "-l", default=None, help="Output language (default: from config or 'en')"
+)
 @click.option("--instructions", "-i", default=None, help="Custom instructions for mind map")
 @json_option
 @with_client
@@ -1006,7 +1008,7 @@ def generate_mind_map(
 
     \b
     Use --json for machine-readable output.
-    Use --language to set the output language (default: en).
+    Use --language to set the output language (default: from config or 'en').
     Use --instructions to provide custom instructions.
     """
     nb_id = require_notebook(notebook_id)
@@ -1015,13 +1017,14 @@ def generate_mind_map(
         async with NotebookLMClient(client_auth) as client:
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
             sources = await resolve_source_ids(client, nb_id_resolved, source_ids)
+            resolved_language = resolve_language(language)
 
             # Show status spinner only for console output
             if json_output:
                 result = await client.artifacts.generate_mind_map(
                     nb_id_resolved,
                     source_ids=sources,
-                    language=language,
+                    language=resolved_language,
                     instructions=instructions,
                 )
             else:
@@ -1029,7 +1032,7 @@ def generate_mind_map(
                     result = await client.artifacts.generate_mind_map(
                         nb_id_resolved,
                         source_ids=sources,
-                        language=language,
+                        language=resolved_language,
                         instructions=instructions,
                     )
 
