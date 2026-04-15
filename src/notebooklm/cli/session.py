@@ -326,7 +326,7 @@ def _ensure_chromium_installed() -> None:
         if install_result.returncode != 0:
             console.print(
                 "[red]Failed to install Chromium browser.[/red]\n"
-                "Run manually: playwright install chromium"
+                "Run manually: python -m playwright install chromium"
             )
             raise SystemExit(1)
         console.print("[green]Chromium installed successfully.[/green]\n")
