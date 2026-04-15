@@ -659,12 +659,18 @@ async def fetch_tokens(cookies: dict[str, str]) -> tuple[str, str]:
         ValueError: If tokens cannot be extracted from response
     """
     logger.debug("Fetching CSRF and session tokens from NotebookLM")
-    cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
-    async with httpx.AsyncClient() as client:
+    # Use httpx cookie jar instead of raw Cookie header.
+    # Raw headers are dropped on cross-domain redirects (e.g., when Google
+    # redirects to accounts.google.com to refresh short-lived cookies).
+    # The cookie jar correctly sends domain-appropriate cookies on redirects.
+    jar = httpx.Cookies()
+    for name, value in cookies.items():
+        jar.set(name, value, domain=".google.com")
+
+    async with httpx.AsyncClient(cookies=jar) as client:
         response = await client.get(
             "https://notebooklm.google.com/",
-            headers={"Cookie": cookie_header},
             follow_redirects=True,
             timeout=30.0,
         )

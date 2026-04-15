@@ -138,11 +138,18 @@ class ClientCore:
                 write=self._timeout,
                 pool=self._timeout,
             )
+            # Use httpx cookie jar instead of raw Cookie header.
+            # Raw headers are dropped on cross-domain redirects, which breaks
+            # auth when Google redirects to accounts.google.com (#273).
+            jar = httpx.Cookies()
+            for name, value in self.auth.cookies.items():
+                jar.set(name, value, domain=".google.com")
+
             self._http_client = httpx.AsyncClient(
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-                    "Cookie": self.auth.cookie_header,
                 },
+                cookies=jar,
                 timeout=timeout,
             )
 
@@ -161,7 +168,7 @@ class ClientCore:
         return self._http_client is not None
 
     def update_auth_headers(self) -> None:
-        """Update HTTP client headers with current auth tokens.
+        """Update HTTP client cookies with current auth tokens.
 
         Call this after modifying auth tokens (e.g., after refresh_auth())
         to ensure the HTTP client uses the updated credentials.
@@ -171,7 +178,10 @@ class ClientCore:
         """
         if not self._http_client:
             raise RuntimeError("Client not initialized. Use 'async with' context.")
-        self._http_client.headers["Cookie"] = self.auth.cookie_header
+        jar = httpx.Cookies()
+        for name, value in self.auth.cookies.items():
+            jar.set(name, value, domain=".google.com")
+        self._http_client.cookies = jar
 
     def _build_url(self, rpc_method: RPCMethod, source_path: str = "/") -> str:
         """Build the batchexecute URL for an RPC call.
