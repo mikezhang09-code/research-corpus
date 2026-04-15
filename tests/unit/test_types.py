@@ -161,6 +161,41 @@ class TestSource:
         assert source.kind == SourceType.YOUTUBE
         assert source.kind == "youtube"  # str enum comparison
 
+    def test_from_api_response_youtube_source_url_at_index5(self):
+        """Test YouTube URL extraction from index [2][5] (real API structure).
+
+        In the real API, YouTube sources store URL data at src[2][5] as
+        [url, video_id, channel_name] and src[2][7] is null.
+        Fixes https://github.com/teng-lin/notebooklm-py/issues/265
+        """
+        data = [
+            [
+                [
+                    ["src_yt2"],
+                    "YouTube Video Real",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        9,
+                        [
+                            "https://www.youtube.com/watch?v=dcWU-qD8ISQ",
+                            "dcWU-qD8ISQ",
+                            "john newquist",
+                        ],
+                        None,
+                        None,
+                    ],
+                ]
+            ]
+        ]
+        source = Source.from_api_response(data)
+
+        assert source.id == "src_yt2"
+        assert source.url == "https://www.youtube.com/watch?v=dcWU-qD8ISQ"
+        assert source.kind == SourceType.YOUTUBE
+
     def test_from_api_response_web_page_source(self):
         """Test that web page sources are parsed with type code 5."""
         data = [

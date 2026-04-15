@@ -583,10 +583,22 @@ class Source:
                     title = entry[1] if len(entry) > 1 else None
 
                     # Try to extract URL if present
+                    # Web/PDF at [2][7], YouTube at [2][5][0], fallback at [2][0]
                     url = None
                     if len(entry) > 2 and isinstance(entry[2], list):
                         if len(entry[2]) > 7 and isinstance(entry[2][7], list):
                             url = entry[2][7][0] if entry[2][7] else None
+                        if not url and len(entry[2]) > 5:
+                            yt_data = entry[2][5]
+                            if (
+                                isinstance(yt_data, list)
+                                and len(yt_data) > 0
+                                and isinstance(yt_data[0], str)
+                            ):
+                                url = yt_data[0]
+                        if not url and len(entry[2]) > 0:
+                            if isinstance(entry[2][0], str) and entry[2][0].startswith("http"):
+                                url = entry[2][0]
 
                     return cls(id=str(source_id), title=title, url=url, _type_code=None)
 
@@ -598,6 +610,14 @@ class Source:
                         url_list = entry[2][7]
                         if isinstance(url_list, list) and len(url_list) > 0:
                             url = url_list[0]
+                    if not url and len(entry[2]) > 5:
+                        yt_data = entry[2][5]
+                        if (
+                            isinstance(yt_data, list)
+                            and len(yt_data) > 0
+                            and isinstance(yt_data[0], str)
+                        ):
+                            url = yt_data[0]
                     if not url and len(entry[2]) > 0:
                         if isinstance(entry[2][0], str) and entry[2][0].startswith("http"):
                             url = entry[2][0]

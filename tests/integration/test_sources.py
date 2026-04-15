@@ -951,6 +951,52 @@ class TestListSourcesParsingEdgeCases:
         assert sources[0].url is None
 
     @pytest.mark.asyncio
+    async def test_list_sources_youtube_url_at_index5(
+        self,
+        auth_tokens,
+        httpx_mock: HTTPXMock,
+        build_rpc_response,
+    ):
+        """Test list() extracts YouTube URL from src[2][5][0].
+
+        YouTube sources store URL data at src[2][5] as [url, video_id, channel]
+        and src[2][7] is null. Fixes #265.
+        """
+        response = build_rpc_response(
+            RPCMethod.GET_NOTEBOOK,
+            [
+                [
+                    "Notebook Title",
+                    [
+                        [
+                            ["src_yt"],
+                            "YouTube Video",
+                            [
+                                None,
+                                11,
+                                [1704067200, 0],
+                                None,
+                                9,
+                                ["https://www.youtube.com/watch?v=abc123", "abc123", "channel"],
+                                None,
+                                None,
+                            ],
+                            [None, 2],
+                        ]
+                    ],
+                    "nb_123",
+                ]
+            ],
+        )
+        httpx_mock.add_response(content=response.encode())
+
+        async with NotebookLMClient(auth_tokens) as client:
+            sources = await client.sources.list("nb_123")
+
+        assert len(sources) == 1
+        assert sources[0].url == "https://www.youtube.com/watch?v=abc123"
+
+    @pytest.mark.asyncio
     async def test_list_sources_timestamp_invalid(
         self,
         auth_tokens,
