@@ -119,9 +119,9 @@ async def import_with_retry(
                     if not json_output:
                         console.print("[green]All sources already imported.[/green]")
                     return []
-            except Exception:
+            except Exception as exc:
                 # If listing fails, retry with current pending list
-                pass
+                logger.debug("Failed to list existing sources for deduplication: %s", exc)
 
             sleep_for = min(delay, max_delay, remaining)
             logger.warning(
