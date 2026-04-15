@@ -308,7 +308,7 @@ def _ensure_chromium_installed() -> None:
     """
     try:
         result = subprocess.run(
-            ["playwright", "install", "--dry-run", "chromium"],
+            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
             capture_output=True,
             text=True,
         )
@@ -319,7 +319,7 @@ def _ensure_chromium_installed() -> None:
 
         console.print("[yellow]Chromium browser not installed. Installing now...[/yellow]")
         install_result = subprocess.run(
-            ["playwright", "install", "chromium"],
+            [sys.executable, "-m", "playwright", "install", "chromium"],
             capture_output=True,
             text=True,
         )
