@@ -368,7 +368,13 @@ def register_session_commands(cli):
             "Requires: pip install 'notebooklm[cookies]'"
         ),
     )
-    def login(storage, browser, browser_cookies):
+    @click.option(
+        "--fresh",
+        is_flag=True,
+        default=False,
+        help="Clear cached browser profile before login (use to switch Google accounts).",
+    )
+    def login(storage, browser, browser_cookies, fresh):
         """Log in to NotebookLM via browser.
 
         Opens a browser window for Google login. After logging in,
@@ -399,6 +405,18 @@ def register_session_commands(cli):
 
         storage_path = Path(storage) if storage else get_storage_path()
         browser_profile = get_browser_profile_dir()
+
+        # Clear cached browser profile to allow switching Google accounts
+        if fresh:
+            import shutil
+
+            if browser_profile.exists():
+                shutil.rmtree(browser_profile)
+                console.print("[yellow]Cleared cached browser profile.[/yellow]")
+            if storage_path.exists():
+                storage_path.unlink()
+                console.print("[yellow]Cleared saved auth state.[/yellow]")
+
         if sys.platform == "win32":
             # On Windows < Python 3.13, mode= is ignored by mkdir(). On
             # Python 3.13+, mode= applies Windows ACLs that can be overly
@@ -948,3 +966,32 @@ def register_session_commands(cli):
             console.print(
                 "\n[yellow]Cookies may be expired. Run 'notebooklm login' to refresh.[/yellow]"
             )
+
+    @auth_group.command("logout")
+    def auth_logout():
+        """Log out by clearing saved auth state and browser profile.
+
+        Removes the storage_state.json and the cached browser profile
+        for the current profile. After logout, run 'notebooklm login'
+        to authenticate with a different account.
+        """
+        import shutil
+
+        storage_path = get_storage_path()
+        browser_profile = get_browser_profile_dir()
+
+        cleared = False
+        if storage_path.exists():
+            storage_path.unlink()
+            console.print("[green]Removed auth state.[/green]")
+            cleared = True
+        if browser_profile.exists():
+            shutil.rmtree(browser_profile)
+            console.print("[green]Removed cached browser profile.[/green]")
+            cleared = True
+
+        if cleared:
+            console.print("\n[green]Logged out successfully.[/green]")
+            console.print("[dim]Run 'notebooklm login' to sign in again.[/dim]")
+        else:
+            console.print("[yellow]No auth state found — already logged out.[/yellow]")
