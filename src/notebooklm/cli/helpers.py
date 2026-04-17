@@ -90,34 +90,53 @@ async def import_with_retry(
 ) -> list[dict[str, str]]:
     """Retry research import on RPC timeouts with exponential backoff.
 
+    On retry, already-imported sources are filtered out to prevent duplicates.
+
     This is intentionally CLI-only policy. Library consumers calling
     `client.research.import_sources()` directly still get one-shot behavior.
     """
     started_at = time.monotonic()
     delay = initial_delay
     attempt = 1
+    pending_sources = list(sources)
 
     while True:
         try:
-            return await client.research.import_sources(notebook_id, task_id, sources)
+            return await client.research.import_sources(notebook_id, task_id, pending_sources)
         except RPCTimeoutError:
             elapsed = time.monotonic() - started_at
             remaining = max_elapsed - elapsed
             if remaining <= 0:
                 raise
 
+            # Filter out already-imported sources to prevent duplicates
+            try:
+                existing = await client.sources.list(notebook_id)
+                existing_urls = {s.url for s in existing if s.url}
+                pending_sources = [s for s in pending_sources if s.get("url") not in existing_urls]
+                if not pending_sources:
+                    logger.info("All sources already imported; no retry needed")
+                    if not json_output:
+                        console.print("[green]All sources already imported.[/green]")
+                    return []
+            except Exception as exc:
+                # If listing fails, retry with current pending list
+                logger.debug("Failed to list existing sources for deduplication: %s", exc)
+
             sleep_for = min(delay, max_delay, remaining)
             logger.warning(
-                "IMPORT_RESEARCH timed out for notebook %s; retrying in %.1fs (attempt %d, %.1fs elapsed)",
+                "IMPORT_RESEARCH timed out for notebook %s; retrying in %.1fs "
+                "(attempt %d, %.1fs elapsed, %d sources remaining)",
                 notebook_id,
                 sleep_for,
                 attempt + 1,
                 elapsed,
+                len(pending_sources),
             )
             if not json_output:
                 console.print(
                     f"[yellow]Import timed out; retrying in {sleep_for:.0f}s "
-                    f"(attempt {attempt + 1})[/yellow]"
+                    f"(attempt {attempt + 1}, {len(pending_sources)} remaining)[/yellow]"
                 )
             await asyncio.sleep(sleep_for)
             delay = min(delay * backoff_factor, max_delay)
