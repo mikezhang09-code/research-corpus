@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **YouTube source add "API returned no data"** — `_add_youtube_source` used `allow_null=True` which silently swallowed null API responses and bypassed retry/auth-recovery. Now uses `allow_null=False` (matching `_add_url_source`) so stale sessions trigger automatic token refresh.
+- **YouTube URL extraction from metadata** — `Source.from_api_response` now tries metadata index 5 (YouTube) in addition to index 7 (web pages), reflecting a Google-side response structure change.
+
 ## [0.3.4] - 2026-03-12
 
 ### Added
