@@ -997,7 +997,9 @@ def source_clean(ctx, notebook_id, dry_run, yes, client_auth):
                     await asyncio.sleep(0.5)
 
             if failed:
-                console.print(f"[yellow]Cleaned {deleted} source(s). {failed} deletion(s) failed.[/yellow]")
+                console.print(
+                    f"[yellow]Cleaned {deleted} source(s). {failed} deletion(s) failed.[/yellow]"
+                )
             else:
                 console.print(f"[green]Successfully cleaned {deleted} source(s).[/green]")
 
