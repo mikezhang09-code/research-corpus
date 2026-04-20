@@ -139,7 +139,7 @@ def register_chat_commands(cli):
         nb_id = require_notebook(notebook_id)
 
         async def _run():
-            async with NotebookLMClient(client_auth, timeout=(10.0, float(timeout))) as client:
+            async with NotebookLMClient(client_auth, timeout=float(timeout)) as client:
                 nb_id_resolved = await resolve_notebook_id(client, nb_id)
                 effective_conv_id = _determine_conversation_id(
                     explicit_conversation_id=conversation_id,
