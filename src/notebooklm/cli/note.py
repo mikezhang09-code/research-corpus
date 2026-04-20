@@ -64,20 +64,22 @@ def note_list(ctx, notebook_id, json_output, client_auth):
             notes = await client.notes.list(nb_id_resolved)
 
             if json_output:
-                data = {
-                    "notebook_id": nb_id_resolved,
-                    "notes": [
-                        {
-                            "id": n.id,
-                            "title": n.title or "Untitled",
-                            "preview": (n.content or "")[:100],
-                        }
-                        for n in notes
-                        if isinstance(n, Note)
-                    ],
-                    "count": len(notes),
-                }
-                json_output_response(data)
+                serialized = [
+                    {
+                        "id": n.id,
+                        "title": n.title or "Untitled",
+                        "preview": (n.content or "")[:100],
+                    }
+                    for n in notes
+                    if isinstance(n, Note)
+                ]
+                json_output_response(
+                    {
+                        "notebook_id": nb_id_resolved,
+                        "notes": serialized,
+                        "count": len(serialized),
+                    }
+                )
                 return
 
             if not notes:
