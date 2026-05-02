@@ -90,6 +90,12 @@ async def import_with_retry(
 ) -> list[dict[str, str]]:
     """Retry research import on RPC timeouts with exponential backoff.
 
+    On RPC timeout, probes the notebook's source list to detect server-side
+    imports that succeeded despite the client deadline firing. This avoids the
+    duplicate-on-retry inflation that otherwise occurs when each retry re-adds
+    a copy of the same sources (a single timeout cascade can otherwise inflate
+    a 60-source import to 300+ sources across 5-6 retries).
+
     This is intentionally CLI-only policy. Library consumers calling
     `client.research.import_sources()` directly still get one-shot behavior.
     """
@@ -97,12 +103,67 @@ async def import_with_retry(
     delay = initial_delay
     attempt = 1
 
+    requested_urls = {url for s in sources if isinstance((url := s.get("url")), str) and url}
+
+    # Snapshot baseline source URLs so we can detect server-side success on
+    # timeout by computing the delta after each failed import RPC.
+    try:
+        baseline = await client.sources.list(notebook_id)
+        baseline_urls: set[str] | None = {src.url for src in baseline if src.url}
+    except Exception as snapshot_exc:
+        logger.debug(
+            "Pre-import sources.list snapshot failed for %s: %s",
+            notebook_id,
+            snapshot_exc,
+        )
+        baseline_urls = None
+
     while True:
         try:
             return await client.research.import_sources(notebook_id, task_id, sources)
         except RPCTimeoutError:
             elapsed = time.monotonic() - started_at
             remaining = max_elapsed - elapsed
+
+            # Verify server-side state before retrying. The IMPORT_RESEARCH RPC
+            # frequently times out at the client (30s) after a successful
+            # server-side write; retrying then duplicates every source.
+            if baseline_urls is not None and requested_urls:
+                try:
+                    current = await client.sources.list(notebook_id)
+                    current_urls = {src.url for src in current if src.url}
+                    delta_urls = current_urls - baseline_urls
+                    # Either all requested URLs are now visible, or the delta
+                    # size matches what we tried to import. The latter is
+                    # robust to server-side URL normalization.
+                    if requested_urls.issubset(current_urls) or len(delta_urls) >= len(
+                        requested_urls
+                    ):
+                        logger.warning(
+                            "IMPORT_RESEARCH timed out for notebook %s but "
+                            "sources.list shows %d new sources; treating as "
+                            "success and skipping retry to avoid duplicate inflation",
+                            notebook_id,
+                            len(delta_urls),
+                        )
+                        if not json_output:
+                            console.print(
+                                f"[yellow]Import RPC timed out, but server-side "
+                                f"verified {len(delta_urls)} new sources — "
+                                f"skipping retry.[/yellow]"
+                            )
+                        match_urls = requested_urls | delta_urls
+                        return [
+                            {"id": src.id, "title": src.title or src.url or ""}
+                            for src in current
+                            if src.url and src.url in match_urls
+                        ]
+                except Exception as probe_exc:
+                    logger.warning(
+                        "Failed to probe server state after timeout: %s; " "falling back to retry",
+                        probe_exc,
+                    )
+
             if remaining <= 0:
                 raise
 
