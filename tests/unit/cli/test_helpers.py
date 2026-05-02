@@ -843,3 +843,79 @@ class TestImportWithRetry:
         assert imported == [{"id": "src_1", "title": "Source 1"}]
         assert client.research.import_sources.await_count == 2
         mock_sleep.assert_awaited_once_with(5)
+
+    @pytest.mark.asyncio
+    async def test_returned_list_excludes_pre_existing_sources_with_matching_urls(self):
+        """If a requested URL was ALREADY present in the notebook before the
+        import, ``requested_urls.issubset(current_urls)`` is trivially true
+        even when nothing new was imported. The returned list must be filtered
+        by source IDs added since the baseline probe — not by URL match —
+        otherwise downstream callers (which use ``len(imported)``) overstate
+        what this call added.
+        """
+        # The notebook already contains a source for the URL we'll request.
+        existing_src = MagicMock(id="src_existing", title="Old", url="https://example.com")
+        # And there's an unrelated brand-new source the probe sees.
+        new_src = MagicMock(id="src_new", title="New", url="https://other.example.com")
+        client = MagicMock()
+        client.sources.list = AsyncMock(
+            side_effect=[
+                [existing_src],  # baseline already has the requested URL
+                [existing_src, new_src],  # post-timeout: one truly new source
+            ]
+        )
+        client.research.import_sources = AsyncMock(
+            side_effect=RPCTimeoutError("Timed out", timeout_seconds=30.0)
+        )
+
+        with (
+            patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock),
+            patch("notebooklm.cli.helpers.console"),
+        ):
+            imported = await import_with_retry(
+                client,
+                "nb_123",
+                "task_123",
+                [{"url": "https://example.com", "title": "Old (request)"}],
+            )
+
+        # Only the source whose ID was NOT in the baseline should be returned.
+        # The pre-existing source must NOT be reported as imported even though
+        # its URL matches a requested URL.
+        assert imported == [{"id": "src_new", "title": "New"}]
+
+    @pytest.mark.asyncio
+    async def test_returned_list_includes_non_url_sources_like_research_reports(self):
+        """Sources without a URL (e.g. deep-research report entries) must
+        still be surfaced in the imported list when they're new — filtering
+        by ID rather than by URL match handles that.
+        """
+        # A new research-report entry with no URL.
+        report_src = MagicMock(id="src_report", title="Research Report", url=None)
+        # And a new URL-bearing source.
+        new_src = MagicMock(id="src_new", title="Source 1", url="https://example.com")
+        client = MagicMock()
+        client.sources.list = AsyncMock(
+            side_effect=[
+                [],  # empty baseline
+                [report_src, new_src],  # both new after the timeout
+            ]
+        )
+        client.research.import_sources = AsyncMock(
+            side_effect=RPCTimeoutError("Timed out", timeout_seconds=30.0)
+        )
+
+        with (
+            patch("notebooklm.cli.helpers.asyncio.sleep", new_callable=AsyncMock),
+            patch("notebooklm.cli.helpers.console"),
+        ):
+            imported = await import_with_retry(
+                client,
+                "nb_123",
+                "task_123",
+                [{"url": "https://example.com", "title": "Source 1"}],
+            )
+
+        # Both sources are returned — the report (no URL) and the URL source.
+        ids_returned = {entry["id"] for entry in imported}
+        assert ids_returned == {"src_report", "src_new"}

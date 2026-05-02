@@ -105,18 +105,26 @@ async def import_with_retry(
 
     requested_urls = {url for s in sources if isinstance((url := s.get("url")), str) and url}
 
-    # Snapshot baseline source URLs so we can detect server-side success on
-    # timeout by computing the delta after each failed import RPC.
+    # Snapshot baseline source URLs AND IDs so we can detect server-side success
+    # on timeout by computing the delta after each failed import RPC. URLs drive
+    # the detection condition (was the import seen on the server?); IDs filter
+    # the return value to only the truly new sources, which avoids reporting
+    # pre-existing rows as "imported" and also captures non-URL sources such as
+    # research-report entries.
+    baseline_urls: set[str] | None
+    baseline_ids: set[str] | None
     try:
         baseline = await client.sources.list(notebook_id)
-        baseline_urls: set[str] | None = {src.url for src in baseline if src.url}
-    except Exception as snapshot_exc:
+        baseline_urls = {src.url for src in baseline if src.url}
+        baseline_ids = {src.id for src in baseline}
+    except Exception as snapshot_exc:  # noqa: BLE001 - probe is best-effort; any failure falls back to legacy retry
         logger.debug(
             "Pre-import sources.list snapshot failed for %s: %s",
             notebook_id,
             snapshot_exc,
         )
         baseline_urls = None
+        baseline_ids = None
 
     while True:
         try:
@@ -128,11 +136,12 @@ async def import_with_retry(
             # Verify server-side state before retrying. The IMPORT_RESEARCH RPC
             # frequently times out at the client (30s) after a successful
             # server-side write; retrying then duplicates every source.
-            if baseline_urls is not None and requested_urls:
+            if baseline_urls is not None and baseline_ids is not None and requested_urls:
                 try:
                     current = await client.sources.list(notebook_id)
                     current_urls = {src.url for src in current if src.url}
                     delta_urls = current_urls - baseline_urls
+                    new_ids = {src.id for src in current} - baseline_ids
                     # Either all requested URLs are now visible, or the delta
                     # size matches what we tried to import. The latter is
                     # robust to server-side URL normalization.
@@ -144,23 +153,26 @@ async def import_with_retry(
                             "sources.list shows %d new sources; treating as "
                             "success and skipping retry to avoid duplicate inflation",
                             notebook_id,
-                            len(delta_urls),
+                            len(new_ids),
                         )
                         if not json_output:
                             console.print(
                                 f"[yellow]Import RPC timed out, but server-side "
-                                f"verified {len(delta_urls)} new sources — "
+                                f"verified {len(new_ids)} new sources — "
                                 f"skipping retry.[/yellow]"
                             )
-                        match_urls = requested_urls | delta_urls
+                        # Return only sources whose IDs appeared after the
+                        # baseline probe. This avoids surfacing pre-existing
+                        # rows that happen to share a requested URL, and it
+                        # captures non-URL imports (e.g. research reports).
                         return [
                             {"id": src.id, "title": src.title or src.url or ""}
                             for src in current
-                            if src.url and src.url in match_urls
+                            if src.id in new_ids
                         ]
-                except Exception as probe_exc:
+                except Exception as probe_exc:  # noqa: BLE001 - probe is best-effort
                     logger.warning(
-                        "Failed to probe server state after timeout: %s; " "falling back to retry",
+                        "Failed to probe server state after timeout: %s; falling back to retry",
                         probe_exc,
                     )
 
