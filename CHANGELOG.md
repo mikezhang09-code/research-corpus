@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Source fulltext markdown format** - Retrieve source content as structured Markdown with headings, tables, links, and emphasis preserved
+  - New `format` parameter on `client.sources.get_fulltext()` (`"text"` default, `"markdown"`)
+  - New `-f`/`--format` CLI option on `source fulltext` command
+  - Requires optional `markdownify` dependency (`pip install notebooklm-py[markdown]`)
+
 ## [0.3.4] - 2026-03-12
 
 ### Added
