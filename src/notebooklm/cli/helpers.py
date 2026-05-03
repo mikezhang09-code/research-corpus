@@ -15,6 +15,7 @@ import logging
 import os
 import time
 from functools import wraps
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
@@ -487,6 +488,26 @@ async def resolve_source_ids(
     for sid in source_ids:
         resolved.append(await resolve_source_id(client, notebook_id, sid))
     return resolved
+
+
+def resolve_prompt(
+    argument_value: str | None,
+    prompt_file: str | None,
+    param_name: str = "prompt",
+) -> str:
+    """Resolve prompt text from a positional argument or --prompt-file."""
+    if argument_value and prompt_file:
+        raise click.UsageError(
+            f"Cannot use both the {param_name} argument and --prompt-file. Choose one."
+        )
+
+    if prompt_file:
+        try:
+            return Path(prompt_file).read_text(encoding="utf-8").rstrip()
+        except OSError as e:
+            raise click.ClickException(f"Failed to read prompt file '{prompt_file}': {e}") from e
+
+    return argument_value or ""
 
 
 # =============================================================================

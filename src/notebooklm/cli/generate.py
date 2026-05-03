@@ -41,11 +41,12 @@ from .helpers import (
     json_output_response,
     require_notebook,
     resolve_notebook_id,
+    resolve_prompt,
     resolve_source_ids,
     with_client,
 )
 from .language import SUPPORTED_LANGUAGES, get_language
-from .options import json_option, retry_option
+from .options import json_option, prompt_file_option, retry_option
 
 DEFAULT_LANGUAGE = "en"
 
@@ -316,6 +317,7 @@ def generate():
 
 @generate.command("audio")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -344,6 +346,7 @@ def generate():
 def generate_audio(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     audio_format,
     audio_length,
@@ -365,6 +368,7 @@ def generate_audio(
       notebooklm generate audio "make it funny and casual" --format debate
       notebooklm generate audio -s src_001 -s src_002 "from specific sources"
     """
+    description = resolve_prompt(description, prompt_file, "description")
     nb_id = require_notebook(notebook_id)
     format_map = {
         "deep-dive": AudioFormat.DEEP_DIVE,
@@ -403,6 +407,7 @@ def generate_audio(
 
 @generate.command("video")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -442,6 +447,7 @@ def generate_audio(
 def generate_video(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     video_format,
     style,
@@ -467,6 +473,7 @@ def generate_video(
       notebooklm generate video --format cinematic "documentary overview"
       notebooklm generate video -s src_001 "from specific source"
     """
+    description = resolve_prompt(description, prompt_file, "description")
     # Auto-select cinematic format when invoked as 'generate cinematic-video'
     if ctx.info_name == "cinematic-video":
         video_format = "cinematic"
@@ -540,6 +547,7 @@ generate.add_command(_cinematic_video_gen_cmd)
 
 @generate.command("slide-deck")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -568,6 +576,7 @@ generate.add_command(_cinematic_video_gen_cmd)
 def generate_slide_deck(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     deck_format,
     deck_length,
@@ -588,6 +597,7 @@ def generate_slide_deck(
       notebooklm generate slide-deck "include speaker notes"
       notebooklm generate slide-deck "executive summary" --format presenter --length short
     """
+    description = resolve_prompt(description, prompt_file, "description")
     nb_id = require_notebook(notebook_id)
     format_map = {
         "detailed": SlideDeckFormat.DETAILED_DECK,
@@ -622,7 +632,8 @@ def generate_slide_deck(
 
 
 @generate.command("revise-slide")
-@click.argument("description")
+@click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -651,6 +662,7 @@ def generate_slide_deck(
 def generate_revise_slide(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     artifact_id,
     slide_index,
@@ -669,6 +681,9 @@ def generate_revise_slide(
       notebooklm generate revise-slide "Move the title up" --artifact <id> --slide 0
       notebooklm generate revise-slide "Remove taxonomy" --artifact <id> --slide 3 --wait
     """
+    description = resolve_prompt(description, prompt_file, "description")
+    if not description:
+        raise click.UsageError("Provide a description argument or --prompt-file.")
     nb_id = require_notebook(notebook_id)
 
     async def _run():
@@ -695,6 +710,7 @@ def generate_revise_slide(
 
 @generate.command("quiz")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -712,6 +728,7 @@ def generate_revise_slide(
 def generate_quiz(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     quantity,
     difficulty,
@@ -731,6 +748,7 @@ def generate_quiz(
       notebooklm generate quiz "focus on vocabulary terms"
       notebooklm generate quiz "test key concepts" --difficulty hard --quantity more
     """
+    description = resolve_prompt(description, prompt_file, "description")
     nb_id = require_notebook(notebook_id)
     quantity_map = {
         "fewer": QuizQuantity.FEWER,
@@ -767,6 +785,7 @@ def generate_quiz(
 
 @generate.command("flashcards")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -784,6 +803,7 @@ def generate_quiz(
 def generate_flashcards(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     quantity,
     difficulty,
@@ -803,6 +823,7 @@ def generate_flashcards(
       notebooklm generate flashcards "vocabulary terms only"
       notebooklm generate flashcards --quantity more --difficulty easy
     """
+    description = resolve_prompt(description, prompt_file, "description")
     nb_id = require_notebook(notebook_id)
     quantity_map = {
         "fewer": QuizQuantity.FEWER,
@@ -839,6 +860,7 @@ def generate_flashcards(
 
 @generate.command("infographic")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -870,6 +892,7 @@ def generate_flashcards(
 def generate_infographic(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     orientation,
     detail,
@@ -891,6 +914,7 @@ def generate_infographic(
       notebooklm generate infographic "include statistics and key findings"
       notebooklm generate infographic --orientation portrait --detail detailed
     """
+    description = resolve_prompt(description, prompt_file, "description")
     nb_id = require_notebook(notebook_id)
     orientation_map = {
         "landscape": InfographicOrientation.LANDSCAPE,
@@ -928,7 +952,8 @@ def generate_infographic(
 
 
 @generate.command("data-table")
-@click.argument("description")
+@click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -945,6 +970,7 @@ def generate_infographic(
 def generate_data_table(
     ctx,
     description,
+    prompt_file,
     notebook_id,
     language,
     source_ids,
@@ -963,6 +989,9 @@ def generate_data_table(
       notebooklm generate data-table "comparison of key concepts"
       notebooklm generate data-table -s src_001 "timeline of events"
     """
+    description = resolve_prompt(description, prompt_file, "description")
+    if not description:
+        raise click.UsageError("Provide a description argument or --prompt-file.")
     nb_id = require_notebook(notebook_id)
 
     async def _run():
@@ -1059,6 +1088,7 @@ def _output_mind_map_result(result: Any, json_output: bool) -> None:
 
 @generate.command("report")
 @click.argument("description", default="", required=False)
+@prompt_file_option
 @click.option(
     "--format",
     "report_format",
@@ -1088,6 +1118,7 @@ def _output_mind_map_result(result: Any, json_output: bool) -> None:
 def generate_report_cmd(
     ctx,
     description,
+    prompt_file,
     report_format,
     notebook_id,
     source_ids,
@@ -1112,6 +1143,7 @@ def generate_report_cmd(
       notebooklm generate report --format briefing-doc --append "Focus on AI trends"
       notebooklm generate report --format study-guide --append "Target audience: beginners"
     """
+    description = resolve_prompt(description, prompt_file, "description")
     nb_id = require_notebook(notebook_id)
 
     # Smart detection: if description provided without explicit format change, treat as custom

@@ -131,8 +131,9 @@ notebooklm source add "./paper.pdf"
 
 # 3. Chat with your sources
 notebooklm ask "What are the key themes?"
+notebooklm ask --prompt-file ./long_question.txt  # Read question from file
 
-# 4. Generate content
+# 4. Generate content (use --prompt-file for long prompts)
 notebooklm generate audio "make it engaging" --wait
 notebooklm generate video --style whiteboard --wait
 notebooklm generate cinematic-video "documentary-style summary" --wait
@@ -167,6 +168,8 @@ notebooklm share status              # Inspect sharing state
 notebooklm source add-research "AI"  # Start web research and import sources
 notebooklm skill status              # Check local agent skill installation
 ```
+
+Use `--prompt-file PATH` with `ask`, prompt-based `generate` commands, and `source add-research` when the text is too long for the shell command line. This reads prompt/query text from a file and is separate from `source add ./file.pdf`, which still uploads that file as a NotebookLM source.
 
 ### Python API
 

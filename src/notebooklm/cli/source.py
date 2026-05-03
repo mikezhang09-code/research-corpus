@@ -34,10 +34,12 @@ from .helpers import (
     json_output_response,
     require_notebook,
     resolve_notebook_id,
+    resolve_prompt,
     resolve_source_id,
     validate_id,
     with_client,
 )
+from .options import prompt_file_option
 
 
 @click.group()
@@ -518,7 +520,8 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 
 
 @source.command("add-research")
-@click.argument("query")
+@click.argument("query", default="", required=False)
+@prompt_file_option
 @click.option(
     "-n",
     "--notebook",
@@ -547,7 +550,7 @@ def source_add_drive(ctx, file_id, title, notebook_id, mime_type, client_auth):
 )
 @with_client
 def source_add_research(
-    ctx, query, notebook_id, search_source, mode, import_all, no_wait, client_auth
+    ctx, query, prompt_file, notebook_id, search_source, mode, import_all, no_wait, client_auth
 ):
     """Search web or drive and add sources from results.
 
@@ -559,6 +562,9 @@ def source_add_research(
       source add-research "tutorials" --import-all        # Auto-import all results
       source add-research "topic" --mode deep --no-wait   # Non-blocking deep search
     """
+    query = resolve_prompt(query, prompt_file, "query")
+    if not query:
+        raise click.UsageError("Provide a query argument or --prompt-file.")
     nb_id = require_notebook(notebook_id)
 
     async def _run():
