@@ -1,0 +1,45 @@
+[project]
+name = "nblm-mcp-server"
+version = "0.1.0"
+description = "A NotebookLM MCP Server built with FastMCP"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Kim"}
+]
+keywords = ["notebooklm", "mcp", "fastmcp", "ai"]
+dependencies = [
+    "fastmcp>=2.0.0",
+    "notebooklm-py>=0.3.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nblm_mcp_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM"]
+ignore = ["E501", "B008", "SIM102", "SIM105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nblm_mcp_server"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.uv.sources]
+notebooklm-py = { workspace = true }

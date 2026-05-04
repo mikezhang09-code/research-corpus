@@ -158,3 +158,6 @@ known-first-party = ["notebooklm"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.uv.workspace]
+members = ["mcp"]

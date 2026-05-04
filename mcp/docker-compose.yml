@@ -1,0 +1,19 @@
+services:
+  nblm-mcp-server:
+    build:
+      context: ..
+      dockerfile: mcp/Dockerfile
+    container_name: nblm-mcp-server
+    ports:
+      - "8089:8089"
+    environment:
+      # Override the default storage path if needed
+      - NOTEBOOKLM_STORAGE_PATH=${NOTEBOOKLM_STORAGE_PATH:-}
+    volumes:
+      # Mount the local Playwright storage state into the container
+      - ~/.notebooklm:/root/.notebooklm:ro
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+

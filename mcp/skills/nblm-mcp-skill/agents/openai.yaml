@@ -1,0 +1,4 @@
+interface:
+  display_name: "NotebookLM MCP Guide"
+  short_description: "Best practices for NotebookLM MCP tools."
+  default_prompt: "How should I use NotebookLM MCP tools?"

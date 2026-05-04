@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv
+
+# OS
+.DS_Store
+
+# IDE
+.idea
+.vscode
+
+# Secrets — never commit real .env, only .env.example
+.env
+
+# temp files
+tmp/
+
+
