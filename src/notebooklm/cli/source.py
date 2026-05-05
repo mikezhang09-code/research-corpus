@@ -230,9 +230,18 @@ def source_list(ctx, notebook_id, json_output, client_auth):
 )
 @click.option("--title", help="Title for text sources")
 @click.option("--mime-type", help="MIME type for file sources")
+@click.option(
+    "--timeout",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="HTTP request timeout in seconds. Increase for slow URLs.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @with_client
-def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_output, client_auth):
+def source_add(
+    ctx, content, notebook_id, source_type, title, mime_type, timeout, json_output, client_auth
+):
     """Add a source to a notebook.
 
     \b
@@ -272,7 +281,7 @@ def source_add(ctx, content, notebook_id, source_type, title, mime_type, json_ou
             file_title = title or "Pasted Text"
 
     async def _run():
-        async with NotebookLMClient(client_auth) as client:
+        async with NotebookLMClient(client_auth, timeout=timeout) as client:
             nb_id_resolved = await resolve_notebook_id(client, nb_id)
             if detected_type == "url" or detected_type == "youtube":
                 src = await client.sources.add_url(nb_id_resolved, content)
