@@ -86,7 +86,28 @@ These features are available via API/CLI but not exposed in NotebookLM's web int
 
 ## Installation
 
+### Using `uv` (recommended)
+
+[`uv`](https://docs.astral.sh/uv/) installs the CLI into an isolated environment in a single command — no manual venv setup required. This avoids the PEP 668 restriction that blocks direct `pip install` calls against many system Python installations.
+
 ```bash
+# Basic installation
+uv tool install notebooklm-py
+
+# With browser login support (required for first-time setup)
+uv tool install "notebooklm-py[browser]"
+playwright install chromium
+```
+
+### Using `pip`
+
+`pip install` requires an activated virtual environment on most modern systems:
+
+```bash
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Basic installation
 pip install notebooklm-py
 
