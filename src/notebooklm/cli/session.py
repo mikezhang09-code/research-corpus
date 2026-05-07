@@ -503,7 +503,6 @@ def register_session_commands(cli):
         if browser == "chromium":
             _ensure_chromium_installed()
 
-        from ..paths import resolve_profile
 
         browser_labels = {
             "msedge": "Microsoft Edge",
