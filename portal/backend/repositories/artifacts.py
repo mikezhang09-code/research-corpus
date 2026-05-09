@@ -15,7 +15,7 @@ def _now() -> str:
 
 
 def create(db: Client, data: NLMArtifactCreate) -> dict:
-    row = data.model_dump(exclude_none=True)
+    row = data.model_dump(mode="json", exclude_none=True)
     return db.table(TABLE).insert(row).execute().data[0]
 
 
@@ -42,7 +42,7 @@ def list_all(db: Client, filters: ArtifactFilters) -> tuple[list[dict], int]:
 
 
 def update(db: Client, artifact_id: UUID, data: NLMArtifactUpdate) -> dict | None:
-    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    patch = {k: v for k, v in data.model_dump(mode="json").items() if v is not None}
     if not patch:
         return get(db, artifact_id)
     rows = db.table(TABLE).update(patch).eq("id", str(artifact_id)).execute().data
@@ -79,5 +79,5 @@ def set_library_item(db: Client, artifact_id: UUID, library_item_id: UUID) -> No
 
 
 def upsert_from_nlm(db: Client, data: NLMArtifactCreate) -> dict:
-    row = data.model_dump(exclude_none=True)
+    row = data.model_dump(mode="json", exclude_none=True)
     return db.table(TABLE).upsert(row, on_conflict="nlm_artifact_id").execute().data[0]

@@ -4,6 +4,7 @@ import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 from ..database import get_supabase
 from ..models import (
@@ -95,6 +96,36 @@ async def retry_download(artifact_id: UUID, background: BackgroundTasks):
     repo.update_download_status(db, artifact_id, DownloadStatus.PENDING)
     background.add_task(download_artifact_to_r2, artifact_id)
     return repo.get(db, artifact_id)
+
+
+@router.get("/{artifact_id}/content")
+async def get_artifact_content(artifact_id: UUID):
+    """Stream the raw file bytes from R2 so the browser fetches via the same-origin proxy."""
+    from ..storage import get_r2, get_settings
+    db = get_supabase()
+    row = repo.get(db, artifact_id)
+    if not row:
+        raise HTTPException(404, "Artifact not found")
+    if not row.get("r2_key"):
+        raise HTTPException(404, "File not yet downloaded")
+
+    s = get_settings()
+    obj = get_r2().get_object(Bucket=s.r2_bucket_name, Key=row["r2_key"])
+    data = obj["Body"].read()
+    fmt = row.get("file_format", "bin")
+    mime_map = {
+        "md": "text/plain; charset=utf-8",
+        "json": "application/json; charset=utf-8",
+        "csv": "text/csv; charset=utf-8",
+        "pdf": "application/pdf",
+        "png": "image/png",
+        "mp3": "audio/mpeg",
+        "mp4": "video/mp4",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "html": "text/html; charset=utf-8",
+    }
+    content_type = mime_map.get(fmt, "application/octet-stream")
+    return Response(content=data, media_type=content_type)
 
 
 @router.post("/{artifact_id}/save-to-library", status_code=201)

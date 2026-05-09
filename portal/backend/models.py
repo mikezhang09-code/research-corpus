@@ -139,6 +139,30 @@ class LibraryItemListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Live artifacts (read directly from NLM API, merged with portal state)
+# ---------------------------------------------------------------------------
+
+class LiveArtifact(BaseModel):
+    nlm_id: str
+    title: str
+    artifact_type: str
+    file_format: str
+    created_at: datetime | None = None
+    is_completed: bool
+    # Set only when the artifact has been saved to the portal
+    portal_id: str | None = None
+    download_status: str | None = None
+    r2_url: str | None = None
+    download_error: str | None = None
+
+
+class LiveArtifactsResponse(BaseModel):
+    notebook_id: str
+    notebook_title: str | None = None
+    artifacts: list[LiveArtifact]
+
+
+# ---------------------------------------------------------------------------
 # Shared query params
 # ---------------------------------------------------------------------------
 

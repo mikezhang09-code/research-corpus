@@ -1,127 +1,83 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, Download, BookOpen, FileText, Music, Video, Image, BarChart2, Brain, StickyNote, Layers } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
+import { RefreshCw, BookOpen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getArtifacts, getNotebooks, syncNotebooks, type NLMArtifact, type Notebook } from "@/lib/api";
+import { getNotebooks, syncNotebooks, type Notebook } from "@/lib/api";
 
-const ARTIFACT_ICONS: Record<string, React.ElementType> = {
-  audio: Music,
-  video: Video,
-  report: FileText,
-  quiz: Brain,
-  flashcards: StickyNote,
-  infographic: Image,
-  slide_deck: Layers,
-  data_table: BarChart2,
-  mind_map: Brain,
-};
+// Rotating palette for notebook card headers — one color per notebook
+const PALETTE = [
+  { header: "bg-blue-100",   icon: "text-blue-500"   },
+  { header: "bg-violet-100", icon: "text-violet-500" },
+  { header: "bg-teal-100",   icon: "text-teal-500"   },
+  { header: "bg-amber-100",  icon: "text-amber-500"  },
+  { header: "bg-rose-100",   icon: "text-rose-500"   },
+  { header: "bg-indigo-100", icon: "text-indigo-500" },
+  { header: "bg-emerald-100",icon: "text-emerald-500"},
+  { header: "bg-orange-100", icon: "text-orange-500" },
+];
 
-const STATUS_COLORS: Record<string, string> = {
-  done: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
-  downloading: "bg-blue-500/10 text-blue-600 border-blue-200",
-  pending: "bg-amber-500/10 text-amber-600 border-amber-200",
-  failed: "bg-red-500/10 text-red-600 border-red-200",
-};
-
-function ArtifactCard({ artifact }: { artifact: NLMArtifact }) {
-  const Icon = ARTIFACT_ICONS[artifact.artifact_type] ?? FileText;
-  const size = artifact.file_size_bytes
-    ? artifact.file_size_bytes > 1_000_000
-      ? `${(artifact.file_size_bytes / 1_000_000).toFixed(1)} MB`
-      : `${Math.round(artifact.file_size_bytes / 1024)} KB`
+function NotebookCard({ notebook, index, onClick }: {
+  notebook: Notebook;
+  index: number;
+  onClick: () => void;
+}) {
+  const color = PALETTE[index % PALETTE.length];
+  const created = notebook.nlm_created_at
+    ? new Date(notebook.nlm_created_at).toLocaleDateString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+      })
     : null;
 
   return (
-    <Card className="group hover:shadow-md transition-shadow border-border/60">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="shrink-0 rounded-md bg-primary/8 p-2">
-              <Icon className="h-4 w-4 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <CardTitle className="text-sm font-medium truncate">
-                {artifact.title || artifact.artifact_type}
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                {artifact.notebook_title ?? "Unknown notebook"}
-              </p>
-            </div>
-          </div>
-          <Badge
-            variant="outline"
-            className={`shrink-0 text-xs capitalize ${STATUS_COLORS[artifact.download_status]}`}
-          >
-            {artifact.download_status}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 space-y-3">
-        {artifact.summary && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{artifact.summary}</p>
+    <button
+      onClick={onClick}
+      className="group text-left rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {/* Colored header area */}
+      <div className={`${color.header} flex items-center justify-center h-36 relative`}>
+        <BookOpen className={`h-14 w-14 ${color.icon} opacity-80`} />
+        {/* Source count badge */}
+        <span className="absolute bottom-3 right-3 text-xs font-medium px-2 py-0.5 rounded-full bg-white/70 text-foreground/70">
+          {notebook.sources_count} source{notebook.sources_count !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* Content */}
+      <div className="px-4 py-3 bg-background">
+        <p className="font-semibold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+          {notebook.title}
+        </p>
+        {created && (
+          <p className="text-xs text-muted-foreground mt-1">{created}</p>
         )}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-1 flex-wrap">
-            <Badge variant="secondary" className="text-xs capitalize">
-              {artifact.artifact_type.replace("_", " ")}
-            </Badge>
-            <Badge variant="outline" className="text-xs uppercase">
-              {artifact.file_format}
-            </Badge>
-            {size && <span className="text-xs text-muted-foreground self-center">{size}</span>}
-          </div>
-          {artifact.download_status === "done" && artifact.r2_url && (
-            <a href={artifact.r2_url} target="_blank" rel="noopener noreferrer">
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
-                <Download className="h-3 w-3" /> Open
-              </Button>
-            </a>
-          )}
-        </div>
-        {artifact.tags.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
-            {artifact.tags.map((t) => (
-              <Badge key={t} variant="outline" className="text-xs text-muted-foreground">
-                {t}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </button>
   );
 }
 
 export default function NotebookLMPage() {
+  const router = useRouter();
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [artifacts, setArtifacts] = useState<NLMArtifact[]>([]);
-  const [total, setTotal] = useState(0);
+  const [filtered, setFiltered] = useState<Notebook[]>([]);
   const [search, setSearch] = useState("");
-  const [activeType, setActiveType] = useState("all");
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const TYPES = ["all", "audio", "video", "report", "quiz", "flashcards", "infographic", "slide_deck", "data_table", "mind_map"];
+  useEffect(() => {
+    load();
+  }, []);
 
-  async function load(type = activeType, q = search) {
+  async function load() {
     setLoading(true);
-    const params: Record<string, string> = {};
-    if (type !== "all") params.artifact_type = type;
-    if (q) params.search = q;
-    const [nb, art] = await Promise.all([getNotebooks(), getArtifacts(params)]);
-    setNotebooks(nb);
-    setArtifacts(art.items);
-    setTotal(art.total);
+    const nbs = await getNotebooks();
+    setNotebooks(nbs);
+    setFiltered(nbs);
     setLoading(false);
   }
-
-  useEffect(() => { load(); }, []);
 
   async function handleSync() {
     setSyncing(true);
@@ -130,72 +86,83 @@ export default function NotebookLMPage() {
     setSyncing(false);
   }
 
-  function handleTypeChange(t: string) {
-    setActiveType(t);
-    load(t, search);
-  }
-
   function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
-    setSearch(e.target.value);
-    load(activeType, e.target.value);
+    const q = e.target.value;
+    setSearch(q);
+    setFiltered(
+      q.trim()
+        ? notebooks.filter((n) => n.title.toLowerCase().includes(q.toLowerCase()))
+        : notebooks
+    );
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-7xl">
+    <div className="p-8 max-w-7xl space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <BookOpen className="h-6 w-6 text-primary" />
-            NotebookLM
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""} · {total} artifact{total !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight">NotebookLM</h1>
+        <Button
+          onClick={handleSync}
+          disabled={syncing}
+          variant="outline"
+          size="sm"
+          className="gap-2 shrink-0"
+        >
           <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
           {syncing ? "Syncing…" : "Sync notebooks"}
         </Button>
       </div>
 
       {/* Search */}
-      <Input
-        placeholder="Search artifacts…"
-        value={search}
-        onChange={handleSearch}
-        className="max-w-sm"
-      />
+      {notebooks.length > 0 && (
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search notebooks…"
+            value={search}
+            onChange={handleSearch}
+            className="pl-9"
+          />
+        </div>
+      )}
 
-      {/* Type tabs */}
-      <Tabs value={activeType} onValueChange={handleTypeChange}>
-        <TabsList className="flex-wrap h-auto gap-1">
-          {TYPES.map((t) => (
-            <TabsTrigger key={t} value={t} className="capitalize text-xs">
-              {t === "all" ? "All" : t.replace("_", " ")}
-            </TabsTrigger>
+      {/* Grid */}
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-52 rounded-2xl" />
           ))}
-        </TabsList>
-
-        <TabsContent value={activeType} className="mt-6">
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-44 rounded-xl" />
-              ))}
-            </div>
-          ) : artifacts.length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
-              <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No artifacts yet. Sync your notebooks to get started.</p>
-            </div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+          <BookOpen className="h-12 w-12 opacity-20" />
+          {notebooks.length === 0 ? (
+            <>
+              <p className="font-medium">No notebooks yet</p>
+              <p className="text-sm text-center max-w-xs">
+                Click &ldquo;Sync notebooks&rdquo; to import your notebooks from NotebookLM.
+              </p>
+              <Button onClick={handleSync} disabled={syncing} className="mt-2 gap-2">
+                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync now"}
+              </Button>
+            </>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {artifacts.map((a) => <ArtifactCard key={a.id} artifact={a} />)}
-            </div>
+            <p className="text-sm">No notebooks match &ldquo;{search}&rdquo;</p>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {filtered.map((nb, i) => (
+            <NotebookCard
+              key={nb.id}
+              notebook={nb}
+              index={i}
+              onClick={() => router.push(`/notebooklm/${nb.id}`)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

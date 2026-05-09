@@ -1,4 +1,6 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Empty string → relative URL → Next.js rewrites proxy to the FastAPI backend.
+// Set NEXT_PUBLIC_API_URL only if you need to override (e.g. staging).
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -13,6 +15,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // ---- Notebooks ----
 export const getNotebooks = () => request<Notebook[]>("/api/notebooks");
 export const syncNotebooks = () => request<Notebook[]>("/api/notebooks/sync", { method: "POST" });
+export const getLiveArtifacts = (notebookId: string) =>
+  request<LiveArtifactsResponse>(`/api/notebooks/${notebookId}/live-artifacts`);
+export const saveArtifact = (data: {
+  nlm_artifact_id: string;
+  notebook_id: string;
+  notebook_title?: string | null;
+  artifact_type: string;
+  file_format: string;
+  title: string;
+  nlm_created_at?: string | null;
+}) => request<NLMArtifact>("/api/artifacts", { method: "POST", body: JSON.stringify(data) });
 
 // ---- Artifacts ----
 export const getArtifacts = (params: Record<string, string | number> = {}) => {
@@ -23,6 +36,13 @@ export const updateArtifact = (id: string, data: Partial<NLMArtifact>) =>
   request<NLMArtifact>(`/api/artifacts/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 export const deleteArtifact = (id: string) =>
   request<void>(`/api/artifacts/${id}`, { method: "DELETE" });
+export async function getArtifactContent(id: string): Promise<string> {
+  const res = await fetch(`${BASE}/api/artifacts/${id}/content`);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return new TextDecoder("utf-8").decode(buf);
+}
+
 export const retryDownload = (id: string) =>
   request<NLMArtifact>(`/api/artifacts/${id}/retry-download`, { method: "POST" });
 export const saveToLibrary = (id: string) =>
@@ -42,6 +62,26 @@ export const addLink = (data: Partial<LibraryItem>) =>
   request<LibraryItem>("/api/library/link", { method: "POST", body: JSON.stringify(data) });
 
 // ---- Types ----
+
+export interface LiveArtifact {
+  nlm_id: string;
+  title: string;
+  artifact_type: string;
+  file_format: string;
+  created_at: string | null;
+  is_completed: boolean;
+  portal_id: string | null;
+  download_status: "pending" | "downloading" | "done" | "failed" | null;
+  r2_url: string | null;
+  download_error: string | null;
+}
+
+export interface LiveArtifactsResponse {
+  notebook_id: string;
+  notebook_title: string | null;
+  artifacts: LiveArtifact[];
+}
+
 export interface Notebook {
   id: string;
   title: string;

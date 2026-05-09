@@ -10,7 +10,7 @@ TABLE = "library_items"
 
 
 def create(db: Client, data: LibraryItemCreate, r2_key: str | None = None, r2_url: str | None = None, file_size_bytes: int | None = None) -> dict:
-    row = data.model_dump(exclude_none=True)
+    row = data.model_dump(mode="json", exclude_none=True)
     if r2_key:
         row["r2_key"] = r2_key
     if r2_url:
@@ -43,7 +43,7 @@ def list_all(db: Client, filters: LibraryFilters) -> tuple[list[dict], int]:
 
 
 def update(db: Client, item_id: UUID, data: LibraryItemUpdate) -> dict | None:
-    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    patch = {k: v for k, v in data.model_dump(mode="json").items() if v is not None}
     if not patch:
         return get(db, item_id)
     rows = db.table(TABLE).update(patch).eq("id", str(item_id)).execute().data
