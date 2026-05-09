@@ -220,6 +220,54 @@ npx skills add teng-lin/notebooklm-py
 Fetches the canonical [SKILL.md](SKILL.md) directly from GitHub.
 
 
+## Research Portal
+
+A web GUI built on top of this library — two dedicated pages for managing NotebookLM artifacts and a personal research library, backed by Supabase and Cloudflare R2.
+
+### Prerequisites
+
+- Supabase project + Cloudflare R2 bucket (see [portal setup guide](docs/portal-infrastructure-setup.md))
+- `portal/.env` filled in from `portal/.env.example`
+- NotebookLM authentication (see step 1 below)
+
+### 1 — Log in to NotebookLM
+
+```bash
+# Install with browser support
+uv pip install -e ".[all]"
+playwright install chromium
+
+# Authenticate (opens a browser window)
+notebooklm login
+
+# Verify
+notebooklm list
+```
+
+### 2 — Start the backend
+
+```bash
+cd portal
+source ../.venv/bin/activate
+uvicorn backend.main:app --reload --port 8000
+```
+
+API docs available at **http://localhost:8000/docs**
+
+### 3 — Start the frontend
+
+```bash
+cd portal/frontend
+npm install        # first time only
+npm run dev
+```
+
+Open **http://localhost:3000** — the portal opens on the NotebookLM page.
+
+Click **Sync notebooks** to pull your notebooks from NotebookLM into the portal. Use the **Library** page to upload files or import from Google Drive.
+
+---
+
 ## Documentation
 
 - **[CLI Reference](docs/cli-reference.md)** - Complete command documentation

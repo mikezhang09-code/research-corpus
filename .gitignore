@@ -29,6 +29,24 @@ INVESTIGATION*.md
 investigation_output/
 downloads/
 
+# Node / npm (root-level from MCP tooling)
+node_modules/
+package-lock.json
+
+# Portal — backend runtime
+portal/backend/__pycache__/
+portal/**/__pycache__/
+
+# Portal — frontend build artefacts (also covered by portal/frontend/.gitignore)
+portal/frontend/.next/
+portal/frontend/out/
+portal/frontend/coverage/
+portal/frontend/*.tsbuildinfo
+portal/frontend/next-env.d.ts
+
+# Portal — credentials (never commit)
+portal/.env
+
 # VCR cassettes - committed after security review
 # Cassettes are scrubbed of sensitive data (cookies, tokens, user IDs, emails)
 # See tests/vcr_config.py for scrubbing patterns
