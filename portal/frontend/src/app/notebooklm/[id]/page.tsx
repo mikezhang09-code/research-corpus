@@ -110,6 +110,111 @@ function MarkdownModal({ portalId, title, onClose }: {
   );
 }
 
+// ---- CSV table viewer modal ----
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') inQuotes = false;
+      else cell += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { row.push(cell); cell = ""; }
+      else if (ch === '\n') { row.push(cell); cell = ""; if (row.some(Boolean)) rows.push(row); row = []; }
+      else if (ch !== '\r') cell += ch;
+    }
+  }
+  if (cell || row.length > 0) { row.push(cell); if (row.some(Boolean)) rows.push(row); }
+  return rows;
+}
+
+function CsvTableModal({ portalId, title, onClose }: {
+  portalId: string;
+  title: string;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<string[][] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getArtifactContent(portalId)
+      .then((text) => setRows(parseCsv(text)))
+      .catch((e) => setError(e.message));
+  }, [portalId]);
+
+  const headers = rows?.[0] ?? [];
+  const dataRows = rows?.slice(1) ?? [];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="overflow-auto flex-1">
+          {error ? (
+            <div className="flex items-center gap-2 text-destructive text-sm p-6">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Failed to load: {error}
+            </div>
+          ) : rows === null ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm p-6">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  {headers.map((h, i) => (
+                    <th
+                      key={i}
+                      className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide bg-orange-50 text-orange-800 border-b border-orange-200 whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, ri) => (
+                  <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-muted/40"}>
+                    {headers.map((_, ci) => (
+                      <td
+                        key={ci}
+                        className="px-4 py-3 align-top border-b border-border/50 text-sm leading-relaxed max-w-xs"
+                      >
+                        {row[ci] ?? ""}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="px-6 py-3 border-t shrink-0 flex items-center justify-between text-xs text-muted-foreground">
+          <span>{dataRows.length} row{dataRows.length !== 1 ? "s" : ""} · {headers.length} column{headers.length !== 1 ? "s" : ""}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Artifact card ----
 
 function ArtifactCard({
@@ -125,6 +230,7 @@ function ArtifactCard({
 }) {
   const [saving, setSaving] = useState(false);
   const [showMarkdown, setShowMarkdown] = useState(false);
+  const [showCsv, setShowCsv] = useState(false);
   const cfg = TYPE_CONFIG[artifact.artifact_type] ?? DEFAULT_CONFIG;
   const Icon = cfg.icon;
 
@@ -135,6 +241,7 @@ function ArtifactCard({
     : null;
 
   const isMarkdown = artifact.file_format === "md";
+  const isCsv = artifact.file_format === "csv";
 
   async function handleSave() {
     setSaving(true);
@@ -167,6 +274,13 @@ function ArtifactCard({
           portalId={artifact.portal_id}
           title={artifact.title}
           onClose={() => setShowMarkdown(false)}
+        />
+      )}
+      {showCsv && artifact.portal_id && (
+        <CsvTableModal
+          portalId={artifact.portal_id}
+          title={artifact.title}
+          onClose={() => setShowCsv(false)}
         />
       )}
 
@@ -239,6 +353,16 @@ function ArtifactCard({
                   >
                     <FileText className="h-3 w-3" />
                     Read
+                  </Button>
+                ) : isCsv ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8 text-xs shrink-0"
+                    onClick={() => setShowCsv(true)}
+                  >
+                    <BarChart2 className="h-3 w-3" />
+                    View
                   </Button>
                 ) : artifact.r2_url ? (
                   <a href={artifact.r2_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
