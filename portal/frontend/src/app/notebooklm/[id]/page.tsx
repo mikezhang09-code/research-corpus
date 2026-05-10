@@ -7,12 +7,14 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLiveArtifacts, getArtifactContent, saveArtifact, type LiveArtifact } from "@/lib/api";
+import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
+import { GenerateModal } from "@/components/generate/GenerateModal";
 
 // ---- Artifact type config ----
 
@@ -151,6 +153,7 @@ function ArtifactCard({
   const isSaved      = artifact.download_status !== null;
   const isDone       = artifact.download_status === "done";
   const isFailed     = artifact.download_status === "failed";
+  const isGenerating = artifact.download_status === "generating";
   const isInProgress = artifact.download_status === "pending" || artifact.download_status === "downloading";
 
   return (
@@ -196,6 +199,13 @@ function ArtifactCard({
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
                   : "Save to database"}
               </Button>
+            )}
+
+            {isGenerating && (
+              <div className="flex items-center justify-center gap-2 py-1.5 text-sm text-muted-foreground">
+                <Sparkles className="h-4 w-4 animate-pulse text-primary" />
+                <span>Generating in NotebookLM…</span>
+              </div>
             )}
 
             {isInProgress && (
@@ -273,6 +283,8 @@ export default function NotebookDetailPage() {
   const [notebookTitle, setNotebookTitle] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [generateType, setGenerateType] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -288,7 +300,9 @@ export default function NotebookDetailPage() {
       setNotebookTitle(data.notebook_title);
 
       const hasPending = data.artifacts.some(
-        (a) => a.download_status === "pending" || a.download_status === "downloading"
+        (a) => a.download_status === "generating"
+            || a.download_status === "pending"
+            || a.download_status === "downloading"
       );
       if (pollRef.current) clearTimeout(pollRef.current);
       if (hasPending) {
@@ -336,17 +350,48 @@ export default function NotebookDetailPage() {
             </p>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 shrink-0"
-          onClick={() => loadArtifacts()}
-          disabled={refreshing}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => loadArtifacts()}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => setSheetOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Generate
+          </Button>
+        </div>
       </div>
+
+      {sheetOpen && (
+        <GenerateActionSheet
+          onPick={(t) => { setSheetOpen(false); setGenerateType(t); }}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
+      {generateType && (
+        <GenerateModal
+          artifactType={generateType}
+          notebookId={notebookId}
+          onClose={() => setGenerateType(null)}
+          onGenerated={(artifact) => {
+            setGenerateType(null);
+            // Optimistic insert + immediate refresh; polling takes over.
+            setArtifacts((prev) => [artifact, ...prev.filter((a) => a.nlm_id !== artifact.nlm_id)]);
+            if (pollRef.current) clearTimeout(pollRef.current);
+            pollRef.current = setTimeout(() => loadArtifacts(true), 3000);
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class DownloadStatus(str, Enum):
+    GENERATING = "generating"  # NLM is producing the artifact (pre-download)
     PENDING = "pending"
     DOWNLOADING = "downloading"
     DONE = "done"
@@ -136,6 +137,40 @@ class LibraryItemUpdate(BaseModel):
 class LibraryItemListResponse(BaseModel):
     items: list[LibraryItemRead]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Generate request (single endpoint dispatches to all 9 generate_* methods)
+# ---------------------------------------------------------------------------
+
+class GenerateRequest(BaseModel):
+    """Unified request for POST /api/notebooks/{id}/generate.
+
+    Only fields relevant to `artifact_type` are read; the rest are ignored.
+    Allowed string values mirror the CLI flag choices in src/notebooklm/cli/generate.py.
+    """
+    artifact_type: str  # audio | video | report | quiz | flashcards | infographic | slide_deck | data_table | mind_map
+    description: str = ""
+    language: str | None = None
+
+    # audio
+    audio_format: str | None = None  # deep-dive | brief | critique | debate
+    audio_length: str | None = None  # short | default | long
+    # video
+    video_format: str | None = None  # explainer | brief | cinematic
+    video_style: str | None = None   # auto | classic | whiteboard | kawaii | anime | watercolor | retro-print | heritage | paper-craft
+    # report
+    report_format: str | None = None  # briefing-doc | study-guide | blog-post | custom
+    # slide_deck
+    deck_format: str | None = None  # detailed | presenter
+    deck_length: str | None = None  # default | short
+    # quiz / flashcards
+    quiz_quantity: str | None = None    # fewer | standard | more
+    quiz_difficulty: str | None = None  # easy | medium | hard
+    # infographic
+    info_orientation: str | None = None  # landscape | portrait | square
+    info_detail: str | None = None       # concise | standard | detailed
+    info_style: str | None = None        # auto | sketch-note | professional | bento-grid | editorial | instructional | bricks | clay | anime | kawaii | scientific
 
 
 # ---------------------------------------------------------------------------

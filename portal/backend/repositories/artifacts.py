@@ -65,8 +65,11 @@ def update_download_status(
         patch["r2_key"] = r2_key
         patch["r2_url"] = r2_url
         patch["file_size_bytes"] = file_size_bytes
+        patch["download_error"] = ""  # clear stale error from a prior failed attempt
     if status == DownloadStatus.FAILED:
         patch["download_error"] = error
+    if status in (DownloadStatus.GENERATING, DownloadStatus.PENDING, DownloadStatus.DOWNLOADING):
+        patch["download_error"] = ""
     db.table(TABLE).update(patch).eq("id", str(artifact_id)).execute()
 
 

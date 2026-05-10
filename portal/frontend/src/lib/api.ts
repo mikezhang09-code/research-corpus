@@ -17,6 +17,11 @@ export const getNotebooks = () => request<Notebook[]>("/api/notebooks");
 export const syncNotebooks = () => request<Notebook[]>("/api/notebooks/sync", { method: "POST" });
 export const getLiveArtifacts = (notebookId: string) =>
   request<LiveArtifactsResponse>(`/api/notebooks/${notebookId}/live-artifacts`);
+export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
+  request<LiveArtifact>(`/api/notebooks/${notebookId}/generate`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 export const saveArtifact = (data: {
   nlm_artifact_id: string;
   notebook_id: string;
@@ -71,9 +76,28 @@ export interface LiveArtifact {
   created_at: string | null;
   is_completed: boolean;
   portal_id: string | null;
-  download_status: "pending" | "downloading" | "done" | "failed" | null;
+  download_status: "generating" | "pending" | "downloading" | "done" | "failed" | null;
   r2_url: string | null;
   download_error: string | null;
+}
+
+export interface GenerateRequest {
+  artifact_type: string;
+  description?: string;
+  language?: string;
+  // type-specific (each ignored if not relevant)
+  audio_format?: string;
+  audio_length?: string;
+  video_format?: string;
+  video_style?: string;
+  report_format?: string;
+  deck_format?: string;
+  deck_length?: string;
+  quiz_quantity?: string;
+  quiz_difficulty?: string;
+  info_orientation?: string;
+  info_detail?: string;
+  info_style?: string;
 }
 
 export interface LiveArtifactsResponse {

@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, BookOpen, Search } from "lucide-react";
+import { RefreshCw, BookOpen, Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getNotebooks, syncNotebooks, type Notebook } from "@/lib/api";
+import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
+import { GenerateModal } from "@/components/generate/GenerateModal";
 
 // Rotating palette for notebook card headers — one color per notebook
 const PALETTE = [
@@ -20,10 +22,11 @@ const PALETTE = [
   { header: "bg-orange-100", icon: "text-orange-500" },
 ];
 
-function NotebookCard({ notebook, index, onClick }: {
+function NotebookCard({ notebook, index, onOpen, onGenerate }: {
   notebook: Notebook;
   index: number;
-  onClick: () => void;
+  onOpen: () => void;
+  onGenerate: () => void;
 }) {
   const color = PALETTE[index % PALETTE.length];
   const created = notebook.nlm_created_at
@@ -33,9 +36,12 @@ function NotebookCard({ notebook, index, onClick }: {
     : null;
 
   return (
-    <button
-      onClick={onClick}
-      className="group text-left rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className="group relative cursor-pointer text-left rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
       {/* Colored header area */}
       <div className={`${color.header} flex items-center justify-center h-36 relative`}>
@@ -44,6 +50,15 @@ function NotebookCard({ notebook, index, onClick }: {
         <span className="absolute bottom-3 right-3 text-xs font-medium px-2 py-0.5 rounded-full bg-white/70 text-foreground/70">
           {notebook.sources_count} source{notebook.sources_count !== 1 ? "s" : ""}
         </span>
+        {/* Generate badge */}
+        <button
+          type="button"
+          aria-label="Generate artifact"
+          onClick={(e) => { e.stopPropagation(); onGenerate(); }}
+          className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/85 hover:bg-white shadow-sm flex items-center justify-center text-foreground/70 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Content */}
@@ -55,7 +70,7 @@ function NotebookCard({ notebook, index, onClick }: {
           <p className="text-xs text-muted-foreground mt-1">{created}</p>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -66,10 +81,8 @@ export default function NotebookLMPage() {
   const [search, setSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    load();
-  }, []);
+  const [generateNotebookId, setGenerateNotebookId] = useState<string | null>(null);
+  const [generateType, setGenerateType] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -78,6 +91,11 @@ export default function NotebookLMPage() {
     setFiltered(nbs);
     setLoading(false);
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, []);
 
   async function handleSync() {
     setSyncing(true);
@@ -158,10 +176,32 @@ export default function NotebookLMPage() {
               key={nb.id}
               notebook={nb}
               index={i}
-              onClick={() => router.push(`/notebooklm/${nb.id}`)}
+              onOpen={() => router.push(`/notebooklm/${nb.id}`)}
+              onGenerate={() => setGenerateNotebookId(nb.id)}
             />
           ))}
         </div>
+      )}
+
+      {generateNotebookId && !generateType && (
+        <GenerateActionSheet
+          onPick={(t) => setGenerateType(t)}
+          onClose={() => setGenerateNotebookId(null)}
+        />
+      )}
+      {generateNotebookId && generateType && (
+        <GenerateModal
+          artifactType={generateType}
+          notebookId={generateNotebookId}
+          onClose={() => { setGenerateType(null); setGenerateNotebookId(null); }}
+          onGenerated={() => {
+            const id = generateNotebookId;
+            setGenerateType(null);
+            setGenerateNotebookId(null);
+            // Send the user to the detail page where they can watch progress.
+            router.push(`/notebooklm/${id}`);
+          }}
+        />
       )}
     </div>
   );

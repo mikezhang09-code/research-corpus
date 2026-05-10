@@ -64,9 +64,9 @@ async def _download_by_type(client, notebook_id: str, artifact_type: str, fmt: s
         case "report":
             await a.download_report(notebook_id, out_path)
         case "quiz":
-            await a.download_quiz(notebook_id, out_path, format=fmt)
+            await a.download_quiz(notebook_id, out_path, output_format=fmt)
         case "flashcards":
-            await a.download_flashcards(notebook_id, out_path, format=fmt)
+            await a.download_flashcards(notebook_id, out_path, output_format=fmt)
         case "infographic":
             await a.download_infographic(notebook_id, out_path)
         case "slide_deck":
