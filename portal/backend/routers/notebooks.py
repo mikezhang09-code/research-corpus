@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from ..models import (
     NLMArtifactRead,
     NotebookCreateRequest,
     NotebookRead,
+    NotebookRenameRequest,
     SourceRead,
     SourceTextRequest,
     SourceUrlRequest,
@@ -44,7 +46,14 @@ _FORMAT_MAP: dict[str, str] = {
 @router.get("", response_model=list[NotebookRead])
 async def list_notebooks():
     db = get_supabase()
-    rows = db.table("notebooks").select("*").order("last_synced_at", desc=True).execute().data
+    rows = (
+        db.table("notebooks")
+        .select("*")
+        .eq("hidden", False)
+        .order("last_synced_at", desc=True)
+        .execute()
+        .data
+    )
     return rows
 
 
@@ -60,16 +69,24 @@ async def sync_notebooks():
 
     async with await NotebookLMClient.from_storage() as client:
         notebooks = await client.notebooks.list()
+        # notebooks.list() does not populate sources_count — fetch it per
+        # notebook in parallel so the landing page can show real counts.
+        source_lists = await asyncio.gather(
+            *(client.sources.list(nb.id) for nb in notebooks),
+            return_exceptions=True,
+        )
 
     rows = [
         {
             "id": nb.id,
             "title": nb.title,
-            "sources_count": nb.sources_count,
+            "sources_count": (
+                len(sources) if not isinstance(sources, BaseException) else nb.sources_count
+            ),
             "is_owner": nb.is_owner,
             "nlm_created_at": nb.created_at.isoformat() if nb.created_at else None,
         }
-        for nb in notebooks
+        for nb, sources in zip(notebooks, source_lists)
     ]
 
     if rows:
@@ -86,6 +103,114 @@ async def get_notebook(notebook_id: str):
     if not rows:
         raise HTTPException(404, f"Notebook {notebook_id} not found")
     return rows[0]
+
+
+@router.delete("/{notebook_id}", status_code=204)
+async def delete_notebook(notebook_id: str):
+    """Delete a notebook from NotebookLM and clean up local artifacts + R2 files.
+
+    Library items (already saved to library) are kept — the foreign key uses
+    ON DELETE SET NULL, and library items have their own R2 keys that aren't
+    tied to the notebook's saved-artifact storage.
+    """
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    try:
+        async with await NotebookLMClient.from_storage() as client:
+            await client.notebooks.delete(notebook_id)
+    except Exception as exc:
+        raise HTTPException(502, f"Delete failed: {exc}")
+
+    db = get_supabase()
+
+    # Collect R2 keys for this notebook's saved artifacts before the cascade
+    # drops the rows, so we can free up R2 storage too.
+    artifact_rows = (
+        db.table("nlm_artifacts")
+        .select("r2_key")
+        .eq("notebook_id", notebook_id)
+        .execute()
+        .data
+    )
+    from ..storage import delete_file
+    for row in artifact_rows:
+        key = row.get("r2_key")
+        if not key:
+            continue
+        try:
+            delete_file(key)
+        except Exception:
+            # Don't fail the whole delete on a single R2 cleanup error —
+            # the user has already lost the notebook on NotebookLM's side.
+            pass
+
+    db.table("notebooks").delete().eq("id", notebook_id).execute()
+
+
+@router.post("/{notebook_id}/restore", response_model=NotebookRead)
+async def restore_notebook(notebook_id: str):
+    """Un-hide a notebook (clear the hidden flag set by remove-from-recent)."""
+    db = get_supabase()
+    updated = (
+        db.table("notebooks")
+        .update({"hidden": False})
+        .eq("id", notebook_id)
+        .execute()
+        .data
+    )
+    if not updated:
+        raise HTTPException(404, f"Notebook {notebook_id} not found")
+    return updated[0]
+
+
+@router.patch("/{notebook_id}", response_model=NotebookRead)
+async def rename_notebook(notebook_id: str, req: NotebookRenameRequest):
+    """Rename a notebook in NotebookLM and update the local cache."""
+    new_title = req.title.strip()
+    if not new_title:
+        raise HTTPException(400, "Title cannot be empty")
+
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    try:
+        async with await NotebookLMClient.from_storage() as client:
+            await client.notebooks.rename(notebook_id, new_title)
+    except Exception as exc:
+        raise HTTPException(502, f"Rename failed: {exc}")
+
+    db = get_supabase()
+    updated = db.table("notebooks").update({"title": new_title}).eq("id", notebook_id).execute().data
+    if not updated:
+        raise HTTPException(404, f"Notebook {notebook_id} not found")
+    return updated[0]
+
+
+@router.post("/{notebook_id}/remove-from-recent", status_code=204)
+async def remove_notebook_from_recent(notebook_id: str):
+    """Hide the notebook from the portal list and from NotebookLM's recents.
+
+    Local DB rows and R2 files are kept intact — call DELETE if you want
+    full cleanup. Use POST /restore (or re-sync) to bring it back.
+    """
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    try:
+        async with await NotebookLMClient.from_storage() as client:
+            await client.notebooks.remove_from_recent(notebook_id)
+    except Exception as exc:
+        raise HTTPException(502, f"Remove-from-recent failed: {exc}")
+
+    db = get_supabase()
+    db.table("notebooks").update({"hidden": True}).eq("id", notebook_id).execute()
 
 
 @router.post("/{notebook_id}/sync-artifacts", response_model=list[NLMArtifactRead])

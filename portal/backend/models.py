@@ -34,6 +34,7 @@ class NotebookRead(BaseModel):
     is_owner: bool
     nlm_created_at: datetime | None = None
     last_synced_at: datetime
+    hidden: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +145,10 @@ class LibraryItemListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class NotebookCreateRequest(BaseModel):
+    title: str
+
+
+class NotebookRenameRequest(BaseModel):
     title: str
 
 

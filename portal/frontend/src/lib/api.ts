@@ -17,6 +17,14 @@ export const getNotebooks = () => request<Notebook[]>("/api/notebooks");
 export const syncNotebooks = () => request<Notebook[]>("/api/notebooks/sync", { method: "POST" });
 export const createNotebook = (title: string) =>
   request<Notebook>("/api/notebooks", { method: "POST", body: JSON.stringify({ title }) });
+export const deleteNotebook = (id: string) =>
+  request<void>(`/api/notebooks/${id}`, { method: "DELETE" });
+export const renameNotebook = (id: string, title: string) =>
+  request<Notebook>(`/api/notebooks/${id}`, {
+    method: "PATCH", body: JSON.stringify({ title }),
+  });
+export const removeNotebookFromRecent = (id: string) =>
+  request<void>(`/api/notebooks/${id}/remove-from-recent`, { method: "POST" });
 
 // ---- Sources ----
 export const listSources = (notebookId: string) =>
