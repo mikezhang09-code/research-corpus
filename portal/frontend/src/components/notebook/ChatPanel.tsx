@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { MessageSquare, Plus, Send, Loader2, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,7 +16,15 @@ type ChatMessage = {
   key: string;
 };
 
-export function ChatPanel({ notebookId }: { notebookId: string }) {
+export type ChatPanelHandle = {
+  /** Send a question programmatically (e.g. from a clicked suggested topic). */
+  send: (prompt: string) => void;
+};
+
+export const ChatPanel = forwardRef<ChatPanelHandle, { notebookId: string }>(function ChatPanel(
+  { notebookId },
+  ref,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
@@ -53,19 +61,18 @@ export function ChatPanel({ notebookId }: { notebookId: string }) {
     }
   }, [messages, loading]);
 
-  async function handleSend() {
-    const q = inputText.trim();
-    if (!q || loading) return;
+  async function sendQuestion(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed || loading) return;
 
-    setInputText("");
     setError(null);
 
     const userKey = `u-${Date.now()}`;
-    setMessages((prev) => [...prev, { role: "user", text: q, key: userKey }]);
+    setMessages((prev) => [...prev, { role: "user", text: trimmed, key: userKey }]);
     setLoading(true);
 
     try {
-      const res = await askChat(notebookId, q, {
+      const res = await askChat(notebookId, trimmed, {
         conversationId: conversationId ?? undefined,
       });
       setConversationId(res.conversation_id);
@@ -85,6 +92,19 @@ export function ChatPanel({ notebookId }: { notebookId: string }) {
       setLoading(false);
     }
   }
+
+  async function handleSend() {
+    const q = inputText.trim();
+    if (!q || loading) return;
+    setInputText("");
+    await sendQuestion(q);
+  }
+
+  // Keep an up-to-date reference so the imperative `send()` always uses the
+  // latest closure (with current conversationId and loading state).
+  const sendRef = useRef(sendQuestion);
+  sendRef.current = sendQuestion;
+  useImperativeHandle(ref, () => ({ send: (prompt: string) => sendRef.current(prompt) }), []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -228,7 +248,7 @@ export function ChatPanel({ notebookId }: { notebookId: string }) {
       </div>
     </div>
   );
-}
+});
 
 function CitationBadge({
   chatRef,

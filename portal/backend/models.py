@@ -292,3 +292,17 @@ class ChatTurn(BaseModel):
 class ChatHistoryResponse(BaseModel):
     turns: list[ChatTurn]
     conversation_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Notebook description (AI summary + suggested topics)
+# ---------------------------------------------------------------------------
+
+class SuggestedTopicRead(BaseModel):
+    question: str
+    prompt: str
+
+
+class NotebookDescriptionResponse(BaseModel):
+    summary: str
+    suggested_topics: list[SuggestedTopicRead] = []

@@ -17,7 +17,8 @@ import { getLiveArtifacts, getArtifactContent, saveArtifact, type LiveArtifact }
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
 import { SourcesPanel } from "@/components/notebook/SourcesPanel";
-import { ChatPanel } from "@/components/notebook/ChatPanel";
+import { ChatPanel, type ChatPanelHandle } from "@/components/notebook/ChatPanel";
+import { NotebookDescription } from "@/components/notebook/NotebookDescription";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // ---- Artifact type config ----
@@ -597,6 +598,11 @@ export default function NotebookDetailPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [generateType, setGenerateType] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chatRef = useRef<ChatPanelHandle | null>(null);
+
+  function handleAskTopic(prompt: string) {
+    chatRef.current?.send(prompt);
+  }
 
   useEffect(() => {
     loadArtifacts();
@@ -685,6 +691,8 @@ export default function NotebookDetailPage() {
           />
         )}
 
+        <NotebookDescription notebookId={notebookId} onAskTopic={handleAskTopic} />
+
         <Tabs defaultValue="artifacts">
           <TabsList>
             <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
@@ -750,7 +758,7 @@ export default function NotebookDetailPage() {
           {isMobile && (
             <TabsContent value="chat" className="mt-4">
               <div className="h-[calc(100vh-16rem)] rounded-xl overflow-hidden border">
-                <ChatPanel notebookId={notebookId} />
+                <ChatPanel ref={chatRef} notebookId={notebookId} />
               </div>
             </TabsContent>
           )}
@@ -760,7 +768,7 @@ export default function NotebookDetailPage() {
       {/* Right column: chat panel (desktop only) */}
       {!isMobile && (
         <div className="w-[400px] shrink-0 h-full sticky top-0">
-          <ChatPanel notebookId={notebookId} />
+          <ChatPanel ref={chatRef} notebookId={notebookId} />
         </div>
       )}
     </div>

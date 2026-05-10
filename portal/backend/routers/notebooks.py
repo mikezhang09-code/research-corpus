@@ -21,11 +21,13 @@ from ..models import (
     LiveArtifactsResponse,
     NLMArtifactRead,
     NotebookCreateRequest,
+    NotebookDescriptionResponse,
     NotebookRead,
     NotebookRenameRequest,
     SourceRead,
     SourceTextRequest,
     SourceUrlRequest,
+    SuggestedTopicRead,
 )
 
 router = APIRouter(prefix="/api/notebooks", tags=["notebooks"])
@@ -833,4 +835,31 @@ async def get_chat_history(
     return ChatHistoryResponse(
         turns=[ChatTurn(question=q, answer=a) for q, a in pairs],
         conversation_id=resolved_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Notebook description (AI summary + suggested topics)
+# ---------------------------------------------------------------------------
+
+@router.get("/{notebook_id}/description", response_model=NotebookDescriptionResponse)
+async def get_notebook_description(notebook_id: str):
+    """Fetch NotebookLM's AI-generated summary + suggested topics for the notebook."""
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    try:
+        async with await NotebookLMClient.from_storage() as client:
+            desc = await client.notebooks.get_description(notebook_id)
+    except Exception as exc:
+        raise HTTPException(502, f"Description fetch failed: {exc}")
+
+    return NotebookDescriptionResponse(
+        summary=desc.summary,
+        suggested_topics=[
+            SuggestedTopicRead(question=t.question, prompt=t.prompt)
+            for t in desc.suggested_topics
+        ],
     )

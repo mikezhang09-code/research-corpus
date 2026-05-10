@@ -48,6 +48,8 @@ export async function addSourceFile(notebookId: string, file: File): Promise<Sou
 }
 export const getLiveArtifacts = (notebookId: string) =>
   request<LiveArtifactsResponse>(`/api/notebooks/${notebookId}/live-artifacts`);
+export const getNotebookDescription = (notebookId: string) =>
+  request<NotebookDescriptionResponse>(`/api/notebooks/${notebookId}/description`);
 export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
   request<LiveArtifact>(`/api/notebooks/${notebookId}/generate`, {
     method: "POST",
@@ -255,4 +257,14 @@ export interface ChatTurn {
 export interface ChatHistoryResponse {
   turns: ChatTurn[];
   conversation_id: string | null;
+}
+
+export interface SuggestedTopic {
+  question: string;
+  prompt: string;
+}
+
+export interface NotebookDescriptionResponse {
+  summary: string;
+  suggested_topics: SuggestedTopic[];
 }
