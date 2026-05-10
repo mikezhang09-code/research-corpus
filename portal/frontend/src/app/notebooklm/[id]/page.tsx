@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ import { getLiveArtifacts, getArtifactContent, saveArtifact, type LiveArtifact }
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
 import { SourcesPanel } from "@/components/notebook/SourcesPanel";
+import { ChatPanel } from "@/components/notebook/ChatPanel";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ---- Artifact type config ----
 
@@ -330,110 +332,135 @@ export default function NotebookDetailPage() {
   }
 
   const savedCount = artifacts.filter((a) => a.download_status === "done").length;
+  const isMobile = useIsMobile();
 
   return (
-    <div className="p-8 max-w-7xl space-y-6">
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2 -ml-2 text-muted-foreground"
-          onClick={() => router.push("/notebooklm")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Notebooks
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0">
+      {/* Left column */}
+      <div className="flex-1 min-w-0 overflow-auto p-8 space-y-6">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 -ml-2 text-muted-foreground"
+            onClick={() => router.push("/notebooklm")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Notebooks
+          </Button>
+        </div>
 
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {notebookTitle ?? (loading ? "Loading…" : notebookId)}
-        </h1>
-        {!loading && (
-          <p className="text-sm text-muted-foreground mt-1">
-            {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
-            {savedCount > 0 && ` · ${savedCount} saved`}
-          </p>
-        )}
-      </div>
-
-      {sheetOpen && (
-        <GenerateActionSheet
-          onPick={(t) => { setSheetOpen(false); setGenerateType(t); }}
-          onClose={() => setSheetOpen(false)}
-        />
-      )}
-      {generateType && (
-        <GenerateModal
-          artifactType={generateType}
-          notebookId={notebookId}
-          onClose={() => setGenerateType(null)}
-          onGenerated={(artifact) => {
-            setGenerateType(null);
-            // Optimistic insert + immediate refresh; polling takes over.
-            setArtifacts((prev) => [artifact, ...prev.filter((a) => a.nlm_id !== artifact.nlm_id)]);
-            if (pollRef.current) clearTimeout(pollRef.current);
-            pollRef.current = setTimeout(() => loadArtifacts(true), 3000);
-          }}
-        />
-      )}
-
-      <Tabs defaultValue="artifacts">
-        <TabsList>
-          <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
-          <TabsTrigger value="sources">Sources</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="artifacts" className="mt-4 space-y-4">
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => loadArtifacts()}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <Button size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Generate
-            </Button>
-          </div>
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-64 rounded-2xl" />
-              ))}
-            </div>
-          ) : artifacts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
-              <FileText className="h-12 w-12 opacity-20" />
-              <p className="font-medium">No artifacts yet</p>
-              <p className="text-sm text-center max-w-xs">
-                Click <span className="font-medium">+ Generate</span> to create one, or generate one in NotebookLM and refresh.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {artifacts.map((a) => (
-                <ArtifactCard
-                  key={a.nlm_id}
-                  artifact={a}
-                  notebookId={notebookId}
-                  notebookTitle={notebookTitle}
-                  onSaved={(update) => handleSaved(a.nlm_id, update)}
-                />
-              ))}
-            </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {notebookTitle ?? (loading ? "Loading…" : notebookId)}
+          </h1>
+          {!loading && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
+              {savedCount > 0 && ` · ${savedCount} saved`}
+            </p>
           )}
-        </TabsContent>
+        </div>
 
-        <TabsContent value="sources" className="mt-4">
-          <SourcesPanel notebookId={notebookId} />
-        </TabsContent>
-      </Tabs>
+        {sheetOpen && (
+          <GenerateActionSheet
+            onPick={(t) => { setSheetOpen(false); setGenerateType(t); }}
+            onClose={() => setSheetOpen(false)}
+          />
+        )}
+        {generateType && (
+          <GenerateModal
+            artifactType={generateType}
+            notebookId={notebookId}
+            onClose={() => setGenerateType(null)}
+            onGenerated={(artifact) => {
+              setGenerateType(null);
+              // Optimistic insert + immediate refresh; polling takes over.
+              setArtifacts((prev) => [artifact, ...prev.filter((a) => a.nlm_id !== artifact.nlm_id)]);
+              if (pollRef.current) clearTimeout(pollRef.current);
+              pollRef.current = setTimeout(() => loadArtifacts(true), 3000);
+            }}
+          />
+        )}
+
+        <Tabs defaultValue="artifacts">
+          <TabsList>
+            <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+            <TabsTrigger value="sources">Sources</TabsTrigger>
+            {isMobile && (
+              <TabsTrigger value="chat">
+                <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                Chat
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="artifacts" className="mt-4 space-y-4">
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => loadArtifacts()}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Generate
+              </Button>
+            </div>
+            {loading ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-64 rounded-2xl" />
+                ))}
+              </div>
+            ) : artifacts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+                <FileText className="h-12 w-12 opacity-20" />
+                <p className="font-medium">No artifacts yet</p>
+                <p className="text-sm text-center max-w-xs">
+                  Click <span className="font-medium">+ Generate</span> to create one, or generate one in NotebookLM and refresh.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {artifacts.map((a) => (
+                  <ArtifactCard
+                    key={a.nlm_id}
+                    artifact={a}
+                    notebookId={notebookId}
+                    notebookTitle={notebookTitle}
+                    onSaved={(update) => handleSaved(a.nlm_id, update)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="sources" className="mt-4">
+            <SourcesPanel notebookId={notebookId} />
+          </TabsContent>
+
+          {isMobile && (
+            <TabsContent value="chat" className="mt-4">
+              <div className="h-[calc(100vh-16rem)] rounded-xl overflow-hidden border">
+                <ChatPanel notebookId={notebookId} />
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
+      </div>
+
+      {/* Right column: chat panel (desktop only) */}
+      {!isMobile && (
+        <div className="w-[400px] shrink-0 h-full sticky top-0">
+          <ChatPanel notebookId={notebookId} />
+        </div>
+      )}
     </div>
   );
 }

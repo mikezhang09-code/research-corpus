@@ -10,6 +10,11 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
 from ..database import get_supabase
 from ..models import (
+    ChatHistoryResponse,
+    ChatRequest,
+    ChatReferenceRead,
+    ChatResponse,
+    ChatTurn,
     GenerateRequest,
     LiveArtifact,
     LiveArtifactsResponse,
@@ -631,3 +636,74 @@ async def add_source_file(notebook_id: str, file: UploadFile = File(...)):
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
     return _to_source_read(source)
+
+
+# ---------------------------------------------------------------------------
+# Chat
+# ---------------------------------------------------------------------------
+
+@router.post("/{notebook_id}/chat", response_model=ChatResponse)
+async def chat_ask(notebook_id: str, req: ChatRequest):
+    """Ask the notebook a question, optionally continuing an existing conversation."""
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    async with await NotebookLMClient.from_storage() as client:
+        try:
+            result = await client.chat.ask(
+                notebook_id,
+                req.question,
+                source_ids=req.source_ids,
+                conversation_id=req.conversation_id,
+            )
+        except Exception as exc:
+            raise HTTPException(502, f"Chat request failed: {exc}")
+
+    return ChatResponse(
+        answer=result.answer,
+        conversation_id=result.conversation_id,
+        turn_number=result.turn_number,
+        is_follow_up=result.is_follow_up,
+        references=[
+            ChatReferenceRead(
+                source_id=ref.source_id,
+                citation_number=ref.citation_number,
+                cited_text=ref.cited_text,
+            )
+            for ref in result.references
+        ],
+    )
+
+
+@router.get("/{notebook_id}/chat/history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    notebook_id: str,
+    conversation_id: str | None = None,
+    limit: int = 100,
+):
+    """Return prior (question, answer) turns for a notebook conversation."""
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    async with await NotebookLMClient.from_storage() as client:
+        resolved_id = conversation_id or await client.chat.get_conversation_id(notebook_id)
+        if not resolved_id:
+            return ChatHistoryResponse(turns=[], conversation_id=None)
+
+        try:
+            pairs = await client.chat.get_history(
+                notebook_id,
+                limit=limit,
+                conversation_id=resolved_id,
+            )
+        except Exception:
+            return ChatHistoryResponse(turns=[], conversation_id=resolved_id)
+
+    return ChatHistoryResponse(
+        turns=[ChatTurn(question=q, answer=a) for q, a in pairs],
+        conversation_id=resolved_id,
+    )

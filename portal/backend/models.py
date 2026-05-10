@@ -253,3 +253,37 @@ class LibraryFilters(BaseModel):
     search: str | None = None
     limit: int = 50
     offset: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Chat
+# ---------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    question: str
+    conversation_id: str | None = None
+    source_ids: list[str] | None = None
+
+
+class ChatReferenceRead(BaseModel):
+    source_id: str
+    citation_number: int | None = None
+    cited_text: str | None = None
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    conversation_id: str
+    turn_number: int
+    is_follow_up: bool
+    references: list[ChatReferenceRead] = []
+
+
+class ChatTurn(BaseModel):
+    question: str
+    answer: str
+
+
+class ChatHistoryResponse(BaseModel):
+    turns: list[ChatTurn]
+    conversation_id: str | None = None

@@ -45,6 +45,27 @@ export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
     method: "POST",
     body: JSON.stringify(data),
   });
+
+// ---- Chat ----
+export const askChat = (
+  notebookId: string,
+  question: string,
+  opts?: { conversationId?: string }
+) =>
+  request<ChatResponse>(`/api/notebooks/${notebookId}/chat`, {
+    method: "POST",
+    body: JSON.stringify({ question, conversation_id: opts?.conversationId ?? null }),
+  });
+
+export const getChatHistory = (notebookId: string, opts?: { conversationId?: string }) => {
+  const params = new URLSearchParams();
+  if (opts?.conversationId) params.set("conversation_id", opts.conversationId);
+  const qs = params.toString();
+  return request<ChatHistoryResponse>(
+    `/api/notebooks/${notebookId}/chat/history${qs ? `?${qs}` : ""}`
+  );
+};
+
 export const saveArtifact = (data: {
   nlm_artifact_id: string;
   notebook_id: string;
@@ -202,4 +223,28 @@ export interface LibraryItem {
 export interface LibraryListResponse {
   items: LibraryItem[];
   total: number;
+}
+
+export interface ChatReference {
+  source_id: string;
+  citation_number: number | null;
+  cited_text: string | null;
+}
+
+export interface ChatResponse {
+  answer: string;
+  conversation_id: string;
+  turn_number: number;
+  is_follow_up: boolean;
+  references: ChatReference[];
+}
+
+export interface ChatTurn {
+  question: string;
+  answer: string;
+}
+
+export interface ChatHistoryResponse {
+  turns: ChatTurn[];
+  conversation_id: string | null;
 }
