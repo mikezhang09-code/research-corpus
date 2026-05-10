@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -215,6 +215,165 @@ function CsvTableModal({ portalId, title, onClose }: {
   );
 }
 
+// ---- Mind map viewer ----
+
+const MM_NW = 180;
+const MM_NH = 44;
+const MM_HG = 40;
+const MM_VG = 8;
+const MM_PAD = 20;
+
+type MindNode = { name?: string; title?: string; children?: MindNode[] };
+type MmNode = { id: string; label: string; x: number; y: number; depth: number; hasChildren: boolean };
+type MmEdge = { x1: number; y1: number; x2: number; y2: number };
+type MmLayout = { nodes: MmNode[]; edges: MmEdge[]; width: number; height: number };
+
+function buildMindLayout(root: MindNode, collapsed: Set<string>): MmLayout {
+  const nodes: MmNode[] = [];
+  const edges: MmEdge[] = [];
+
+  function subtreeH(node: MindNode, id: string): number {
+    if (!node.children?.length || collapsed.has(id)) return MM_NH;
+    let h = (node.children.length - 1) * MM_VG;
+    node.children.forEach((c, i) => { h += subtreeH(c, `${id}-${i}`); });
+    return h;
+  }
+
+  function visit(node: MindNode, id: string, depth: number, yOff: number) {
+    const h = subtreeH(node, id);
+    const nx = MM_PAD + depth * (MM_NW + MM_HG);
+    const ny = MM_PAD + yOff + (h - MM_NH) / 2;
+    const hasChildren = !!node.children?.length;
+    nodes.push({ id, label: node.name ?? node.title ?? "", x: nx, y: ny, depth, hasChildren });
+
+    if (hasChildren && !collapsed.has(id)) {
+      let cy = yOff;
+      node.children!.forEach((child, i) => {
+        const cid = `${id}-${i}`;
+        const ch = subtreeH(child, cid);
+        const cnx = MM_PAD + (depth + 1) * (MM_NW + MM_HG);
+        const cny = MM_PAD + cy + (ch - MM_NH) / 2;
+        edges.push({ x1: nx + MM_NW, y1: ny + MM_NH / 2, x2: cnx, y2: cny + MM_NH / 2 });
+        visit(child, cid, depth + 1, cy);
+        cy += ch + MM_VG;
+      });
+    }
+  }
+
+  visit(root, "root", 0, 0);
+  const w = nodes.reduce((m, n) => Math.max(m, n.x + MM_NW), 0) + MM_PAD;
+  const h = nodes.reduce((m, n) => Math.max(m, n.y + MM_NH), 0) + MM_PAD;
+  return { nodes, edges, width: w, height: h };
+}
+
+const MM_NODE_COLORS = [
+  "bg-blue-600 text-white border-blue-500",
+  "bg-teal-500 text-white border-teal-400",
+  "bg-teal-100 border-teal-300 text-teal-900",
+  "bg-green-50 border-green-200 text-green-800",
+];
+
+function MindMapModal({ portalId, title, onClose }: {
+  portalId: string;
+  title: string;
+  onClose: () => void;
+}) {
+  const [root, setRoot] = useState<MindNode | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    getArtifactContent(portalId)
+      .then((text) => {
+        try { setRoot(JSON.parse(text) as MindNode); }
+        catch { setError("Invalid JSON"); }
+      })
+      .catch((e) => setError(e.message));
+  }, [portalId]);
+
+  const layout = useMemo(() => root ? buildMindLayout(root, collapsed) : null, [root, collapsed]);
+
+  function toggle(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="overflow-auto flex-1 bg-slate-50/60">
+          {error ? (
+            <div className="flex items-center gap-2 text-destructive text-sm p-6">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Failed to load: {error}
+            </div>
+          ) : !layout ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm p-6">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : (
+            <div style={{ width: layout.width, height: layout.height, position: "relative" }}>
+              <svg
+                style={{
+                  position: "absolute", top: 0, left: 0,
+                  width: layout.width, height: layout.height,
+                  pointerEvents: "none", overflow: "visible",
+                }}
+              >
+                {layout.edges.map((e, i) => {
+                  const mx = (e.x1 + e.x2) / 2;
+                  return (
+                    <path
+                      key={i}
+                      d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1} ${mx} ${e.y2} ${e.x2} ${e.y2}`}
+                      fill="none"
+                      stroke="#94a3b8"
+                      strokeWidth={1.5}
+                    />
+                  );
+                })}
+              </svg>
+
+              {layout.nodes.map((n) => {
+                const isCollapsed = collapsed.has(n.id);
+                const color = MM_NODE_COLORS[Math.min(n.depth, 3)];
+                return (
+                  <div
+                    key={n.id}
+                    className={`absolute rounded-lg border px-3 flex items-center gap-1.5 shadow-sm leading-tight text-xs font-medium ${color} ${n.hasChildren ? "cursor-pointer hover:brightness-95 active:brightness-90" : ""}`}
+                    style={{ left: n.x, top: n.y, width: MM_NW, height: MM_NH }}
+                    onClick={() => n.hasChildren && toggle(n.id)}
+                  >
+                    <span className="flex-1 line-clamp-2">{n.label}</span>
+                    {n.hasChildren && (
+                      <ChevronRight
+                        className={`h-3 w-3 shrink-0 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Artifact card ----
 
 function ArtifactCard({
@@ -231,6 +390,7 @@ function ArtifactCard({
   const [saving, setSaving] = useState(false);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [showCsv, setShowCsv] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
   const cfg = TYPE_CONFIG[artifact.artifact_type] ?? DEFAULT_CONFIG;
   const Icon = cfg.icon;
 
@@ -242,6 +402,7 @@ function ArtifactCard({
 
   const isMarkdown = artifact.file_format === "md";
   const isCsv = artifact.file_format === "csv";
+  const isMindMap = artifact.artifact_type === "mind_map";
 
   async function handleSave() {
     setSaving(true);
@@ -281,6 +442,13 @@ function ArtifactCard({
           portalId={artifact.portal_id}
           title={artifact.title}
           onClose={() => setShowCsv(false)}
+        />
+      )}
+      {showMindMap && artifact.portal_id && (
+        <MindMapModal
+          portalId={artifact.portal_id}
+          title={artifact.title}
+          onClose={() => setShowMindMap(false)}
         />
       )}
 
@@ -362,6 +530,16 @@ function ArtifactCard({
                     onClick={() => setShowCsv(true)}
                   >
                     <BarChart2 className="h-3 w-3" />
+                    View
+                  </Button>
+                ) : isMindMap ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8 text-xs shrink-0"
+                    onClick={() => setShowMindMap(true)}
+                  >
+                    <Brain className="h-3 w-3" />
                     View
                   </Button>
                 ) : artifact.r2_url ? (

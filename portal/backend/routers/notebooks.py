@@ -650,16 +650,18 @@ async def chat_ask(notebook_id: str, req: ChatRequest):
     except ImportError:
         raise HTTPException(503, "notebooklm-py not available")
 
-    async with await NotebookLMClient.from_storage() as client:
-        try:
+    try:
+        async with await NotebookLMClient.from_storage() as client:
             result = await client.chat.ask(
                 notebook_id,
                 req.question,
                 source_ids=req.source_ids,
                 conversation_id=req.conversation_id,
             )
-        except Exception as exc:
-            raise HTTPException(502, f"Chat request failed: {exc}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(502, f"Chat request failed: {exc}")
 
     return ChatResponse(
         answer=result.answer,
