@@ -24,6 +24,11 @@ from ..models import (
     NotebookDescriptionResponse,
     NotebookRead,
     NotebookRenameRequest,
+    ResearchImportRequest,
+    ResearchSource,
+    ResearchStartRequest,
+    ResearchStartResponse,
+    ResearchStatusResponse,
     SourceRead,
     SourceTextRequest,
     SourceUrlRequest,
@@ -46,16 +51,12 @@ _FORMAT_MAP: dict[str, str] = {
 
 
 @router.get("", response_model=list[NotebookRead])
-async def list_notebooks():
+async def list_notebooks(include_hidden: bool = False):
     db = get_supabase()
-    rows = (
-        db.table("notebooks")
-        .select("*")
-        .eq("hidden", False)
-        .order("last_synced_at", desc=True)
-        .execute()
-        .data
-    )
+    q = db.table("notebooks").select("*")
+    if not include_hidden:
+        q = q.eq("hidden", False)
+    rows = q.order("last_synced_at", desc=True).execute().data
     return rows
 
 
@@ -170,24 +171,38 @@ async def restore_notebook(notebook_id: str):
 
 @router.patch("/{notebook_id}", response_model=NotebookRead)
 async def rename_notebook(notebook_id: str, req: NotebookRenameRequest):
-    """Rename a notebook in NotebookLM and update the local cache."""
-    new_title = req.title.strip()
-    if not new_title:
+    """Update a notebook's title and/or cover emoji.
+
+    Title changes are pushed to NotebookLM; emoji is purely local cosmetic
+    state. Either field is optional, but at least one must be provided.
+    """
+    new_title = req.title.strip() if req.title is not None else None
+    new_emoji = req.cover_emoji
+    if new_title == "" :
         raise HTTPException(400, "Title cannot be empty")
+    if new_title is None and new_emoji is None:
+        raise HTTPException(400, "Provide at least one of title or cover_emoji")
 
-    try:
-        from notebooklm import NotebookLMClient
-    except ImportError:
-        raise HTTPException(503, "notebooklm-py not available")
+    if new_title is not None:
+        try:
+            from notebooklm import NotebookLMClient
+        except ImportError:
+            raise HTTPException(503, "notebooklm-py not available")
+        try:
+            async with await NotebookLMClient.from_storage() as client:
+                await client.notebooks.rename(notebook_id, new_title)
+        except Exception as exc:
+            raise HTTPException(502, f"Rename failed: {exc}")
 
-    try:
-        async with await NotebookLMClient.from_storage() as client:
-            await client.notebooks.rename(notebook_id, new_title)
-    except Exception as exc:
-        raise HTTPException(502, f"Rename failed: {exc}")
+    update: dict[str, str | None] = {}
+    if new_title is not None:
+        update["title"] = new_title
+    if new_emoji is not None:
+        # Allow clearing by passing an empty string; store as NULL.
+        update["cover_emoji"] = new_emoji or None
 
     db = get_supabase()
-    updated = db.table("notebooks").update({"title": new_title}).eq("id", notebook_id).execute().data
+    updated = db.table("notebooks").update(update).eq("id", notebook_id).execute().data
     if not updated:
         raise HTTPException(404, f"Notebook {notebook_id} not found")
     return updated[0]
@@ -681,6 +696,7 @@ async def create_notebook(req: NotebookCreateRequest):
         "is_owner": nb.is_owner,
         "nlm_created_at": nb.created_at.isoformat() if nb.created_at else None,
         "last_synced_at": datetime.now(timezone.utc).isoformat(),
+        "cover_emoji": req.cover_emoji,
     }
     db.table("notebooks").upsert(row, on_conflict="id").execute()
     return db.table("notebooks").select("*").eq("id", nb.id).execute().data[0]
@@ -863,3 +879,86 @@ async def get_notebook_description(notebook_id: str):
             for t in desc.suggested_topics
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# Web research / "Discover sources" — proxies notebooklm.client.research.*
+# ---------------------------------------------------------------------------
+
+@router.post("/{notebook_id}/research/start", response_model=ResearchStartResponse)
+async def research_start(notebook_id: str, req: ResearchStartRequest):
+    """Kick off a Google web search for sources matching the query."""
+    if not req.query.strip():
+        raise HTTPException(400, "query is required")
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    try:
+        async with await NotebookLMClient.from_storage() as client:
+            result = await client.research.start(
+                notebook_id, req.query.strip(), req.source, req.mode,
+            )
+    except Exception as exc:
+        raise HTTPException(502, f"Research start failed: {exc}")
+
+    if not result or "task_id" not in result:
+        raise HTTPException(502, "Research did not return a task id")
+    return ResearchStartResponse(task_id=result["task_id"])
+
+
+@router.get("/{notebook_id}/research/status", response_model=ResearchStatusResponse)
+async def research_status(notebook_id: str):
+    """Poll the latest research task on a notebook."""
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    try:
+        async with await NotebookLMClient.from_storage() as client:
+            result = await client.research.poll(notebook_id)
+    except Exception as exc:
+        raise HTTPException(502, f"Research poll failed: {exc}")
+
+    return ResearchStatusResponse(
+        status=result.get("status", "no_research"),
+        query=result.get("query", ""),
+        task_id=result.get("task_id"),
+        summary=result.get("summary", ""),
+        sources=[
+            ResearchSource(
+                url=s.get("url", ""),
+                title=s.get("title", ""),
+                result_type=s.get("result_type"),
+                research_task_id=s.get("research_task_id"),
+            )
+            for s in result.get("sources", [])
+        ],
+    )
+
+
+@router.post("/{notebook_id}/research/import", status_code=204)
+async def research_import(notebook_id: str, req: ResearchImportRequest):
+    """Import the user-selected subset of research sources into the notebook.
+
+    Importing 5–10 URLs takes 30–90 s server-side because NotebookLM has to
+    fetch and process each one. The default 30 s RPC timeout was hitting
+    "Request timed out calling IMPORT_RESEARCH" — bump it to 180 s here.
+    Even when the timeout fires, the import often succeeds on Google's side;
+    the frontend re-polls the source list and the new sources appear.
+    """
+    if not req.sources:
+        raise HTTPException(400, "Pick at least one source")
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    payload = [{"url": s.url, "title": s.title} for s in req.sources]
+    try:
+        async with await NotebookLMClient.from_storage(timeout=180.0) as client:
+            await client.research.import_sources(notebook_id, req.task_id, payload)
+    except Exception as exc:
+        raise HTTPException(502, f"Research import failed: {exc}")

@@ -1,11 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Bump the dev-server proxy timeout from the 30s default — NotebookLM chat
-  // responses regularly take 30–60s, and the default cuts long requests off
-  // with a 500 even though the backend completes successfully.
+  // Bump the dev-server proxy timeout from the 30s default. Chat takes
+  // 30–60s, research import takes 30–90s for ~10 URLs (matches the
+  // 180s backend timeout for client.research.import_sources). The default
+  // would cut requests off with a 500 even though the backend completes.
   experimental: {
-    proxyTimeout: 120_000,
+    proxyTimeout: 200_000,
   },
   // Proxy all /api/* requests to the FastAPI backend.
   // This keeps everything on the same origin so the browser never needs to

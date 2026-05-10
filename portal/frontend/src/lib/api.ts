@@ -13,16 +13,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ---- Notebooks ----
-export const getNotebooks = () => request<Notebook[]>("/api/notebooks");
+export const getNotebooks = (opts?: { includeHidden?: boolean }) =>
+  request<Notebook[]>(`/api/notebooks${opts?.includeHidden ? "?include_hidden=true" : ""}`);
 export const syncNotebooks = () => request<Notebook[]>("/api/notebooks/sync", { method: "POST" });
-export const createNotebook = (title: string) =>
-  request<Notebook>("/api/notebooks", { method: "POST", body: JSON.stringify({ title }) });
+export const createNotebook = (data: { title: string; cover_emoji?: string | null }) =>
+  request<Notebook>("/api/notebooks", { method: "POST", body: JSON.stringify(data) });
 export const deleteNotebook = (id: string) =>
   request<void>(`/api/notebooks/${id}`, { method: "DELETE" });
-export const renameNotebook = (id: string, title: string) =>
+export const updateNotebook = (id: string, data: { title?: string; cover_emoji?: string | null }) =>
   request<Notebook>(`/api/notebooks/${id}`, {
-    method: "PATCH", body: JSON.stringify({ title }),
+    method: "PATCH", body: JSON.stringify(data),
   });
+export const renameNotebook = (id: string, title: string) => updateNotebook(id, { title });
+export const restoreNotebook = (id: string) =>
+  request<Notebook>(`/api/notebooks/${id}/restore`, { method: "POST" });
 export const removeNotebookFromRecent = (id: string) =>
   request<void>(`/api/notebooks/${id}/remove-from-recent`, { method: "POST" });
 
@@ -50,6 +54,28 @@ export const getLiveArtifacts = (notebookId: string) =>
   request<LiveArtifactsResponse>(`/api/notebooks/${notebookId}/live-artifacts`);
 export const getNotebookDescription = (notebookId: string) =>
   request<NotebookDescriptionResponse>(`/api/notebooks/${notebookId}/description`);
+
+// ---- Research ("Discover sources") ----
+export const startResearch = (
+  notebookId: string,
+  data: { query: string; source?: "web" | "drive"; mode?: "fast" | "deep" },
+) =>
+  request<{ task_id: string }>(`/api/notebooks/${notebookId}/research/start`, {
+    method: "POST",
+    body: JSON.stringify({ source: "web", mode: "fast", ...data }),
+  });
+
+export const getResearchStatus = (notebookId: string) =>
+  request<ResearchStatusResponse>(`/api/notebooks/${notebookId}/research/status`);
+
+export const importResearchSources = (
+  notebookId: string,
+  data: { task_id: string; sources: ResearchSource[] },
+) =>
+  request<void>(`/api/notebooks/${notebookId}/research/import`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
   request<LiveArtifact>(`/api/notebooks/${notebookId}/generate`, {
     method: "POST",
@@ -170,6 +196,8 @@ export interface Notebook {
   is_owner: boolean;
   nlm_created_at: string | null;
   last_synced_at: string;
+  hidden?: boolean;
+  cover_emoji?: string | null;
 }
 
 export interface SourceRead {
@@ -267,4 +295,19 @@ export interface SuggestedTopic {
 export interface NotebookDescriptionResponse {
   summary: string;
   suggested_topics: SuggestedTopic[];
+}
+
+export interface ResearchSource {
+  url: string;
+  title: string;
+  result_type: number | null;
+  research_task_id: string | null;
+}
+
+export interface ResearchStatusResponse {
+  status: "in_progress" | "completed" | "no_research";
+  query: string;
+  task_id: string | null;
+  summary: string;
+  sources: ResearchSource[];
 }

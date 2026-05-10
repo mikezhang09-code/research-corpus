@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import {
   createNotebook, addSourceUrl, addSourceText, addSourceFile,
 } from "@/lib/api";
+import { EmojiPicker } from "./EmojiPicker";
+import { randomEmoji } from "./emoji";
 
 type QueuedSource =
   | { kind: "url"; url: string }
@@ -28,6 +30,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [title, setTitle] = useState("");
+  const [emoji, setEmoji] = useState<string>(() => randomEmoji());
   const [queued, setQueued] = useState<QueuedSource[]>([]);
   const [active, setActive] = useState<ActiveForm>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +75,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
     setSubmitting(true);
     setError(null);
     try {
-      const nb = await createNotebook(title.trim());
+      const nb = await createNotebook({ title: title.trim(), cover_emoji: emoji });
       for (let i = 0; i < queued.length; i++) {
         const s = queued[i];
         const label =
@@ -117,14 +120,18 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
           {step === 1 && (
             <>
-              <label className="block text-xs font-medium mb-1.5">Title</label>
-              <Input
-                autoFocus
-                placeholder="My Research"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) setStep(2); }}
-              />
+              <label className="block text-xs font-medium mb-1.5">Cover &amp; title</label>
+              <div className="flex items-start gap-2">
+                <EmojiPicker value={emoji} onChange={setEmoji} />
+                <Input
+                  autoFocus
+                  placeholder="My Research"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) setStep(2); }}
+                  className="h-12"
+                />
+              </div>
             </>
           )}
 

@@ -35,6 +35,7 @@ class NotebookRead(BaseModel):
     nlm_created_at: datetime | None = None
     last_synced_at: datetime
     hidden: bool = False
+    cover_emoji: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +147,12 @@ class LibraryItemListResponse(BaseModel):
 
 class NotebookCreateRequest(BaseModel):
     title: str
+    cover_emoji: str | None = None
 
 
 class NotebookRenameRequest(BaseModel):
-    title: str
+    title: str | None = None
+    cover_emoji: str | None = None
 
 
 class SourceUrlRequest(BaseModel):
@@ -306,3 +309,37 @@ class SuggestedTopicRead(BaseModel):
 class NotebookDescriptionResponse(BaseModel):
     summary: str
     suggested_topics: list[SuggestedTopicRead] = []
+
+
+# ---------------------------------------------------------------------------
+# Web research / "Discover sources"
+# ---------------------------------------------------------------------------
+
+class ResearchStartRequest(BaseModel):
+    query: str
+    source: str = "web"   # "web" or "drive"
+    mode: str = "fast"    # "fast" or "deep"
+
+
+class ResearchStartResponse(BaseModel):
+    task_id: str
+
+
+class ResearchSource(BaseModel):
+    url: str = ""
+    title: str = ""
+    result_type: int | None = None
+    research_task_id: str | None = None
+
+
+class ResearchStatusResponse(BaseModel):
+    status: str   # "in_progress" | "completed" | "no_research"
+    query: str = ""
+    task_id: str | None = None
+    summary: str = ""
+    sources: list[ResearchSource] = []
+
+
+class ResearchImportRequest(BaseModel):
+    task_id: str
+    sources: list[ResearchSource]

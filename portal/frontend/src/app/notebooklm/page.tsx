@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, BookOpen, Search, Plus, MoreVertical, Pencil, EyeOff, Trash2, Loader2 } from "lucide-react";
+import { RefreshCw, BookOpen, Search, Plus, MoreVertical, Pencil, EyeOff, Trash2, Loader2, ArrowUpDown, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,13 +35,16 @@ import {
   getNotebooks,
   syncNotebooks,
   deleteNotebook,
-  renameNotebook,
+  updateNotebook,
+  restoreNotebook,
   removeNotebookFromRecent,
   type Notebook,
 } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
 import { CreateNotebookModal } from "@/components/notebook/CreateNotebookModal";
+import { EmojiPicker } from "@/components/notebook/EmojiPicker";
+import { emojiFromSeed } from "@/components/notebook/emoji";
 
 // Rotating palette for notebook card headers — one color per notebook
 const PALETTE = [
@@ -74,13 +77,14 @@ function CreateNotebookCard({ onClick }: { onClick: () => void }) {
   );
 }
 
-function NotebookCard({ notebook, index, onOpen, onGenerate, onRename, onHide, onDelete }: {
+function NotebookCard({ notebook, index, onOpen, onGenerate, onEdit, onHide, onRestore, onDelete }: {
   notebook: Notebook;
   index: number;
   onOpen: () => void;
   onGenerate: () => void;
-  onRename: () => void;
+  onEdit: () => void;
   onHide: () => void;
+  onRestore: () => void;
   onDelete: () => void;
 }) {
   const color = PALETTE[index % PALETTE.length];
@@ -100,7 +104,14 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onRename, onHide, o
     >
       {/* Colored header area */}
       <div className={`${color.header} flex items-center justify-center h-36 relative`}>
-        <BookOpen className={`h-14 w-14 ${color.icon} opacity-80`} />
+        <span className="text-6xl leading-none select-none" aria-hidden="true">
+          {notebook.cover_emoji || emojiFromSeed(notebook.id)}
+        </span>
+        {notebook.hidden && (
+          <span className="absolute top-2 left-2 text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/80 text-foreground/60">
+            Hidden
+          </span>
+        )}
         {/* Source count badge */}
         <span className="absolute bottom-3 right-3 text-xs font-medium px-2 py-0.5 rounded-full bg-white/70 text-foreground/70">
           {notebook.sources_count} source{notebook.sources_count !== 1 ? "s" : ""}
@@ -124,12 +135,18 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onRename, onHide, o
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onClick={onRename}>
-                <Pencil className="h-4 w-4" /> Rename
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="h-4 w-4" /> Edit (title &amp; emoji)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onHide}>
-                <EyeOff className="h-4 w-4" /> Hide from list
-              </DropdownMenuItem>
+              {notebook.hidden ? (
+                <DropdownMenuItem onClick={onRestore}>
+                  <RotateCcw className="h-4 w-4" /> Restore to list
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={onHide}>
+                  <EyeOff className="h-4 w-4" /> Hide from list
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onDelete} variant="destructive">
                 <Trash2 className="h-4 w-4" /> Delete
@@ -152,22 +169,31 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onRename, onHide, o
   );
 }
 
-function RenameDialog({ notebook, onClose, onSaved }: {
+function EditDialog({ notebook, onClose, onSaved }: {
   notebook: Notebook;
   onClose: () => void;
   onSaved: (updated: Notebook) => void;
 }) {
   const [title, setTitle] = useState(notebook.title);
+  const [emoji, setEmoji] = useState<string>(notebook.cover_emoji || emojiFromSeed(notebook.id));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const titleChanged = title.trim() !== notebook.title;
+  const emojiChanged = emoji !== (notebook.cover_emoji || emojiFromSeed(notebook.id));
+  const dirty = titleChanged || emojiChanged;
+
   async function handleSave() {
     const t = title.trim();
-    if (!t || t === notebook.title) { onClose(); return; }
+    if (!t) return;
+    if (!dirty) { onClose(); return; }
     setSaving(true);
     setError(null);
     try {
-      const updated = await renameNotebook(notebook.id, t);
+      const updated = await updateNotebook(notebook.id, {
+        ...(titleChanged ? { title: t } : {}),
+        ...(emojiChanged ? { cover_emoji: emoji } : {}),
+      });
       onSaved(updated);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -180,20 +206,26 @@ function RenameDialog({ notebook, onClose, onSaved }: {
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Rename notebook</DialogTitle>
-          <DialogDescription>Change the title of this notebook in NotebookLM.</DialogDescription>
+          <DialogTitle>Edit notebook</DialogTitle>
+          <DialogDescription>
+            Change the cover emoji (local only) or rename the notebook (synced to NotebookLM).
+          </DialogDescription>
         </DialogHeader>
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }}
-          autoFocus
-          disabled={saving}
-        />
+        <div className="flex items-start gap-2">
+          <EmojiPicker value={emoji} onChange={setEmoji} />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }}
+            autoFocus
+            disabled={saving}
+            className="h-12"
+          />
+        </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving || !title.trim() || title.trim() === notebook.title}>
+          <Button onClick={handleSave} disabled={saving || !title.trim() || !dirty}>
             {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : "Save"}
           </Button>
         </DialogFooter>
@@ -212,15 +244,18 @@ export default function NotebookLMPage() {
   const [generateNotebookId, setGenerateNotebookId] = useState<string | null>(null);
   const [generateType, setGenerateType] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<Notebook | null>(null);
+  const [editTarget, setEditTarget] = useState<Notebook | null>(null);
   const [hideTarget, setHideTarget] = useState<Notebook | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Notebook | null>(null);
   const [pendingAction, setPendingAction] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [sortBy, setSortBy] = useState<"recent" | "title" | "sources">("recent");
+  const [syncFlash, setSyncFlash] = useState<string | null>(null);
 
-  async function load() {
+  async function load(includeHidden = showHidden) {
     setLoading(true);
-    const all = await getNotebooks();
+    const all = await getNotebooks({ includeHidden });
     // Hide untitled notebooks — they show up as the "+ new notebook" tile
     // in NotebookLM and aren't real notebooks the user can use.
     const nbs = all.filter((n) => n.title?.trim());
@@ -231,14 +266,25 @@ export default function NotebookLMPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, []);
+    load(showHidden);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHidden]);
 
   async function handleSync() {
     setSyncing(true);
-    await syncNotebooks();
+    setSyncFlash(null);
+    const before = notebooks.length;
+    const synced = await syncNotebooks();
     await load();
+    const visibleAfter = synced.filter((n) => n.title?.trim()).length;
+    const delta = visibleAfter - before;
+    setSyncFlash(
+      delta > 0 ? `Synced — ${delta} new notebook${delta === 1 ? "" : "s"}`
+      : delta < 0 ? `Synced — ${Math.abs(delta)} removed`
+      : `Synced — up to date (${visibleAfter} notebook${visibleAfter === 1 ? "" : "s"})`,
+    );
     setSyncing(false);
+    setTimeout(() => setSyncFlash(null), 3500);
   }
 
   function applyLocalUpdate(updater: (nbs: Notebook[]) => Notebook[]) {
@@ -252,9 +298,18 @@ export default function NotebookLMPage() {
     });
   }
 
-  async function handleRenameSaved(updated: Notebook) {
+  async function handleEditSaved(updated: Notebook) {
     applyLocalUpdate((nbs) => nbs.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)));
-    setRenameTarget(null);
+    setEditTarget(null);
+  }
+
+  async function handleRestore(nb: Notebook) {
+    try {
+      const updated = await restoreNotebook(nb.id);
+      applyLocalUpdate((nbs) => nbs.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function handleHideConfirm() {
@@ -286,6 +341,18 @@ export default function NotebookLMPage() {
       setPendingAction(false);
     }
   }
+
+  const sortedFiltered = useMemo(() => {
+    const arr = [...filtered];
+    if (sortBy === "title") {
+      arr.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === "sources") {
+      arr.sort((a, b) => b.sources_count - a.sources_count);
+    } else {
+      arr.sort((a, b) => new Date(b.last_synced_at).getTime() - new Date(a.last_synced_at).getTime());
+    }
+    return arr;
+  }, [filtered, sortBy]);
 
   function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
     const q = e.target.value;
@@ -324,16 +391,46 @@ export default function NotebookLMPage() {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Sync flash */}
+      {syncFlash && (
+        <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 w-fit">
+          <CheckCircle2 className="h-4 w-4" />
+          {syncFlash}
+        </div>
+      )}
+
+      {/* Toolbar: search · sort · show-hidden */}
       {notebooks.length > 0 && (
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Search notebooks…"
-            value={search}
-            onChange={handleSearch}
-            className="pl-9"
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative max-w-sm flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search notebooks…"
+              value={search}
+              onChange={handleSearch}
+              className="pl-9"
+            />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 rounded-md border border-input bg-transparent hover:bg-accent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <ArrowUpDown className="h-3.5 w-3.5" />
+              {sortBy === "recent" ? "Recently synced" : sortBy === "title" ? "Alphabetical" : "Most sources"}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setSortBy("recent")}>Recently synced</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("title")}>Alphabetical</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("sources")}>Most sources</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Show hidden
+          </label>
         </div>
       )}
 
@@ -344,36 +441,38 @@ export default function NotebookLMPage() {
             <Skeleton key={i} className="h-52 rounded-2xl" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : notebooks.length === 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          <CreateNotebookCard onClick={() => setShowCreate(true)} />
+          <div className="col-span-full sm:col-span-2 lg:col-span-3 xl:col-span-4 flex flex-col items-start justify-center py-6 px-4 gap-3 text-muted-foreground">
+            <p className="font-medium text-foreground">Nothing here yet</p>
+            <p className="text-sm">
+              Click <span className="font-medium">Create new notebook</span> on the left, or pull existing notebooks from your NotebookLM account:
+            </p>
+            <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing…" : "Sync from NotebookLM"}
+            </Button>
+          </div>
+        </div>
+      ) : sortedFiltered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
           <BookOpen className="h-12 w-12 opacity-20" />
-          {notebooks.length === 0 ? (
-            <>
-              <p className="font-medium">No notebooks yet</p>
-              <p className="text-sm text-center max-w-xs">
-                Click &ldquo;Sync notebooks&rdquo; to import your notebooks from NotebookLM.
-              </p>
-              <Button onClick={handleSync} disabled={syncing} className="mt-2 gap-2">
-                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Syncing…" : "Sync now"}
-              </Button>
-            </>
-          ) : (
-            <p className="text-sm">No notebooks match &ldquo;{search}&rdquo;</p>
-          )}
+          <p className="text-sm">No notebooks match &ldquo;{search}&rdquo;</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {!search.trim() && <CreateNotebookCard onClick={() => setShowCreate(true)} />}
-          {filtered.map((nb, i) => (
+          {sortedFiltered.map((nb, i) => (
             <NotebookCard
               key={nb.id}
               notebook={nb}
               index={i}
               onOpen={() => router.push(`/notebooklm/${nb.id}`)}
               onGenerate={() => setGenerateNotebookId(nb.id)}
-              onRename={() => setRenameTarget(nb)}
+              onEdit={() => setEditTarget(nb)}
               onHide={() => setHideTarget(nb)}
+              onRestore={() => handleRestore(nb)}
               onDelete={() => setDeleteTarget(nb)}
             />
           ))}
@@ -405,11 +504,11 @@ export default function NotebookLMPage() {
         <CreateNotebookModal onClose={() => setShowCreate(false)} />
       )}
 
-      {renameTarget && (
-        <RenameDialog
-          notebook={renameTarget}
-          onClose={() => setRenameTarget(null)}
-          onSaved={handleRenameSaved}
+      {editTarget && (
+        <EditDialog
+          notebook={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={handleEditSaved}
         />
       )}
 

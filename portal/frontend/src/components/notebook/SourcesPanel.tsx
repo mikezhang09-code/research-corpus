@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, RefreshCw, Loader2, CheckCircle2, AlertCircle, FileText, ExternalLink } from "lucide-react";
+import { Plus, RefreshCw, Loader2, CheckCircle2, AlertCircle, FileText, ExternalLink, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listSources, type SourceRead } from "@/lib/api";
 import { getSourceIcon } from "./source-icons";
 import { AddSourceModal } from "./AddSourceModal";
+import { DiscoverSourcesModal } from "./DiscoverSourcesModal";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -16,6 +17,7 @@ export function SourcesPanel({ notebookId }: { notebookId: string }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showDiscover, setShowDiscover] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function load(silent = false) {
@@ -57,6 +59,18 @@ export function SourcesPanel({ notebookId }: { notebookId: string }) {
         />
       )}
 
+      {showDiscover && (
+        <DiscoverSourcesModal
+          notebookId={notebookId}
+          onClose={() => setShowDiscover(false)}
+          onImported={() => {
+            // Imported sources land in NLM as processing → kick a refresh + polling.
+            if (pollRef.current) clearTimeout(pollRef.current);
+            pollRef.current = setTimeout(() => load(true), POLL_INTERVAL_MS);
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
@@ -73,6 +87,10 @@ export function SourcesPanel({ notebookId }: { notebookId: string }) {
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowDiscover(true)}>
+            <Search className="h-4 w-4" />
+            Discover
           </Button>
           <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
             <Plus className="h-4 w-4" />
