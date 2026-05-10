@@ -140,6 +140,36 @@ class LibraryItemListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Notebook create + source add
+# ---------------------------------------------------------------------------
+
+class NotebookCreateRequest(BaseModel):
+    title: str
+
+
+class SourceUrlRequest(BaseModel):
+    url: str
+
+
+class SourceTextRequest(BaseModel):
+    title: str
+    content: str
+
+
+class SourceRead(BaseModel):
+    """Live source state from the NLM API."""
+    id: str
+    title: str | None = None
+    url: str | None = None
+    kind: str           # SourceType enum value, e.g. "pdf", "youtube", "web_page"
+    status: int         # 1=processing, 2=ready, 3=error
+    is_ready: bool
+    is_processing: bool
+    is_error: bool
+    created_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
 # Generate request (single endpoint dispatches to all 9 generate_* methods)
 # ---------------------------------------------------------------------------
 
@@ -189,6 +219,10 @@ class LiveArtifact(BaseModel):
     download_status: str | None = None
     r2_url: str | None = None
     download_error: str | None = None
+    # True when the saved row is no longer present in NotebookLM
+    # (i.e., the user deleted the source artifact in Google's UI but we still
+    # have the file in R2). UI can show "Only in portal" to clarify state.
+    only_in_portal: bool = False
 
 
 class LiveArtifactsResponse(BaseModel):

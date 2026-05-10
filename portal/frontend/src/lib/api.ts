@@ -15,6 +15,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // ---- Notebooks ----
 export const getNotebooks = () => request<Notebook[]>("/api/notebooks");
 export const syncNotebooks = () => request<Notebook[]>("/api/notebooks/sync", { method: "POST" });
+export const createNotebook = (title: string) =>
+  request<Notebook>("/api/notebooks", { method: "POST", body: JSON.stringify({ title }) });
+
+// ---- Sources ----
+export const listSources = (notebookId: string) =>
+  request<SourceRead[]>(`/api/notebooks/${notebookId}/sources`);
+export const addSourceUrl = (notebookId: string, url: string) =>
+  request<SourceRead>(`/api/notebooks/${notebookId}/sources/url`, {
+    method: "POST", body: JSON.stringify({ url }),
+  });
+export const addSourceText = (notebookId: string, title: string, content: string) =>
+  request<SourceRead>(`/api/notebooks/${notebookId}/sources/text`, {
+    method: "POST", body: JSON.stringify({ title, content }),
+  });
+export async function addSourceFile(notebookId: string, file: File): Promise<SourceRead> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/api/notebooks/${notebookId}/sources/file`, {
+    method: "POST", body: form,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
 export const getLiveArtifacts = (notebookId: string) =>
   request<LiveArtifactsResponse>(`/api/notebooks/${notebookId}/live-artifacts`);
 export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
@@ -79,6 +102,9 @@ export interface LiveArtifact {
   download_status: "generating" | "pending" | "downloading" | "done" | "failed" | null;
   r2_url: string | null;
   download_error: string | null;
+  /** True when the saved artifact is no longer present in NotebookLM
+   *  (deleted in Google's UI), but we still have the file in R2. */
+  only_in_portal?: boolean;
 }
 
 export interface GenerateRequest {
@@ -113,6 +139,18 @@ export interface Notebook {
   is_owner: boolean;
   nlm_created_at: string | null;
   last_synced_at: string;
+}
+
+export interface SourceRead {
+  id: string;
+  title: string | null;
+  url: string | null;
+  kind: string;       // "pdf", "youtube", "web_page", etc.
+  status: number;     // 1=processing, 2=ready, 3=error
+  is_ready: boolean;
+  is_processing: boolean;
+  is_error: boolean;
+  created_at: string | null;
 }
 
 export interface NLMArtifact {

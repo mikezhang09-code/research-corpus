@@ -12,9 +12,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getLiveArtifacts, getArtifactContent, saveArtifact, type LiveArtifact } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
+import { SourcesPanel } from "@/components/notebook/SourcesPanel";
 
 // ---- Artifact type config ----
 
@@ -184,9 +186,14 @@ function ArtifactCard({
 
           <div className="flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className="text-xs uppercase">{artifact.file_format}</Badge>
-            {!artifact.is_completed && (
+            {!artifact.is_completed && !artifact.only_in_portal && (
               <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 bg-amber-50">
                 Generating…
+              </Badge>
+            )}
+            {artifact.only_in_portal && (
+              <Badge variant="outline" className="text-xs text-slate-600 border-slate-300 bg-slate-50" title="Deleted in NotebookLM — preserved here in your portal">
+                Only in portal
               </Badge>
             )}
           </div>
@@ -338,38 +345,16 @@ export default function NotebookDetailPage() {
         </Button>
       </div>
 
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {notebookTitle ?? (loading ? "Loading…" : notebookId)}
-          </h1>
-          {!loading && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
-              {savedCount > 0 && ` · ${savedCount} saved`}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => loadArtifacts()}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            className="gap-2"
-            onClick={() => setSheetOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            Generate
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {notebookTitle ?? (loading ? "Loading…" : notebookId)}
+        </h1>
+        {!loading && (
+          <p className="text-sm text-muted-foreground mt-1">
+            {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
+            {savedCount > 0 && ` · ${savedCount} saved`}
+          </p>
+        )}
       </div>
 
       {sheetOpen && (
@@ -393,33 +378,62 @@ export default function NotebookDetailPage() {
         />
       )}
 
-      {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-64 rounded-2xl" />
-          ))}
-        </div>
-      ) : artifacts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
-          <FileText className="h-12 w-12 opacity-20" />
-          <p className="font-medium">No artifacts yet</p>
-          <p className="text-sm text-center max-w-xs">
-            Generate artifacts in NotebookLM (Audio Overview, Report, Quiz, etc.) then come back here to save them.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {artifacts.map((a) => (
-            <ArtifactCard
-              key={a.nlm_id}
-              artifact={a}
-              notebookId={notebookId}
-              notebookTitle={notebookTitle}
-              onSaved={(update) => handleSaved(a.nlm_id, update)}
-            />
-          ))}
-        </div>
-      )}
+      <Tabs defaultValue="artifacts">
+        <TabsList>
+          <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+          <TabsTrigger value="sources">Sources</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="artifacts" className="mt-4 space-y-4">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => loadArtifacts()}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Generate
+            </Button>
+          </div>
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-64 rounded-2xl" />
+              ))}
+            </div>
+          ) : artifacts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+              <FileText className="h-12 w-12 opacity-20" />
+              <p className="font-medium">No artifacts yet</p>
+              <p className="text-sm text-center max-w-xs">
+                Click <span className="font-medium">+ Generate</span> to create one, or generate one in NotebookLM and refresh.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {artifacts.map((a) => (
+                <ArtifactCard
+                  key={a.nlm_id}
+                  artifact={a}
+                  notebookId={notebookId}
+                  notebookTitle={notebookTitle}
+                  onSaved={(update) => handleSaved(a.nlm_id, update)}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="sources" className="mt-4">
+          <SourcesPanel notebookId={notebookId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

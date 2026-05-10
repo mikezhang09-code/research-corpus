@@ -124,6 +124,15 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Inter doesn't include CJK glyphs — chain explicit CJK fallbacks so
+       Chinese / Japanese / Korean filenames and content render correctly
+       across Linux (Noto), macOS (PingFang / Hiragino), and Windows (YaHei /
+       Yu Gothic / Malgun Gothic). */
+    font-family: var(--font-inter), "Noto Sans SC", "Noto Sans CJK SC",
+      "Noto Sans TC", "Noto Sans CJK TC", "Noto Sans JP", "Noto Sans KR",
+      "PingFang SC", "Hiragino Sans GB", "Hiragino Sans",
+      "Microsoft YaHei", "Yu Gothic", "Malgun Gothic",
+      system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   }
   html {
     @apply font-sans;

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getNotebooks, syncNotebooks, type Notebook } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
+import { CreateNotebookModal } from "@/components/notebook/CreateNotebookModal";
 
 // Rotating palette for notebook card headers — one color per notebook
 const PALETTE = [
@@ -83,6 +84,7 @@ export default function NotebookLMPage() {
   const [loading, setLoading] = useState(true);
   const [generateNotebookId, setGenerateNotebookId] = useState<string | null>(null);
   const [generateType, setGenerateType] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -119,16 +121,26 @@ export default function NotebookLMPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">NotebookLM</h1>
-        <Button
-          onClick={handleSync}
-          disabled={syncing}
-          variant="outline"
-          size="sm"
-          className="gap-2 shrink-0"
-        >
-          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Syncing…" : "Sync notebooks"}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            onClick={handleSync}
+            disabled={syncing}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing…" : "Sync notebooks"}
+          </Button>
+          <Button
+            onClick={() => setShowCreate(true)}
+            size="sm"
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New notebook
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -202,6 +214,10 @@ export default function NotebookLMPage() {
             router.push(`/notebooklm/${id}`);
           }}
         />
+      )}
+
+      {showCreate && (
+        <CreateNotebookModal onClose={() => setShowCreate(false)} />
       )}
     </div>
   );

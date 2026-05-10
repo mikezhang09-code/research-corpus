@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
 from ..database import get_supabase
 from ..models import (
@@ -10,7 +14,11 @@ from ..models import (
     LiveArtifact,
     LiveArtifactsResponse,
     NLMArtifactRead,
+    NotebookCreateRequest,
     NotebookRead,
+    SourceRead,
+    SourceTextRequest,
+    SourceUrlRequest,
 )
 
 router = APIRouter(prefix="/api/notebooks", tags=["notebooks"])
@@ -161,6 +169,27 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
     saved_rows = (
         db.table("nlm_artifacts").select("*").eq("notebook_id", notebook_id).execute().data
     )
+
+    # Reconcile against NLM: drop failed orphans (artifact deleted in Google's
+    # UI; nothing of value preserved on our side). Done orphans are kept and
+    # flagged below as only_in_portal. Other transient orphans (generating,
+    # pending, downloading) self-resolve so we don't touch them — that avoids
+    # racing with a freshly-kicked-off generate that hasn't appeared in NLM's
+    # list yet.
+    nlm_ids = {a.id for a in nlm_artifacts}
+    cleaned: list[dict] = []
+    for row in saved_rows:
+        if row["nlm_artifact_id"] not in nlm_ids and row["download_status"] == "failed":
+            if row.get("r2_key"):
+                try:
+                    from ..storage import delete_file
+                    delete_file(row["r2_key"])
+                except Exception:
+                    pass  # best-effort; don't fail the whole sync
+            db.table("nlm_artifacts").delete().eq("id", row["id"]).execute()
+        else:
+            cleaned.append(row)
+    saved_rows = cleaned
     saved_map = {row["nlm_artifact_id"]: row for row in saved_rows}
 
     # Build a quick lookup of NLM completion state by artifact id
@@ -204,11 +233,17 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
             )
         )
 
-    # Surface saved rows that NLM's live list hasn't caught up to yet
-    # (race after generate, or mind_map notes that don't appear in studio list).
+    # Surface saved rows that NLM's live list doesn't include. Two cases:
+    # (a) Mind-map notes / freshly-generated artifacts NLM hasn't listed yet
+    #     — these will eventually be seen and merged on later refreshes.
+    # (b) The user deleted the artifact in NLM but we still have the file
+    #     in R2 → flag with only_in_portal so the UI can label it clearly.
     for row in saved_rows:
         if row["nlm_artifact_id"] in seen_ids:
             continue
+        # Only flag as portal-only when we actually preserved a file (status=done).
+        # Other states are still in-flight and will resolve naturally.
+        is_preserved_orphan = row["download_status"] == "done"
         artifacts.append(
             LiveArtifact(
                 nlm_id=row["nlm_artifact_id"],
@@ -221,6 +256,7 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
                 download_status=row["download_status"],
                 r2_url=row.get("r2_url"),
                 download_error=row.get("download_error"),
+                only_in_portal=is_preserved_orphan,
             )
         )
 
@@ -468,3 +504,130 @@ async def generate_artifact(
         r2_url=None,
         download_error=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Create notebook + source management
+# ---------------------------------------------------------------------------
+
+def _to_source_read(s) -> SourceRead:
+    """Convert a notebooklm Source dataclass to the API response shape."""
+    return SourceRead(
+        id=s.id,
+        title=s.title,
+        url=s.url,
+        kind=s.kind.value,
+        status=int(s.status),
+        is_ready=s.is_ready,
+        is_processing=s.is_processing,
+        is_error=s.is_error,
+        created_at=s.created_at,
+    )
+
+
+@router.post("", response_model=NotebookRead, status_code=201)
+async def create_notebook(req: NotebookCreateRequest):
+    """Create a new NotebookLM notebook and cache it in Supabase."""
+    if not req.title.strip():
+        raise HTTPException(400, "title is required")
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    db = get_supabase()
+    async with await NotebookLMClient.from_storage() as client:
+        try:
+            nb = await client.notebooks.create(req.title)
+        except Exception as exc:
+            raise HTTPException(502, f"NotebookLM create failed: {exc}")
+
+    row = {
+        "id": nb.id,
+        "title": nb.title,
+        "sources_count": nb.sources_count,
+        "is_owner": nb.is_owner,
+        "nlm_created_at": nb.created_at.isoformat() if nb.created_at else None,
+        "last_synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+    db.table("notebooks").upsert(row, on_conflict="id").execute()
+    return db.table("notebooks").select("*").eq("id", nb.id).execute().data[0]
+
+
+@router.get("/{notebook_id}/sources", response_model=list[SourceRead])
+async def list_sources(notebook_id: str):
+    """Live source list from the NLM API."""
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+    async with await NotebookLMClient.from_storage() as client:
+        sources = await client.sources.list(notebook_id)
+    return [_to_source_read(s) for s in sources]
+
+
+@router.post("/{notebook_id}/sources/url", response_model=SourceRead, status_code=201)
+async def add_source_url(notebook_id: str, req: SourceUrlRequest):
+    """Add a URL source. NLM auto-detects YouTube links."""
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+    async with await NotebookLMClient.from_storage() as client:
+        try:
+            source = await client.sources.add_url(notebook_id, req.url)
+        except Exception as exc:
+            raise HTTPException(502, f"add_url failed: {exc}")
+    return _to_source_read(source)
+
+
+@router.post("/{notebook_id}/sources/text", response_model=SourceRead, status_code=201)
+async def add_source_text(notebook_id: str, req: SourceTextRequest):
+    """Add a pasted-text source."""
+    if not req.title.strip() or not req.content.strip():
+        raise HTTPException(400, "title and content are required")
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+    async with await NotebookLMClient.from_storage() as client:
+        try:
+            source = await client.sources.add_text(notebook_id, req.title, req.content)
+        except Exception as exc:
+            raise HTTPException(502, f"add_text failed: {exc}")
+    return _to_source_read(source)
+
+
+@router.post("/{notebook_id}/sources/file", response_model=SourceRead, status_code=201)
+async def add_source_file(notebook_id: str, file: UploadFile = File(...)):
+    """Stream an uploaded file through to NLM's resumable upload protocol.
+
+    Persists the upload to a temp directory using the *original* filename so
+    NotebookLM displays it correctly (with Chinese / other Unicode preserved)
+    rather than a random tmpXXXX name.
+    """
+    import shutil
+
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    # Path().name strips any parent components, neutralising traversal
+    # ("../../etc/passwd" → "passwd"), and preserves Unicode characters.
+    original_name = Path(file.filename or "upload").name or "upload"
+
+    tmp_dir = tempfile.mkdtemp()
+    tmp_path = Path(tmp_dir) / original_name
+    try:
+        with tmp_path.open("wb") as f:
+            while chunk := await file.read(64 * 1024):
+                f.write(chunk)
+        async with await NotebookLMClient.from_storage() as client:
+            try:
+                source = await client.sources.add_file(notebook_id, str(tmp_path))
+            except Exception as exc:
+                raise HTTPException(502, f"add_file failed: {exc}")
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return _to_source_read(source)
