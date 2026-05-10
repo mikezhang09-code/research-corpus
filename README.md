@@ -222,18 +222,38 @@ Fetches the canonical [SKILL.md](SKILL.md) directly from GitHub.
 
 ## Research Portal
 
-A web GUI built on top of this library — two dedicated pages for managing NotebookLM artifacts and a personal research library, backed by Supabase and Cloudflare R2.
+A web GUI on top of this library — a NotebookLM-style notebook manager plus a personal research library, backed by Supabase (Postgres) and Cloudflare R2.
+
+### Features
+
+**Notebook landing page**
+- Live grid of your NotebookLM notebooks with cover emojis, real source counts, search, and sort by recent / alphabetical / most sources
+- Create, edit (title + emoji), hide, restore, and delete notebooks — all synced to NotebookLM
+- Hide-from-list flag preserves saved artifacts and R2 files; delete cleans them up
+
+**Notebook detail page**
+- AI-generated overview + clickable suggested topics that auto-send into the chat
+- Persistent split-pane: artifacts/sources on the left, chat with citations on the right (or as a tab on mobile)
+- Generate any NotebookLM studio type (audio, video, report, quiz, flashcards, infographic, slide deck, data table, mind map) and watch progress live
+- Inline viewers for Markdown reports, CSV data tables, and mind map JSON (rendered as a horizontal collapsible tree)
+- Save any artifact to the personal library so it survives notebook deletion
+
+**Sources panel**
+- Add by URL / pasted text / file upload
+- "Discover sources" — fast or deep web research that returns a list of sources to import with one click
+
+**Personal library**
+- Independent storage of saved artifacts and uploads, with collections, tags, and full-text search
 
 ### Prerequisites
 
 - Supabase project + Cloudflare R2 bucket (see [portal setup guide](docs/portal-infrastructure-setup.md))
 - `portal/.env` filled in from `portal/.env.example`
-- NotebookLM authentication (see step 1 below)
+- NotebookLM authentication (step 1 below)
 
 ### 1 — Log in to NotebookLM
 
 ```bash
-# Install with browser support
 uv pip install -e ".[all]"
 playwright install chromium
 
@@ -244,27 +264,18 @@ notebooklm login
 notebooklm list
 ```
 
-### 2 — Start the backend
+### 2 — Start the backend and frontend
+
+Two helper scripts run from the repo root:
 
 ```bash
-cd portal
-source ../.venv/bin/activate
-uvicorn backend.main:app --reload --port 8000
+./portal/start-backend.sh    # FastAPI on :8000  (uvicorn --reload, watching portal/backend)
+./portal/start-frontend.sh   # Next.js on :3000
 ```
 
-API docs available at **http://localhost:8000/docs**
+API docs at **http://localhost:8000/docs**, portal at **http://localhost:3000**.
 
-### 3 — Start the frontend
-
-```bash
-cd portal/frontend
-npm install        # first time only
-npm run dev
-```
-
-Open **http://localhost:3000** — the portal opens on the NotebookLM page.
-
-Click **Sync notebooks** to pull your notebooks from NotebookLM into the portal. Use the **Library** page to upload files or import from Google Drive.
+Click **Sync notebooks** to pull your existing NotebookLM notebooks into the portal. Use the **Library** page to upload files or import from Google Drive.
 
 ---
 
