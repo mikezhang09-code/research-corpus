@@ -45,18 +45,17 @@ import { GenerateModal } from "@/components/generate/GenerateModal";
 import { CreateNotebookModal } from "@/components/notebook/CreateNotebookModal";
 import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
+import { pickSwatch } from "@/components/corpus/CorpusCard";
+import { SectionHead } from "@/components/corpus/SectionHead";
 
-// Rotating palette for notebook card headers — one color per notebook
-const PALETTE = [
-  { header: "bg-blue-100",   icon: "text-blue-500"   },
-  { header: "bg-violet-100", icon: "text-violet-500" },
-  { header: "bg-teal-100",   icon: "text-teal-500"   },
-  { header: "bg-amber-100",  icon: "text-amber-500"  },
-  { header: "bg-rose-100",   icon: "text-rose-500"   },
-  { header: "bg-indigo-100", icon: "text-indigo-500" },
-  { header: "bg-emerald-100",icon: "text-emerald-500"},
-  { header: "bg-orange-100", icon: "text-orange-500" },
-];
+const SWATCH_BG: Record<string, { bg: string; fg: string }> = {
+  terracotta: { bg: "#f5e2d4", fg: "var(--color-terracotta)" },
+  sage:       { bg: "#dde2cf", fg: "var(--color-sage)" },
+  lavender:   { bg: "#dcd5e8", fg: "var(--color-lavender)" },
+  ochre:      { bg: "#ece0c2", fg: "var(--color-ochre)" },
+  blush:      { bg: "#ecd5d6", fg: "var(--color-blush)" },
+  sky:        { bg: "#cfd9e3", fg: "var(--color-sky)" },
+};
 
 function CreateNotebookCard({ onClick }: { onClick: () => void }) {
   return (
@@ -65,13 +64,13 @@ function CreateNotebookCard({ onClick }: { onClick: () => void }) {
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
-      className="group cursor-pointer rounded-2xl border border-dashed border-border/70 bg-background hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-3 py-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="group cursor-pointer rounded-[2px] border border-dashed border-ink/40 bg-vellum hover:border-ink hover:bg-paper-deep transition-colors flex flex-col items-center justify-center gap-3 py-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
     >
-      <div className="h-14 w-14 rounded-full bg-primary/10 group-hover:bg-primary/15 flex items-center justify-center transition-colors">
-        <Plus className="h-7 w-7 text-primary" />
+      <div className="h-12 w-12 rounded-full border border-ink/40 group-hover:border-ink bg-paper flex items-center justify-center transition-colors">
+        <Plus className="h-6 w-6 text-ink-fade group-hover:text-ink" />
       </div>
-      <p className="text-sm font-medium text-foreground/80 group-hover:text-primary transition-colors">
-        Create new notebook
+      <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-fade group-hover:text-ink transition-colors">
+        New notebook
       </p>
     </div>
   );
@@ -87,52 +86,55 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onEdit, onHide, onR
   onRestore: () => void;
   onDelete: () => void;
 }) {
-  const color = PALETTE[index % PALETTE.length];
-  const created = notebook.nlm_created_at
-    ? new Date(notebook.nlm_created_at).toLocaleDateString("en-US", {
-        month: "short", day: "numeric", year: "numeric",
-      })
-    : null;
+  const swatch = pickSwatch(notebook) ?? "terracotta";
+  const sw = SWATCH_BG[swatch];
+  const num = String(index + 1).padStart(3, "0");
+  const date = notebook.nlm_created_at ?? notebook.last_synced_at;
+  const dateFormatted = date
+    ? new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "";
 
   return (
-    <div
+    <article
       role="button"
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
-      className="group relative cursor-pointer text-left rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="group relative cursor-pointer bg-vellum border border-ink rounded-[2px] overflow-hidden shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
     >
-      {/* Colored header area */}
-      <div className={`${color.header} flex items-center justify-center h-36 relative`}>
-        <span className="text-6xl leading-none select-none" aria-hidden="true">
+      {/* Color block + emoji glyph */}
+      <div
+        className="relative aspect-[5/3] flex items-center justify-center border-b border-ink"
+        style={{ background: sw.bg, color: sw.fg }}
+      >
+        <span className="text-5xl leading-none select-none opacity-90 group-hover:opacity-100 transition-opacity" aria-hidden="true">
           {notebook.cover_emoji || emojiFromSeed(notebook.id)}
         </span>
+        <span className="absolute top-2.5 left-3 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
+          № {num}
+        </span>
         {notebook.hidden && (
-          <span className="absolute top-2 left-2 text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/80 text-foreground/60">
+          <span className="absolute bottom-2.5 left-3 font-mono text-[9px] tracking-[0.16em] uppercase px-1.5 py-0.5 bg-paper/80 text-ink-fade border border-ink/30 rounded-[1px]">
             Hidden
           </span>
         )}
-        {/* Source count badge */}
-        <span className="absolute bottom-3 right-3 text-xs font-medium px-2 py-0.5 rounded-full bg-white/70 text-foreground/70">
-          {notebook.sources_count} source{notebook.sources_count !== 1 ? "s" : ""}
-        </span>
-        {/* Top-right action cluster */}
-        <div className="absolute top-2 right-2 flex items-center gap-1">
+        {/* Top-right action cluster — positioned above the corner labels */}
+        <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
           <button
             type="button"
             aria-label="Generate artifact"
             onClick={(e) => { e.stopPropagation(); onGenerate(); }}
-            className="h-7 w-7 rounded-full bg-white/85 hover:bg-white shadow-sm flex items-center justify-center text-foreground/70 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="h-7 w-7 rounded-[1px] bg-paper/90 hover:bg-paper border border-ink/40 hover:border-ink flex items-center justify-center text-ink-fade hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="More actions"
               onClick={(e) => e.stopPropagation()}
-              className="h-7 w-7 rounded-full bg-white/85 hover:bg-white shadow-sm flex items-center justify-center text-foreground/70 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="h-7 w-7 rounded-[1px] bg-paper/90 hover:bg-paper border border-ink/40 hover:border-ink flex items-center justify-center text-ink-fade hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
             >
-              <MoreVertical className="h-4 w-4" />
+              <MoreVertical className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onClick={onEdit}>
@@ -156,16 +158,17 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onEdit, onHide, onR
         </div>
       </div>
 
-      {/* Content */}
-      <div className="px-4 py-3 bg-background">
-        <p className="font-semibold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+      {/* Caption */}
+      <div className="px-4 py-3.5">
+        <h3 className="font-serif-display text-[20px] leading-[1.15] tracking-tight text-ink mb-0.5 line-clamp-2">
           {notebook.title}
-        </p>
-        {created && (
-          <p className="text-xs text-muted-foreground mt-1">{created}</p>
-        )}
+        </h3>
+        <div className="mt-3 pt-2.5 border-t border-rule-light flex items-center justify-between font-mono text-[10px] tracking-[0.12em] uppercase text-ink-mute">
+          <span>{dateFormatted}</span>
+          <span>{notebook.sources_count} src</span>
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -365,119 +368,122 @@ export default function NotebookLMPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">NotebookLM</h1>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            onClick={handleSync}
-            disabled={syncing}
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync notebooks"}
-          </Button>
-          <Button
-            onClick={() => setShowCreate(true)}
-            size="sm"
-            className="gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            New notebook
-          </Button>
-        </div>
-      </div>
+    <div className="pb-16">
+      <SectionHead eyebrow="Section I" title="My Corpus" count={notebooks.length} />
 
-      {/* Sync flash */}
-      {syncFlash && (
-        <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 w-fit">
-          <CheckCircle2 className="h-4 w-4" />
-          {syncFlash}
-        </div>
-      )}
-
-      {/* Toolbar: search · sort · show-hidden */}
-      {notebooks.length > 0 && (
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative max-w-sm flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Search notebooks…"
-              value={search}
-              onChange={handleSearch}
-              className="pl-9"
-            />
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 rounded-md border border-input bg-transparent hover:bg-accent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <ArrowUpDown className="h-3.5 w-3.5" />
-              {sortBy === "recent" ? "Recently synced" : sortBy === "title" ? "Alphabetical" : "Most sources"}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setSortBy("recent")}>Recently synced</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("title")}>Alphabetical</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("sources")}>Most sources</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => setShowHidden(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            Show hidden
-          </label>
-        </div>
-      )}
-
-      {/* Grid */}
-      {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-52 rounded-2xl" />
-          ))}
-        </div>
-      ) : notebooks.length === 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          <CreateNotebookCard onClick={() => setShowCreate(true)} />
-          <div className="col-span-full sm:col-span-2 lg:col-span-3 xl:col-span-4 flex flex-col items-start justify-center py-6 px-4 gap-3 text-muted-foreground">
-            <p className="font-medium text-foreground">Nothing here yet</p>
-            <p className="text-sm">
-              Click <span className="font-medium">Create new notebook</span> on the left, or pull existing notebooks from your NotebookLM account:
-            </p>
-            <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
+      <div className="px-14 space-y-6">
+        {/* Action row: sync + create */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleSync}
+              disabled={syncing}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Syncing…" : "Sync from NotebookLM"}
+              {syncing ? "Syncing…" : "Sync notebooks"}
+            </Button>
+            <Button
+              onClick={() => setShowCreate(true)}
+              size="sm"
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              New notebook
             </Button>
           </div>
         </div>
-      ) : sortedFiltered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
-          <BookOpen className="h-12 w-12 opacity-20" />
-          <p className="text-sm">No notebooks match &ldquo;{search}&rdquo;</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {!search.trim() && <CreateNotebookCard onClick={() => setShowCreate(true)} />}
-          {sortedFiltered.map((nb, i) => (
-            <NotebookCard
-              key={nb.id}
-              notebook={nb}
-              index={i}
-              onOpen={() => router.push(`/notebooklm/${nb.id}`)}
-              onGenerate={() => setGenerateNotebookId(nb.id)}
-              onEdit={() => setEditTarget(nb)}
-              onHide={() => setHideTarget(nb)}
-              onRestore={() => handleRestore(nb)}
-              onDelete={() => setDeleteTarget(nb)}
-            />
-          ))}
-        </div>
-      )}
+
+        {/* Sync flash */}
+        {syncFlash && (
+          <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.1em] uppercase text-mint bg-vellum border border-mint/40 rounded-[1px] px-3 py-2 w-fit">
+            <CheckCircle2 className="h-4 w-4" />
+            {syncFlash}
+          </div>
+        )}
+
+        {/* Toolbar: search · sort · show-hidden */}
+        {notebooks.length > 0 && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative max-w-sm flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-mute pointer-events-none" />
+              <Input
+                placeholder="Search notebooks…"
+                value={search}
+                onChange={handleSearch}
+                className="pl-9"
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 rounded-[1px] border border-rule bg-vellum hover:bg-paper-deep hover:border-ink px-3 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink transition-colors">
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                {sortBy === "recent" ? "Recently synced" : sortBy === "title" ? "Alphabetical" : "Most sources"}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setSortBy("recent")}>Recently synced</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy("title")}>Alphabetical</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy("sources")}>Most sources</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <label className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(e) => setShowHidden(e.target.checked)}
+                className="h-4 w-4 rounded-[1px] border-rule"
+              />
+              Show hidden
+            </label>
+          </div>
+        )}
+
+        {/* Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="aspect-[5/3] rounded-[2px]" />
+            ))}
+          </div>
+        ) : notebooks.length === 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <CreateNotebookCard onClick={() => setShowCreate(true)} />
+            <div className="col-span-full sm:col-span-1 lg:col-span-2 xl:col-span-3 flex flex-col items-start justify-center py-6 px-4 gap-3">
+              <p className="font-serif-display text-[22px] text-ink">Nothing here yet</p>
+              <p className="font-serif text-[14px] text-ink-soft">
+                Click <span className="italic">New notebook</span> above, or pull existing notebooks from your NotebookLM account:
+              </p>
+              <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
+                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync from NotebookLM"}
+              </Button>
+            </div>
+          </div>
+        ) : sortedFiltered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-ink-mute gap-3">
+            <BookOpen className="h-12 w-12 opacity-30" />
+            <p className="font-serif text-[14px]">No notebooks match &ldquo;{search}&rdquo;</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {!search.trim() && <CreateNotebookCard onClick={() => setShowCreate(true)} />}
+            {sortedFiltered.map((nb, i) => (
+              <NotebookCard
+                key={nb.id}
+                notebook={nb}
+                index={i}
+                onOpen={() => router.push(`/notebooklm/${nb.id}`)}
+                onGenerate={() => setGenerateNotebookId(nb.id)}
+                onEdit={() => setEditTarget(nb)}
+                onHide={() => setHideTarget(nb)}
+                onRestore={() => handleRestore(nb)}
+                onDelete={() => setDeleteTarget(nb)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {generateNotebookId && !generateType && (
         <GenerateActionSheet

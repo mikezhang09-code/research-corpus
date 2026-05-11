@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { askChat, getChatHistory, type ChatReference, type ChatTurn } from "@/lib/api";
+import { useLanguage } from "@/hooks/use-language";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -35,6 +36,7 @@ function ChatPanel(
   const [expandedCite, setExpandedCite] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [language] = useLanguage();
 
   // Load history on mount
   useEffect(() => {
@@ -76,6 +78,7 @@ function ChatPanel(
       const res = await askChat(notebookId, trimmed, {
         conversationId: conversationId ?? undefined,
         apiPrefix,
+        language,
       });
       setConversationId(res.conversation_id);
       setMessages((prev) => [
@@ -123,21 +126,21 @@ function ChatPanel(
   }
 
   return (
-    <div className="flex flex-col h-full border-l bg-background">
+    <div className="flex flex-col h-full bg-vellum">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-rule shrink-0">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">Chat</span>
+          <MessageSquare className="h-4 w-4 text-terracotta" />
+          <span className="font-serif-display italic text-[16px] tracking-tight text-ink">Marginalia</span>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5 h-7 text-xs"
+          className="gap-1.5 h-7 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink"
           onClick={handleNewChat}
         >
           <Plus className="h-3.5 w-3.5" />
-          New chat
+          New
         </Button>
       </div>
 
@@ -148,14 +151,14 @@ function ChatPanel(
       >
         {historyLoading ? (
           <div className="space-y-3">
-            <Skeleton className="h-10 w-3/4 ml-auto rounded-2xl" />
-            <Skeleton className="h-16 w-4/5 rounded-2xl" />
+            <Skeleton className="h-10 w-3/4 ml-auto rounded-[2px]" />
+            <Skeleton className="h-16 w-4/5 rounded-[2px]" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 py-12">
-            <MessageSquare className="h-8 w-8 opacity-20" />
-            <p className="text-sm font-medium">Ask the notebook anything</p>
-            <p className="text-xs text-center max-w-48">
+          <div className="flex flex-col items-center justify-center h-full text-ink-mute gap-3 py-12">
+            <MessageSquare className="h-8 w-8 opacity-40" />
+            <p className="font-serif-display text-[18px] tracking-tight text-ink">Ask the notebook anything</p>
+            <p className="font-serif italic text-[12.5px] text-center max-w-52 text-ink-fade">
               Questions are answered using the notebook&apos;s sources.
             </p>
           </div>
@@ -166,12 +169,18 @@ function ChatPanel(
               className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}
             >
               {msg.role === "user" ? (
-                <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-primary text-primary-foreground px-3.5 py-2.5 text-sm">
+                <div className="max-w-[80%] rounded-[2px] bg-ink text-paper px-3.5 py-2.5 font-serif text-[13.5px] leading-snug">
                   {msg.text}
                 </div>
               ) : (
-                <div className="max-w-[90%] rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2.5">
-                  <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:leading-relaxed prose-p:text-foreground prose-strong:text-foreground prose-code:bg-muted prose-code:px-1 prose-code:rounded prose-code:text-sm prose-a:text-primary prose-a:underline">
+                <div className="max-w-[92%] rounded-[2px] bg-paper border border-rule px-3.5 py-2.5">
+                  <div className="prose prose-sm max-w-none font-serif
+                    prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
+                    prose-p:leading-relaxed prose-p:text-ink-soft
+                    prose-strong:text-ink prose-strong:font-semibold
+                    prose-code:bg-paper-deep prose-code:px-1 prose-code:rounded-[1px] prose-code:text-[12px] prose-code:font-mono prose-code:text-ink
+                    prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2
+                    prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-3 prose-blockquote:text-ink-fade prose-blockquote:italic">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {msg.text}
                     </ReactMarkdown>
@@ -205,9 +214,9 @@ function ChatPanel(
 
         {loading && (
           <div className="flex justify-start">
-            <div className="rounded-2xl rounded-tl-sm bg-muted px-3.5 py-3 flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Thinking…</span>
+            <div className="rounded-[2px] bg-paper border border-rule px-3.5 py-3 flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-terracotta" />
+              <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade">Thinking…</span>
             </div>
           </div>
         )}
@@ -215,14 +224,14 @@ function ChatPanel(
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mb-2 flex items-start gap-2 text-destructive text-xs bg-destructive/5 border border-destructive/20 rounded-md p-2.5 shrink-0">
+        <div className="mx-4 mb-2 flex items-start gap-2 font-mono text-[11px] tracking-[0.08em] text-terracotta bg-vellum border border-terracotta/40 rounded-[1px] p-2.5 shrink-0">
           <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />
           <span className="break-words">{error}</span>
         </div>
       )}
 
       {/* Input */}
-      <div className="px-4 py-3 border-t shrink-0">
+      <div className="px-4 py-3 border-t border-rule shrink-0 bg-paper-light">
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -232,13 +241,13 @@ function ChatPanel(
             rows={2}
             placeholder="Ask a question… (Enter to send, Shift+Enter for newline)"
             disabled={loading || historyLoading}
-            className="flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+            className="flex-1 resize-none rounded-[1px] border border-rule bg-vellum px-3 py-2 font-serif text-[13.5px] text-ink placeholder:text-ink-mute placeholder:italic focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink focus-visible:border-ink disabled:opacity-50"
           />
           <Button
             size="icon"
             onClick={handleSend}
             disabled={loading || !inputText.trim()}
-            className="h-9 w-9 shrink-0 mb-0.5"
+            className="h-9 w-9 shrink-0 mb-0.5 rounded-[1px]"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -269,15 +278,15 @@ function CitationBadge({
     <span className="inline-block align-baseline">
       <button
         onClick={onToggle}
-        className="inline-flex items-center justify-center h-4 min-w-4 px-1 ml-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+        className="inline-flex items-center justify-center h-4 min-w-4 px-1 ml-0.5 rounded-[1px] font-mono text-[10px] tracking-[0.06em] border border-terracotta/40 text-terracotta bg-vellum hover:bg-terracotta/10 transition-colors"
         title={chatRef.cited_text ?? chatRef.source_id}
       >
         {chatRef.citation_number ?? index + 1}
       </button>
       {expanded && chatRef.cited_text && (
-        <span className="block mt-1 text-xs bg-muted border border-border rounded p-2 text-muted-foreground leading-relaxed">
+        <span className="block mt-1 font-serif italic text-[12.5px] bg-paper border border-rule rounded-[1px] p-2 text-ink-fade leading-relaxed">
           {chatRef.cited_text}
-          <span className="block mt-1 text-[10px] text-muted-foreground/70 font-mono truncate">
+          <span className="block mt-1 font-mono not-italic text-[9px] tracking-[0.1em] uppercase text-ink-mute truncate">
             src: {chatRef.source_id.slice(0, 8)}…
           </span>
         </span>

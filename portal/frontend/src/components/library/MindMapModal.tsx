@@ -55,10 +55,10 @@ function buildMindLayout(root: MindNode, collapsed: Set<string>): MmLayout {
 }
 
 const MM_NODE_COLORS = [
-  "bg-blue-600 text-white border-blue-500",
-  "bg-teal-500 text-white border-teal-400",
-  "bg-teal-100 border-teal-300 text-teal-900",
-  "bg-green-50 border-green-200 text-green-800",
+  "bg-ink text-paper border-ink",
+  "bg-terracotta text-paper border-terracotta",
+  "bg-vellum border-ink text-ink",
+  "bg-paper-deep border-rule text-ink-soft",
 ];
 
 export function MindMapModal({
@@ -96,25 +96,25 @@ export function MindMapModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="overflow-auto flex-1 bg-slate-50/60">
+        <div className="overflow-auto flex-1 bg-paper">
           {error ? (
-            <div className="flex items-center gap-2 text-destructive text-sm p-6">
+            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase p-6">
               <AlertCircle className="h-4 w-4 shrink-0" />
               Failed to load: {error}
             </div>
           ) : !layout ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm p-6">
+            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase p-6">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : (
@@ -133,7 +133,7 @@ export function MindMapModal({
                       key={i}
                       d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1} ${mx} ${e.y2} ${e.x2} ${e.y2}`}
                       fill="none"
-                      stroke="#94a3b8"
+                      stroke="var(--color-rule)"
                       strokeWidth={1.5}
                     />
                   );
@@ -146,7 +146,7 @@ export function MindMapModal({
                 return (
                   <div
                     key={n.id}
-                    className={`absolute rounded-lg border px-3 flex items-center gap-1.5 shadow-sm leading-tight text-xs font-medium ${color} ${n.hasChildren ? "cursor-pointer hover:brightness-95 active:brightness-90" : ""}`}
+                    className={`absolute rounded-[2px] border px-3 flex items-center gap-1.5 shadow-[1px_1px_0_rgb(42_36_24_/_0.1)] leading-tight font-serif text-[13px] ${color} ${n.hasChildren ? "cursor-pointer hover:brightness-95 active:brightness-90" : ""}`}
                     style={{ left: n.x, top: n.y, width: MM_NW, height: MM_NH }}
                     onClick={() => n.hasChildren && toggle(n.id)}
                   >

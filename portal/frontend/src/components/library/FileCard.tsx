@@ -21,14 +21,14 @@ import { MindMapModal } from "./MindMapModal";
 type CatKey = "slide" | "note" | "report" | "audio" | "video" | "mindmap" | "image" | "other";
 
 const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string; iconColor: string; label: string }> = {
-  slide:   { icon: Layers,     bg: "bg-orange-50", iconColor: "text-orange-500", label: "Slide"    },
-  note:    { icon: FileText,   bg: "bg-yellow-50", iconColor: "text-yellow-500", label: "Note"     },
-  report:  { icon: BookOpen,   bg: "bg-blue-50",   iconColor: "text-blue-500",   label: "Report"   },
-  audio:   { icon: Music,      bg: "bg-purple-50", iconColor: "text-purple-500", label: "Audio"    },
-  video:   { icon: Video,      bg: "bg-pink-50",   iconColor: "text-pink-500",   label: "Video"    },
-  mindmap: { icon: Network,    bg: "bg-green-50",  iconColor: "text-green-500",  label: "Mind Map" },
-  image:   { icon: ImageIcon,  bg: "bg-teal-50",   iconColor: "text-teal-500",   label: "Image"    },
-  other:   { icon: File,       bg: "bg-gray-50",   iconColor: "text-gray-500",   label: "File"     },
+  slide:   { icon: Layers,    bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Slide"    },
+  note:    { icon: FileText,  bg: "#ece0c2", iconColor: "var(--color-ochre)",      label: "Note"     },
+  report:  { icon: BookOpen,  bg: "#cfd9e3", iconColor: "var(--color-sky)",        label: "Report"   },
+  audio:   { icon: Music,     bg: "#dcd5e8", iconColor: "var(--color-lavender)",   label: "Audio"    },
+  video:   { icon: Video,     bg: "#ecd5d6", iconColor: "var(--color-blush)",      label: "Video"    },
+  mindmap: { icon: Network,   bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Mind Map" },
+  image:   { icon: ImageIcon, bg: "#dde2cf", iconColor: "var(--color-mint)",       label: "Image"    },
+  other:   { icon: File,      bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "File" },
 };
 
 const DEFAULT_CAT = FILE_CATEGORY_CONFIG.other;
@@ -63,27 +63,33 @@ function MarkdownModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
             ✕
           </Button>
         </div>
         <div className="overflow-y-auto flex-1 px-8 py-6">
           {error ? (
-            <div className="flex items-center gap-2 text-destructive text-sm">
+            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase">
               <AlertCircle className="h-4 w-4 shrink-0" /> Failed to load: {error}
             </div>
           ) : content === null ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:leading-relaxed prose-p:text-foreground prose-strong:text-foreground prose-code:bg-muted prose-code:px-1 prose-code:rounded prose-a:text-primary prose-a:underline">
+            <div className="prose prose-sm max-w-none font-serif
+              prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
+              prose-p:leading-relaxed prose-p:text-ink-soft
+              prose-strong:text-ink prose-strong:font-semibold
+              prose-code:bg-paper-deep prose-code:px-1 prose-code:rounded-[1px] prose-code:text-[13px] prose-code:font-mono prose-code:text-ink
+              prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2
+              prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-4 prose-blockquote:text-ink-fade prose-blockquote:italic">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
           )}
@@ -166,28 +172,31 @@ export function FileCard({
         <VideoModal src={file.r2_url} title={file.title} onClose={() => setViewer(null)} />
       )}
 
-      <div className="rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-md transition-shadow">
+      <div className="rounded-[2px] overflow-hidden border border-ink bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all">
         {/* Category header */}
-        <div className={`${cfg.bg} flex flex-col items-center justify-center gap-2 py-7`}>
-          <Icon className={`h-10 w-10 ${cfg.iconColor}`} />
-          <span className={`text-xs font-semibold uppercase tracking-wider ${cfg.iconColor} opacity-80`}>
+        <div
+          className="flex flex-col items-center justify-center gap-2 py-7 border-b border-ink"
+          style={{ background: cfg.bg, color: cfg.iconColor }}
+        >
+          <Icon className="h-10 w-10" style={{ color: cfg.iconColor }} />
+          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
             {cfg.label}
           </span>
         </div>
 
         {/* Content */}
-        <div className="p-4 flex flex-col gap-3">
+        <div className="px-4 py-3.5 flex flex-col gap-3">
           <div>
-            <p className="font-semibold text-sm leading-snug line-clamp-2">{file.title}</p>
-            <p className="text-xs text-muted-foreground mt-1">{added}</p>
+            <p className="font-serif-display text-[18px] leading-[1.15] tracking-tight text-ink line-clamp-2">{file.title}</p>
+            <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-mute mt-1.5">{added}</p>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
             {file.file_ext && (
-              <Badge variant="outline" className="text-xs uppercase">{file.file_ext.replace(".", "")}</Badge>
+              <Badge variant="outline" className="font-mono text-[9px] tracking-[0.14em] uppercase rounded-[1px] border-rule text-ink-fade">{file.file_ext.replace(".", "")}</Badge>
             )}
             {sizeStr && (
-              <span className="text-xs text-muted-foreground">{sizeStr}</span>
+              <span className="font-mono text-[10px] tracking-[0.1em] uppercase text-ink-mute">{sizeStr}</span>
             )}
           </div>
 
@@ -197,14 +206,14 @@ export function FileCard({
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1 gap-1.5 h-8 text-xs"
+                className="flex-1 gap-1.5 h-8 rounded-[1px]"
                 onClick={openViewer}
               >
                 {isAudio || isVideo ? "Play" : "View"}
               </Button>
             ) : file.r2_url ? (
               <a href={file.r2_url} target="_blank" rel="noopener noreferrer" className="flex-1">
-                <Button variant="outline" size="sm" className="w-full gap-1.5 h-8 text-xs">
+                <Button variant="outline" size="sm" className="w-full gap-1.5 h-8 rounded-[1px]">
                   <ExternalLink className="h-3 w-3" />
                   Open
                 </Button>
@@ -214,7 +223,7 @@ export function FileCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+              className="h-8 w-8 shrink-0 text-ink-fade hover:text-terracotta"
               onClick={handleDelete}
               disabled={deleting}
               title="Delete"

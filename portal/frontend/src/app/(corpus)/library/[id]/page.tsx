@@ -43,12 +43,12 @@ export default function LibraryNotebookDetailPage() {
   if (loading) {
     return (
       <div className="flex h-full min-h-0">
-        <div className="flex-1 p-8 space-y-6">
-          <Skeleton className="h-8 w-40" />
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-20 w-full" />
+        <div className="flex-1 p-10 space-y-6">
+          <Skeleton className="h-6 w-40 rounded-[1px]" />
+          <Skeleton className="h-10 w-64 rounded-[1px]" />
+          <Skeleton className="h-20 w-full rounded-[1px]" />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-52 rounded-[2px]" />)}
           </div>
         </div>
       </div>
@@ -57,7 +57,7 @@ export default function LibraryNotebookDetailPage() {
 
   if (!notebook) {
     return (
-      <div className="p-8 text-muted-foreground">Notebook not found.</div>
+      <div className="p-10 font-serif italic text-ink-fade">Notebook not found.</div>
     );
   }
 
@@ -66,28 +66,28 @@ export default function LibraryNotebookDetailPage() {
   return (
     <div className="flex h-full min-h-0">
       {/* Left column */}
-      <div className="flex-1 min-w-0 overflow-auto p-8 space-y-6">
+      <div className="flex-1 min-w-0 overflow-auto px-10 py-8 space-y-6 border-r border-rule">
         {/* Back navigation */}
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="sm"
-            className="gap-2 -ml-2 text-muted-foreground"
+            className="gap-2 -ml-2 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-fade hover:text-ink"
             onClick={() => router.push("/library")}
           >
-            <ArrowLeft className="h-4 w-4" />
-            Library
+            <ArrowLeft className="h-3.5 w-3.5" />
+            My Research
           </Button>
         </div>
 
         {/* Header */}
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-4 pb-4 border-b border-rule">
           <span className="text-4xl leading-none shrink-0 mt-1" aria-hidden="true">{emoji}</span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight truncate">{notebook.title}</h1>
+              <h1 className="font-serif-display text-[32px] leading-[1.05] tracking-tight text-ink truncate">{notebook.title}</h1>
               <DropdownMenu>
-                <DropdownMenuTrigger className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <DropdownMenuTrigger className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-[1px] text-ink-fade hover:text-ink hover:bg-paper-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink">
                   <MoreVertical className="h-4 w-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -97,7 +97,7 @@ export default function LibraryNotebookDetailPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute mt-2">
               {notebook.file_count} file{notebook.file_count !== 1 ? "s" : ""}
             </p>
           </div>
@@ -128,7 +128,7 @@ export default function LibraryNotebookDetailPage() {
 
           {isMobile && (
             <TabsContent value="chat" className="mt-4">
-              <div className="h-[calc(100vh-16rem)] rounded-xl overflow-hidden border">
+              <div className="h-[calc(100vh-16rem)] rounded-[2px] overflow-hidden border border-rule bg-vellum">
                 <ChatPanel
                   ref={chatRef}
                   notebookId={notebookId}
@@ -142,7 +142,7 @@ export default function LibraryNotebookDetailPage() {
 
       {/* Right column: chat panel (desktop only) */}
       {!isMobile && (
-        <div className="w-[400px] shrink-0 h-full sticky top-0">
+        <div className="w-[400px] shrink-0 h-full sticky top-0 bg-vellum">
           <ChatPanel
             ref={chatRef}
             notebookId={notebookId}
@@ -200,7 +200,7 @@ function EditDialog({ notebook, onClose, onSaved }: {
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit notebook</DialogTitle>
+          <DialogTitle className="font-serif-display text-[22px] tracking-tight">Edit notebook</DialogTitle>
         </DialogHeader>
         <div className="flex items-start gap-2">
           <EmojiPicker value={emoji} onChange={setEmoji} />
@@ -213,7 +213,7 @@ function EditDialog({ notebook, onClose, onSaved }: {
             className="h-12"
           />
         </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-terracotta">{error}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button onClick={handleSave} disabled={saving || !title.trim() || !dirty}>

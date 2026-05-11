@@ -50,15 +50,15 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   return (
     <div className="space-y-4">
       {/* Category filter pills */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
         {CATEGORIES.map((cat) => (
           <button
             key={cat.value}
             onClick={() => handleCategoryChange(cat.value)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            className={`px-3 py-1 rounded-[1px] font-mono text-[10px] tracking-[0.14em] uppercase border transition-colors ${
               activeCategory === cat.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                ? "bg-ink text-paper border-ink"
+                : "bg-vellum text-ink-fade border-rule hover:bg-paper-deep hover:border-ink hover:text-ink"
             }`}
           >
             {cat.label}
@@ -66,7 +66,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
         ))}
         <Button
           size="sm"
-          className="gap-1.5 h-7 text-xs rounded-full ml-auto"
+          className="gap-1.5 h-7 rounded-[1px] ml-auto"
           onClick={() => setShowAdd(true)}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -78,22 +78,22 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-2xl overflow-hidden border border-border/50">
-              <Skeleton className="h-32 w-full" />
+            <div key={i} className="rounded-[2px] overflow-hidden border border-rule">
+              <Skeleton className="h-32 w-full rounded-none" />
               <div className="p-4 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-4 w-3/4 rounded-[1px]" />
+                <Skeleton className="h-3 w-1/2 rounded-[1px]" />
               </div>
             </div>
           ))}
         </div>
       ) : files.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-          <Loader2 className="h-8 w-8 opacity-10" />
-          <p className="text-sm font-medium">
+        <div className="flex flex-col items-center justify-center py-16 text-ink-mute gap-3">
+          <Loader2 className="h-8 w-8 opacity-20" />
+          <p className="font-serif italic text-[14px] text-ink-fade">
             {activeCategory ? `No ${activeCategory} files yet` : "No files yet"}
           </p>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowAdd(true)}>
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-[1px]" onClick={() => setShowAdd(true)}>
             <Plus className="h-3.5 w-3.5" />
             Add your first file
           </Button>

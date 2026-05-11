@@ -78,13 +78,13 @@ export function AddFileModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget && !uploading) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
-          <h2 className="font-semibold text-base">Add file</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} disabled={uploading}>
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-md flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink">Add file</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose} disabled={uploading}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -102,22 +102,22 @@ export function AddFileModal({
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                className="w-full rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground"
+                className="w-full rounded-[2px] border border-dashed border-ink/40 bg-paper-light hover:border-ink hover:bg-paper-deep transition-colors flex flex-col items-center justify-center gap-2 py-8 text-ink-fade hover:text-ink"
               >
-                <Upload className="h-8 w-8 opacity-50" />
-                <span className="text-sm">Click to select a file</span>
+                <Upload className="h-8 w-8 opacity-60" />
+                <span className="font-serif text-[14px]">Click to select a file</span>
               </button>
             ) : (
-              <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-muted/30 px-4 py-3">
-                <Upload className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-3 rounded-[2px] border border-rule bg-paper-light px-4 py-3">
+                <Upload className="h-5 w-5 text-ink-fade shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
+                  <p className="font-serif text-[14px] text-ink truncate">{file.name}</p>
+                  <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute">{formatBytes(file.size)}</p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  className="h-7 w-7 shrink-0 text-ink-fade hover:text-terracotta"
                   onClick={() => { setFile(null); setCategory("other"); }}
                   disabled={uploading}
                 >
@@ -131,12 +131,12 @@ export function AddFileModal({
             <>
               {/* Category */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Category</label>
+                <label className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">Category</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   disabled={uploading}
-                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="w-full rounded-[1px] border border-rule bg-vellum px-3 py-2 font-serif text-[14px] text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink focus-visible:border-ink"
                 >
                   {CATEGORY_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -146,7 +146,7 @@ export function AddFileModal({
 
               {/* Optional title override */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Title <span className="text-muted-foreground font-normal">(optional — defaults to filename)</span></label>
+                <label className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">Title <span className="normal-case tracking-normal text-ink-mute/70 italic">(optional — defaults to filename)</span></label>
                 <Input
                   placeholder={file.name}
                   value={title}
@@ -158,16 +158,16 @@ export function AddFileModal({
           )}
 
           {error && (
-            <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/5 border border-destructive/20 rounded-md p-2.5">
+            <div className="flex items-start gap-2 font-mono text-[11px] tracking-[0.08em] text-terracotta bg-vellum border border-terracotta/40 rounded-[1px] p-2.5">
               <AlertCircle className="h-4 w-4 shrink-0 mt-px" />
               <span className="break-words">{error}</span>
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-muted/30">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-rule bg-paper-light">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={uploading}>Cancel</Button>
-          <Button size="sm" onClick={handleUpload} disabled={!file || uploading} className="gap-2 min-w-24">
+          <Button size="sm" onClick={handleUpload} disabled={!file || uploading} className="gap-2 min-w-24 rounded-[1px]">
             {uploading ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…</>
             ) : (

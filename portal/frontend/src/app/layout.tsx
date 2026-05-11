@@ -1,13 +1,37 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import {
+  Cormorant_Garamond,
+  Source_Serif_4,
+  Inter_Tight,
+  JetBrains_Mono,
+} from "next/font/google";
 import "./globals.css";
-import { SideNav } from "@/components/side-nav";
 
-// Expose Inter as a CSS variable so we can chain it with CJK fallbacks
-// (Noto Sans SC on Linux/Android, PingFang SC on macOS, Microsoft YaHei on
-// Windows) in globals.css. Inter has no CJK glyphs on its own so Chinese
-// filenames and content would render as tofu boxes without the fallback.
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+// Four font families exposed as CSS variables so globals.css can chain
+// each with CJK fallbacks (Noto Sans SC / PingFang SC / Microsoft YaHei).
+// Without the fallback, Chinese filenames and content render as tofu.
+const serifDisplay = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-serif-display",
+});
+const serif = Source_Serif_4({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-serif",
+});
+const sans = Inter_Tight({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
+});
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
   title: "Research Portal",
@@ -16,12 +40,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full">
-      <body className={`${inter.variable} h-full bg-background text-foreground`}>
-        <div className="flex h-full">
-          <SideNav />
-          <main className="flex-1 overflow-auto">{children}</main>
-        </div>
+    <html
+      lang="en"
+      className={`h-full ${serifDisplay.variable} ${serif.variable} ${sans.variable} ${mono.variable}`}
+    >
+      <body className="min-h-full bg-paper text-ink font-serif antialiased">
+        {children}
       </body>
     </html>
   );

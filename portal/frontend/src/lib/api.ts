@@ -86,12 +86,18 @@ export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
 export const askChat = (
   notebookId: string,
   question: string,
-  opts?: { conversationId?: string; apiPrefix?: string }
+  opts?: { conversationId?: string; apiPrefix?: string; language?: string }
 ) => {
   const prefix = opts?.apiPrefix ?? "/api/notebooks";
   return request<ChatResponse>(`${prefix}/${notebookId}/chat`, {
     method: "POST",
-    body: JSON.stringify({ question, conversation_id: opts?.conversationId ?? null }),
+    body: JSON.stringify({
+      // `question` for /api/notebooks, `message` for /api/library-notebooks
+      question,
+      message: question,
+      conversation_id: opts?.conversationId ?? null,
+      language: opts?.language ?? null,
+    }),
   });
 };
 

@@ -271,6 +271,7 @@ class ChatRequest(BaseModel):
     question: str
     conversation_id: str | None = None
     source_ids: list[str] | None = None
+    language: str | None = None  # "en" | "zh"; user's preferred output language
 
 
 class ChatReferenceRead(BaseModel):
@@ -394,3 +395,4 @@ class LibraryNotebookListResponse(BaseModel):
 
 class LibraryChatRequest(BaseModel):
     message: str
+    language: str | None = None  # "en" | "zh"; user's preferred output language

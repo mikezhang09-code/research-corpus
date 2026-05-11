@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, MoreVertical, Pencil, EyeOff, Trash2, Loader2, ArrowUpDown,
-  RotateCcw, BookOpen,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,17 +27,13 @@ import {
 import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNotebookModal";
 import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
+import { FolioCard, pickCover, type FolioStatus } from "@/components/corpus/FolioCard";
+import { SectionHead } from "@/components/corpus/SectionHead";
 
-const PALETTE = [
-  { header: "bg-blue-100",    icon: "text-blue-500"    },
-  { header: "bg-violet-100",  icon: "text-violet-500"  },
-  { header: "bg-teal-100",    icon: "text-teal-500"    },
-  { header: "bg-amber-100",   icon: "text-amber-500"   },
-  { header: "bg-rose-100",    icon: "text-rose-500"    },
-  { header: "bg-indigo-100",  icon: "text-indigo-500"  },
-  { header: "bg-emerald-100", icon: "text-emerald-500" },
-  { header: "bg-orange-100",  icon: "text-orange-500"  },
-];
+function folioLabel(id: string, index: number): string {
+  const code = String(index + 1).padStart(3, "0");
+  return `MR-${code}`;
+}
 
 function CreateNotebookCard({ onClick }: { onClick: () => void }) {
   return (
@@ -46,14 +42,56 @@ function CreateNotebookCard({ onClick }: { onClick: () => void }) {
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
-      className="group cursor-pointer rounded-2xl border border-dashed border-border/70 bg-background hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-3 py-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="group cursor-pointer h-[280px] rounded-[2px] border border-dashed border-ink/40 bg-vellum hover:border-ink hover:bg-paper-deep transition-colors flex flex-col items-center justify-center gap-3 px-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
     >
-      <div className="h-14 w-14 rounded-full bg-primary/10 group-hover:bg-primary/15 flex items-center justify-center transition-colors">
-        <Plus className="h-7 w-7 text-primary" />
+      <div className="h-12 w-12 rounded-full border border-ink/40 group-hover:border-ink bg-paper flex items-center justify-center transition-colors">
+        <Plus className="h-6 w-6 text-ink-fade group-hover:text-ink" />
       </div>
-      <p className="text-sm font-medium text-foreground/80 group-hover:text-primary transition-colors">
-        Create new notebook
+      <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-fade group-hover:text-ink transition-colors">
+        New folio
       </p>
+    </div>
+  );
+}
+
+function NotebookCardActions({
+  notebook, onEdit, onHide, onRestore, onDelete,
+}: {
+  notebook: LibraryNotebook;
+  onEdit: () => void;
+  onHide: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="absolute top-2 right-2 z-10">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="More actions"
+          onClick={(e) => e.stopPropagation()}
+          className="h-7 w-7 rounded-[1px] bg-paper/90 hover:bg-paper border border-ink/40 hover:border-ink flex items-center justify-center text-ink-fade hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem onClick={onEdit}>
+            <Pencil className="h-4 w-4" /> Edit (title &amp; emoji)
+          </DropdownMenuItem>
+          {notebook.hidden ? (
+            <DropdownMenuItem onClick={onRestore}>
+              <RotateCcw className="h-4 w-4" /> Restore to list
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onClick={onHide}>
+              <EyeOff className="h-4 w-4" /> Hide from list
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onDelete} variant="destructive">
+            <Trash2 className="h-4 w-4" /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -69,71 +107,32 @@ function NotebookCard({
   onRestore: () => void;
   onDelete: () => void;
 }) {
-  const color = PALETTE[index % PALETTE.length];
-  const created = new Date(notebook.created_at).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-  });
+  const cover = pickCover(notebook.id);
+  const status: FolioStatus = notebook.hidden ? "archived" : "active";
+  const folio = folioLabel(notebook.id, index);
+  const excerpt = notebook.description?.trim()
+    || `${notebook.file_count} file${notebook.file_count !== 1 ? "s" : ""}${notebook.cover_emoji ? "  " + notebook.cover_emoji : ""}`;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
-      className="group relative cursor-pointer text-left rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-    >
-      <div className={`${color.header} flex items-center justify-center h-36 relative`}>
-        <span className="text-6xl leading-none select-none" aria-hidden="true">
-          {notebook.cover_emoji || emojiFromSeed(notebook.id)}
-        </span>
-        {notebook.hidden && (
-          <span className="absolute top-2 left-2 text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/80 text-foreground/60">
-            Hidden
-          </span>
-        )}
-        <span className="absolute bottom-3 right-3 text-xs font-medium px-2 py-0.5 rounded-full bg-white/70 text-foreground/70">
-          {notebook.file_count} file{notebook.file_count !== 1 ? "s" : ""}
-        </span>
-        <div className="absolute top-2 right-2 flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="More actions"
-              onClick={(e) => e.stopPropagation()}
-              className="h-7 w-7 rounded-full bg-white/85 hover:bg-white shadow-sm flex items-center justify-center text-foreground/70 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="h-4 w-4" /> Edit (title &amp; emoji)
-              </DropdownMenuItem>
-              {notebook.hidden ? (
-                <DropdownMenuItem onClick={onRestore}>
-                  <RotateCcw className="h-4 w-4" /> Restore to list
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={onHide}>
-                  <EyeOff className="h-4 w-4" /> Hide from list
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onDelete} variant="destructive">
-                <Trash2 className="h-4 w-4" /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      <div className="px-4 py-3 bg-background">
-        <p className="font-semibold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
-          {notebook.title}
-        </p>
-        {notebook.description && (
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{notebook.description}</p>
-        )}
-        <p className="text-xs text-muted-foreground mt-1">{created}</p>
-      </div>
+    <div className="relative group">
+      <NotebookCardActions
+        notebook={notebook}
+        onEdit={onEdit}
+        onHide={onHide}
+        onRestore={onRestore}
+        onDelete={onDelete}
+      />
+      <FolioCard
+        folio={folio}
+        title={notebook.title}
+        status={status}
+        cover={cover}
+        sources={[]}
+        excerpt={excerpt}
+        tags={[]}
+        updated={notebook.updated_at}
+        onClick={onOpen}
+      />
     </div>
   );
 }
@@ -286,88 +285,77 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <BookOpen className="h-7 w-7 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Library</h1>
-            <p className="text-sm text-muted-foreground">
-              {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New notebook
-        </Button>
-      </div>
+    <div className="pb-16">
+      <SectionHead eyebrow="Section II" title="My Research" count={notebooks.length} />
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <Input
-          placeholder="Search notebooks…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
-        <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center gap-2 h-9 rounded-md border border-input bg-transparent hover:bg-accent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <ArrowUpDown className="h-3.5 w-3.5" />
-            Sort: {sortBy === "recent" ? "Recent" : sortBy === "title" ? "Title" : "Files"}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy("title")}>Title</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy("files")}>Files</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <label className="flex items-center gap-2 text-sm cursor-pointer ml-auto">
-          <input
-            type="checkbox"
-            checked={showHidden}
-            onChange={(e) => setShowHidden(e.target.checked)}
-            className="rounded"
+      <div className="px-14 space-y-6">
+        {/* Action row */}
+        <div className="flex items-center justify-end gap-2">
+          <Button onClick={() => setShowCreate(true)} size="sm" className="gap-2">
+            <Plus className="h-4 w-4" />
+            New folio
+          </Button>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Input
+            placeholder="Search folios…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs"
           />
-          Show hidden
-        </label>
-      </div>
-
-      {actionError && (
-        <p className="text-sm text-destructive mb-4">{actionError}</p>
-      )}
-
-      {/* Grid */}
-      {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-2xl overflow-hidden border border-border/50">
-              <Skeleton className="h-36 w-full" />
-              <div className="p-4 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
-          <CreateNotebookCard onClick={() => setShowCreate(true)} />
-          {filtered.map((nb, i) => (
-            <NotebookCard
-              key={nb.id}
-              notebook={nb}
-              index={i}
-              onOpen={() => router.push(`/library/${nb.id}`)}
-              onEdit={() => setEditTarget(nb)}
-              onHide={() => setHideTarget(nb)}
-              onRestore={() => handleRestore(nb)}
-              onDelete={() => setDeleteTarget(nb)}
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 rounded-[1px] border border-rule bg-vellum hover:bg-paper-deep hover:border-ink px-3 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink transition-colors">
+              <ArrowUpDown className="h-3.5 w-3.5" />
+              {sortBy === "recent" ? "Recent" : sortBy === "title" ? "Title" : "Files"}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("title")}>Title</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("files")}>Files</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <label className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade cursor-pointer select-none ml-auto">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.target.checked)}
+              className="h-4 w-4 rounded-[1px] border-rule"
             />
-          ))}
+            Show hidden
+          </label>
         </div>
-      )}
+
+        {actionError && (
+          <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-terracotta">{actionError}</p>
+        )}
+
+        {/* Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-64 rounded-[2px]" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <CreateNotebookCard onClick={() => setShowCreate(true)} />
+            {filtered.map((nb, i) => (
+              <NotebookCard
+                key={nb.id}
+                notebook={nb}
+                index={i}
+                onOpen={() => router.push(`/library/${nb.id}`)}
+                onEdit={() => setEditTarget(nb)}
+                onHide={() => setHideTarget(nb)}
+                onRestore={() => handleRestore(nb)}
+                onDelete={() => setDeleteTarget(nb)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {showCreate && <CreateLibraryNotebookModal onClose={() => setShowCreate(false)} />}
 

@@ -102,16 +102,16 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden max-h-[85vh]">
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-lg flex flex-col overflow-hidden max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
-          <h2 className="font-semibold text-base">
-            New notebook <span className="text-muted-foreground font-normal text-sm">— {step}/2</span>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink">
+            New notebook <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute ml-1">— {step}/2</span>
           </h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose} disabled={submitting}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -120,7 +120,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
           {step === 1 && (
             <>
-              <label className="block text-xs font-medium mb-1.5">Cover &amp; title</label>
+              <label className="block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-2">Cover &amp; title</label>
               <div className="flex items-start gap-2">
                 <EmojiPicker value={emoji} onChange={setEmoji} />
                 <Input
@@ -180,7 +180,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
 
               {/* Inline forms */}
               {active === "url" && (
-                <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
+                <div className="space-y-2 rounded-[1px] border border-rule p-3 bg-paper-light">
                   <Input
                     placeholder="https://example.com or YouTube link"
                     value={urlInput}
@@ -196,7 +196,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
               )}
 
               {active === "text" && (
-                <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
+                <div className="space-y-2 rounded-[1px] border border-rule p-3 bg-paper-light">
                   <Input
                     placeholder="Title"
                     value={textTitle}
@@ -208,7 +208,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
                     value={textContent}
                     onChange={(e) => setTextContent(e.target.value)}
                     rows={5}
-                    className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                    className="w-full rounded-[1px] border border-rule bg-vellum px-3 py-2 font-serif text-[14px] text-ink placeholder:text-ink-mute placeholder:italic focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink focus-visible:border-ink resize-none"
                   />
                   <div className="flex justify-end gap-2">
                     <Button size="sm" variant="ghost" onClick={resetActive}>Cancel</Button>
@@ -220,7 +220,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
               {/* Queue */}
               {queued.length > 0 ? (
                 <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">
+                  <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute">
                     {queued.length} source{queued.length !== 1 ? "s" : ""} queued
                   </p>
                   {queued.map((s, i) => (
@@ -228,14 +228,14 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-center text-muted-foreground py-4">
+                <p className="font-serif italic text-center text-[13px] text-ink-fade py-4">
                   No sources yet. Add at least one URL, text snippet, or file.
                 </p>
               )}
 
               {progress && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-2.5">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade bg-vellum border border-rule rounded-[1px] p-2.5">
+                  <Loader2 className="h-4 w-4 animate-spin text-terracotta shrink-0" />
                   <span className="truncate">
                     Adding {progress.idx} of {progress.total}: {progress.label}
                   </span>
@@ -245,7 +245,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
           )}
 
           {error && (
-            <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/5 border border-destructive/20 rounded-md p-2.5">
+            <div className="flex items-start gap-2 font-mono text-[11px] tracking-[0.08em] text-terracotta bg-vellum border border-terracotta/40 rounded-[1px] p-2.5">
               <AlertCircle className="h-4 w-4 shrink-0 mt-px" />
               <span className="break-words">{error}</span>
             </div>
@@ -253,7 +253,7 @@ export function CreateNotebookModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-muted/30">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-rule bg-paper-light">
           {step === 1 ? (
             <>
               <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
@@ -302,13 +302,13 @@ function QueuedRow({ source, onRemove, disabled }: {
     meta = formatBytes(source.file.size);
   }
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-border/50 bg-card px-2.5 py-1.5">
-      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+    <div className="flex items-center gap-2.5 rounded-[1px] border border-rule bg-vellum px-2.5 py-1.5">
+      <Icon className="h-4 w-4 text-ink-fade shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm truncate">{primary}</p>
-        <p className="text-xs text-muted-foreground">{meta}</p>
+        <p className="font-serif text-[13.5px] text-ink truncate">{primary}</p>
+        <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-ink-mute">{meta}</p>
       </div>
-      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive" onClick={onRemove} disabled={disabled}>
+      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-ink-fade hover:text-terracotta" onClick={onRemove} disabled={disabled}>
         <X className="h-3.5 w-3.5" />
       </Button>
     </div>

@@ -793,11 +793,20 @@ async def chat_ask(notebook_id: str, req: ChatRequest):
     except ImportError:
         raise HTTPException(503, "notebooklm-py not available")
 
+    # NotebookLM's RPC has no language param — prepend a directive to the
+    # question so the model follows the user's preference. Citations reference
+    # source text, not the prepended directive, so this is safe.
+    lang = (req.language or "en").lower()
+    if lang == "zh":
+        question = f"[Please respond in Simplified Chinese / 请用中文回答]\n\n{req.question}"
+    else:
+        question = f"[Please respond in English]\n\n{req.question}"
+
     try:
         async with await NotebookLMClient.from_storage() as client:
             result = await client.chat.ask(
                 notebook_id,
-                req.question,
+                question,
                 source_ids=req.source_ids,
                 conversation_id=req.conversation_id,
             )

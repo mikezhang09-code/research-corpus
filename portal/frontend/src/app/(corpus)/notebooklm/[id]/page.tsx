@@ -7,13 +7,17 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronRight,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronRight, Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getLiveArtifacts, getArtifactContent, saveArtifact, type LiveArtifact } from "@/lib/api";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { getLiveArtifacts, getArtifactContent, saveArtifact, deleteArtifact, type LiveArtifact } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
 import { SourcesPanel } from "@/components/notebook/SourcesPanel";
@@ -25,25 +29,25 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 type ArtifactConfig = {
   icon: React.ElementType;
-  bg: string;
-  iconColor: string;
+  bg: string;          // hex color for paper-tint background
+  iconColor: string;   // CSS var for icon/label
   label: string;
 };
 
 const TYPE_CONFIG: Record<string, ArtifactConfig> = {
-  audio:      { icon: Music,    bg: "bg-purple-50",  iconColor: "text-purple-500",  label: "Audio Overview"  },
-  video:      { icon: Video,    bg: "bg-blue-50",    iconColor: "text-blue-500",    label: "Video Overview"  },
-  report:     { icon: FileText, bg: "bg-amber-50",   iconColor: "text-amber-500",   label: "Report"          },
-  quiz:       { icon: Brain,    bg: "bg-green-50",   iconColor: "text-green-500",   label: "Quiz"            },
-  flashcards: { icon: StickyNote, bg: "bg-teal-50",  iconColor: "text-teal-500",    label: "Flashcards"      },
-  infographic:{ icon: Image,    bg: "bg-rose-50",    iconColor: "text-rose-500",    label: "Infographic"     },
-  slide_deck: { icon: Layers,   bg: "bg-indigo-50",  iconColor: "text-indigo-500",  label: "Slide Deck"      },
-  data_table: { icon: BarChart2,bg: "bg-orange-50",  iconColor: "text-orange-500",  label: "Data Table"      },
-  mind_map:   { icon: Database, bg: "bg-cyan-50",    iconColor: "text-cyan-500",    label: "Mind Map"        },
+  audio:      { icon: Music,      bg: "#dcd5e8", iconColor: "var(--color-lavender)",   label: "Audio Overview" },
+  video:      { icon: Video,      bg: "#cfd9e3", iconColor: "var(--color-sky)",        label: "Video Overview" },
+  report:     { icon: FileText,   bg: "#ece0c2", iconColor: "var(--color-ochre)",      label: "Report"         },
+  quiz:       { icon: Brain,      bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Quiz"           },
+  flashcards: { icon: StickyNote, bg: "#dde2cf", iconColor: "var(--color-mint)",       label: "Flashcards"     },
+  infographic:{ icon: Image,      bg: "#ecd5d6", iconColor: "var(--color-blush)",      label: "Infographic"    },
+  slide_deck: { icon: Layers,     bg: "#dcd5e8", iconColor: "var(--color-lavender)",   label: "Slide Deck"     },
+  data_table: { icon: BarChart2,  bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Data Table"     },
+  mind_map:   { icon: Database,   bg: "#cfd9e3", iconColor: "var(--color-sky)",        label: "Mind Map"       },
 };
 
 const DEFAULT_CONFIG: ArtifactConfig = {
-  icon: FileText, bg: "bg-muted", iconColor: "text-muted-foreground", label: "Artifact",
+  icon: FileText, bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "Artifact",
 };
 
 // ---- Markdown viewer modal ----
@@ -64,14 +68,14 @@ function MarkdownModal({ portalId, title, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         {/* Modal header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -79,27 +83,27 @@ function MarkdownModal({ portalId, title, onClose }: {
         {/* Content */}
         <div className="overflow-y-auto flex-1 px-8 py-6">
           {error ? (
-            <div className="flex items-center gap-2 text-destructive text-sm">
+            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase">
               <AlertCircle className="h-4 w-4 shrink-0" />
               Failed to load: {error}
             </div>
           ) : content === null ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none
-              prose-headings:font-semibold prose-headings:tracking-tight
-              prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
-              prose-p:leading-relaxed prose-p:text-foreground
-              prose-strong:text-foreground prose-strong:font-semibold
-              prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono
-              prose-pre:bg-muted prose-pre:rounded-lg prose-pre:p-4
-              prose-blockquote:border-l-4 prose-blockquote:border-border prose-blockquote:pl-4 prose-blockquote:text-muted-foreground
+            <div className="prose prose-sm max-w-none font-serif
+              prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
+              prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg
+              prose-p:leading-relaxed prose-p:text-ink-soft
+              prose-strong:text-ink prose-strong:font-semibold
+              prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:rounded-[1px] prose-code:text-[13px] prose-code:font-mono prose-code:text-ink
+              prose-pre:bg-paper-deep prose-pre:rounded-[2px] prose-pre:p-4 prose-pre:border prose-pre:border-rule
+              prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-4 prose-blockquote:text-ink-fade prose-blockquote:italic
               prose-ul:list-disc prose-ol:list-decimal
-              prose-li:text-foreground
-              prose-table:text-sm prose-th:text-left prose-th:font-semibold
-              prose-a:text-primary prose-a:underline">
+              prose-li:text-ink-soft
+              prose-table:text-sm prose-th:text-left prose-th:font-mono prose-th:uppercase prose-th:tracking-[0.1em] prose-th:text-ink
+              prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {content}
               </ReactMarkdown>
@@ -155,25 +159,25 @@ function CsvTableModal({ portalId, title, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="overflow-auto flex-1">
           {error ? (
-            <div className="flex items-center gap-2 text-destructive text-sm p-6">
+            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase p-6">
               <AlertCircle className="h-4 w-4 shrink-0" />
               Failed to load: {error}
             </div>
           ) : rows === null ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm p-6">
+            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase p-6">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : (
@@ -183,7 +187,7 @@ function CsvTableModal({ portalId, title, onClose }: {
                   {headers.map((h, i) => (
                     <th
                       key={i}
-                      className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide bg-orange-50 text-orange-800 border-b border-orange-200 whitespace-nowrap"
+                      className="px-4 py-3 text-left font-mono text-[10px] tracking-[0.16em] uppercase bg-paper-deep text-ink border-b border-ink whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -192,11 +196,11 @@ function CsvTableModal({ portalId, title, onClose }: {
               </thead>
               <tbody>
                 {dataRows.map((row, ri) => (
-                  <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-muted/40"}>
+                  <tr key={ri} className={ri % 2 === 0 ? "bg-vellum" : "bg-paper-light"}>
                     {headers.map((_, ci) => (
                       <td
                         key={ci}
-                        className="px-4 py-3 align-top border-b border-border/50 text-sm leading-relaxed max-w-xs"
+                        className="px-4 py-3 align-top border-b border-rule-light font-serif text-[13.5px] text-ink-soft leading-relaxed max-w-xs"
                       >
                         {row[ci] ?? ""}
                       </td>
@@ -208,7 +212,7 @@ function CsvTableModal({ portalId, title, onClose }: {
           )}
         </div>
 
-        <div className="px-6 py-3 border-t shrink-0 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="px-6 py-3 border-t border-rule shrink-0 flex items-center justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute">
           <span>{dataRows.length} row{dataRows.length !== 1 ? "s" : ""} · {headers.length} column{headers.length !== 1 ? "s" : ""}</span>
         </div>
       </div>
@@ -268,10 +272,10 @@ function buildMindLayout(root: MindNode, collapsed: Set<string>): MmLayout {
 }
 
 const MM_NODE_COLORS = [
-  "bg-blue-600 text-white border-blue-500",
-  "bg-teal-500 text-white border-teal-400",
-  "bg-teal-100 border-teal-300 text-teal-900",
-  "bg-green-50 border-green-200 text-green-800",
+  "bg-ink text-paper border-ink",
+  "bg-terracotta text-paper border-terracotta",
+  "bg-vellum border-ink text-ink",
+  "bg-paper-deep border-rule text-ink-soft",
 ];
 
 function MindMapModal({ portalId, title, onClose }: {
@@ -304,25 +308,25 @@ function MindMapModal({ portalId, title, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="font-semibold text-base line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
+          <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="overflow-auto flex-1 bg-slate-50/60">
+        <div className="overflow-auto flex-1 bg-paper">
           {error ? (
-            <div className="flex items-center gap-2 text-destructive text-sm p-6">
+            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase p-6">
               <AlertCircle className="h-4 w-4 shrink-0" />
               Failed to load: {error}
             </div>
           ) : !layout ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm p-6">
+            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase p-6">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : (
@@ -341,7 +345,7 @@ function MindMapModal({ portalId, title, onClose }: {
                       key={i}
                       d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1} ${mx} ${e.y2} ${e.x2} ${e.y2}`}
                       fill="none"
-                      stroke="#94a3b8"
+                      stroke="var(--color-rule)"
                       strokeWidth={1.5}
                     />
                   );
@@ -354,7 +358,7 @@ function MindMapModal({ portalId, title, onClose }: {
                 return (
                   <div
                     key={n.id}
-                    className={`absolute rounded-lg border px-3 flex items-center gap-1.5 shadow-sm leading-tight text-xs font-medium ${color} ${n.hasChildren ? "cursor-pointer hover:brightness-95 active:brightness-90" : ""}`}
+                    className={`absolute rounded-[2px] border px-3 flex items-center gap-1.5 shadow-[1px_1px_0_rgb(42_36_24_/_0.1)] leading-tight font-serif text-[13px] ${color} ${n.hasChildren ? "cursor-pointer hover:brightness-95 active:brightness-90" : ""}`}
                     style={{ left: n.x, top: n.y, width: MM_NW, height: MM_NH }}
                     onClick={() => n.hasChildren && toggle(n.id)}
                   >
@@ -382,13 +386,18 @@ function ArtifactCard({
   notebookId,
   notebookTitle,
   onSaved,
+  onDeleted,
 }: {
   artifact: LiveArtifact;
   notebookId: string;
   notebookTitle: string | null;
   onSaved: (updated: Partial<LiveArtifact>) => void;
+  onDeleted: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [showCsv, setShowCsv] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
@@ -423,6 +432,21 @@ function ArtifactCard({
     }
   }
 
+  async function handleDelete() {
+    if (!artifact.portal_id) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteArtifact(artifact.portal_id);
+      setConfirmDelete(false);
+      onDeleted();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const isSaved      = artifact.download_status !== null;
   const isDone       = artifact.download_status === "done";
   const isFailed     = artifact.download_status === "failed";
@@ -453,31 +477,75 @@ function ArtifactCard({
         />
       )}
 
-      <div className="rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-md transition-shadow">
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => { if (!open) { setConfirmDelete(false); setDeleteError(null); } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete artifact?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Removes &ldquo;{artifact.title}&rdquo; from the portal (R2 + database). The original
+              in NotebookLM is unaffected — refresh the list to pull it back if you change your mind.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p className="font-mono text-[11px] tracking-[0.08em] text-terracotta">{deleteError}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <><Loader2 className="h-4 w-4 animate-spin" /> Deleting…</> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="relative rounded-[2px] overflow-hidden border border-ink bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all">
         {/* Type header */}
-        <div className={`${cfg.bg} flex flex-col items-center justify-center gap-2 py-8`}>
-          <Icon className={`h-12 w-12 ${cfg.iconColor}`} />
-          <span className={`text-xs font-semibold uppercase tracking-wider ${cfg.iconColor} opacity-80`}>
+        <div
+          className="flex flex-col items-center justify-center gap-2 py-8 border-b border-ink"
+          style={{ background: cfg.bg, color: cfg.iconColor }}
+        >
+          <Icon className="h-12 w-12" style={{ color: cfg.iconColor }} />
+          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
             {cfg.label}
           </span>
         </div>
 
+        {/* Delete affordance (only for saved/portal-stored artifacts) */}
+        {artifact.portal_id && (
+          <button
+            type="button"
+            aria-label="Delete artifact"
+            title="Delete from portal"
+            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+            className="absolute top-2 right-2 h-7 w-7 rounded-[1px] bg-paper/90 hover:bg-paper border border-ink/40 hover:border-terracotta flex items-center justify-center text-ink-fade hover:text-terracotta transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+
         {/* Content */}
-        <div className="p-4 flex flex-col gap-3">
+        <div className="px-4 py-3.5 flex flex-col gap-3">
           <div>
-            <p className="font-semibold text-sm leading-snug line-clamp-2">{artifact.title}</p>
-            {created && <p className="text-xs text-muted-foreground mt-1">{created}</p>}
+            <p className="font-serif-display text-[18px] leading-[1.15] tracking-tight text-ink line-clamp-2">{artifact.title}</p>
+            {created && <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-mute mt-1.5">{created}</p>}
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge variant="outline" className="text-xs uppercase">{artifact.file_format}</Badge>
+            <Badge variant="outline" className="font-mono text-[9px] tracking-[0.14em] uppercase rounded-[1px] border-rule text-ink-fade">{artifact.file_format}</Badge>
             {!artifact.is_completed && !artifact.only_in_portal && (
-              <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 bg-amber-50">
+              <Badge variant="outline" className="font-mono text-[9px] tracking-[0.14em] uppercase rounded-[1px] border-ochre/60 text-ochre bg-vellum">
                 Generating…
               </Badge>
             )}
             {artifact.only_in_portal && (
-              <Badge variant="outline" className="text-xs text-slate-600 border-slate-300 bg-slate-50" title="Deleted in NotebookLM — preserved here in your portal">
+              <Badge variant="outline" className="font-mono text-[9px] tracking-[0.14em] uppercase rounded-[1px] border-ink-mute/50 text-ink-mute bg-vellum" title="Deleted in NotebookLM — preserved here in your portal">
                 Only in portal
               </Badge>
             )}
@@ -494,22 +562,22 @@ function ArtifactCard({
             )}
 
             {isGenerating && (
-              <div className="flex items-center justify-center gap-2 py-1.5 text-sm text-muted-foreground">
-                <Sparkles className="h-4 w-4 animate-pulse text-primary" />
+              <div className="flex items-center justify-center gap-2 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade">
+                <Sparkles className="h-4 w-4 animate-pulse text-terracotta" />
                 <span>Generating in NotebookLM…</span>
               </div>
             )}
 
             {isInProgress && (
-              <div className="flex items-center justify-center gap-2 py-1.5 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <div className="flex items-center justify-center gap-2 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade">
+                <Loader2 className="h-4 w-4 animate-spin text-terracotta" />
                 <span>{artifact.download_status === "downloading" ? "Downloading…" : "Queued…"}</span>
               </div>
             )}
 
             {isDone && (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium flex-1">
+                <div className="flex items-center gap-1.5 text-mint font-mono text-[10px] tracking-[0.14em] uppercase flex-1">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   Saved
                 </div>
@@ -556,7 +624,7 @@ function ArtifactCard({
 
             {isFailed && (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-destructive text-xs flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 text-terracotta font-mono text-[10px] tracking-[0.14em] uppercase flex-1 min-w-0">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span className="truncate" title={artifact.download_error ?? undefined}>Failed</span>
                 </div>
@@ -573,7 +641,7 @@ function ArtifactCard({
             )}
 
             {!artifact.is_completed && !isSaved && (
-              <p className="text-xs text-muted-foreground text-center py-1">
+              <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute text-center py-1">
                 Waiting for NotebookLM to finish generating
               </p>
             )}
@@ -639,31 +707,48 @@ export default function NotebookDetailPage() {
     pollRef.current = setTimeout(() => loadArtifacts(true), 5000);
   }
 
+  function handleDeleted(nlmId: string) {
+    // Drop the row if it was a portal-only artifact (NotebookLM no longer
+    // lists it). For ones still in NotebookLM, clear the saved bits so the
+    // user can re-save; the next refresh will reconcile.
+    setArtifacts((prev) =>
+      prev
+        .map((a) =>
+          a.nlm_id === nlmId
+            ? { ...a, portal_id: null, download_status: null, r2_url: null, download_error: null }
+            : a,
+        )
+        .filter((a) => !(a.nlm_id === nlmId && a.only_in_portal))
+    );
+    if (pollRef.current) clearTimeout(pollRef.current);
+    pollRef.current = setTimeout(() => loadArtifacts(true), 1500);
+  }
+
   const savedCount = artifacts.filter((a) => a.download_status === "done").length;
   const isMobile = useIsMobile();
 
   return (
     <div className="flex h-full min-h-0">
       {/* Left column */}
-      <div className="flex-1 min-w-0 overflow-auto p-8 space-y-6">
+      <div className="flex-1 min-w-0 overflow-auto px-10 py-8 space-y-6 border-r border-rule">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="sm"
-            className="gap-2 -ml-2 text-muted-foreground"
+            className="gap-2 -ml-2 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-fade hover:text-ink"
             onClick={() => router.push("/notebooklm")}
           >
-            <ArrowLeft className="h-4 w-4" />
-            Notebooks
+            <ArrowLeft className="h-3.5 w-3.5" />
+            My Corpus
           </Button>
         </div>
 
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+        <div className="pb-4 border-b border-rule">
+          <h1 className="font-serif-display text-[32px] leading-[1.05] tracking-tight text-ink">
             {notebookTitle ?? (loading ? "Loading…" : notebookId)}
           </h1>
           {!loading && (
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute mt-2">
               {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
               {savedCount > 0 && ` · ${savedCount} saved`}
             </p>
@@ -725,15 +810,15 @@ export default function NotebookDetailPage() {
             {loading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-64 rounded-2xl" />
+                  <Skeleton key={i} className="h-64 rounded-[2px]" />
                 ))}
               </div>
             ) : artifacts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
-                <FileText className="h-12 w-12 opacity-20" />
-                <p className="font-medium">No artifacts yet</p>
-                <p className="text-sm text-center max-w-xs">
-                  Click <span className="font-medium">+ Generate</span> to create one, or generate one in NotebookLM and refresh.
+              <div className="flex flex-col items-center justify-center py-24 text-ink-mute gap-3">
+                <FileText className="h-12 w-12 opacity-30" />
+                <p className="font-serif-display text-[20px] tracking-tight text-ink">No artifacts yet</p>
+                <p className="font-serif text-[14px] text-center max-w-xs text-ink-soft">
+                  Click <span className="italic">+ Generate</span> to create one, or generate one in NotebookLM and refresh.
                 </p>
               </div>
             ) : (
@@ -745,6 +830,7 @@ export default function NotebookDetailPage() {
                     notebookId={notebookId}
                     notebookTitle={notebookTitle}
                     onSaved={(update) => handleSaved(a.nlm_id, update)}
+                    onDeleted={() => handleDeleted(a.nlm_id)}
                   />
                 ))}
               </div>
@@ -757,7 +843,7 @@ export default function NotebookDetailPage() {
 
           {isMobile && (
             <TabsContent value="chat" className="mt-4">
-              <div className="h-[calc(100vh-16rem)] rounded-xl overflow-hidden border">
+              <div className="h-[calc(100vh-16rem)] rounded-[2px] overflow-hidden border border-rule bg-vellum">
                 <ChatPanel ref={chatRef} notebookId={notebookId} />
               </div>
             </TabsContent>
@@ -767,7 +853,7 @@ export default function NotebookDetailPage() {
 
       {/* Right column: chat panel (desktop only) */}
       {!isMobile && (
-        <div className="w-[400px] shrink-0 h-full sticky top-0">
+        <div className="w-[400px] shrink-0 h-full sticky top-0 bg-vellum">
           <ChatPanel ref={chatRef} notebookId={notebookId} />
         </div>
       )}

@@ -131,17 +131,17 @@ export function DiscoverSourcesModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget && closable) onClose(); }}
     >
-      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh]">
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-rule shrink-0">
           <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold text-base">Discover sources</h2>
+            <Search className="h-4 w-4 text-terracotta" />
+            <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink">Discover sources</h2>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} disabled={!closable}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-ink-fade hover:text-ink" onClick={onClose} disabled={!closable}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -151,7 +151,7 @@ export function DiscoverSourcesModal({
           {/* Query input — visible in input + searching phases */}
           {(phase === "input" || phase === "searching") && (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="font-serif italic text-[13.5px] text-ink-fade">
                 Describe a topic and we&apos;ll search the web for sources to add to this notebook.
               </p>
               <Input
@@ -162,9 +162,9 @@ export function DiscoverSourcesModal({
                 disabled={phase === "searching"}
                 autoFocus
               />
-              <div className="flex items-center gap-3 text-xs">
-                <span className="text-muted-foreground">Mode:</span>
-                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <div className="flex items-center gap-3 font-mono text-[10px] tracking-[0.14em] uppercase">
+                <span className="text-ink-mute">Mode:</span>
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-ink-fade">
                   <input
                     type="radio"
                     checked={mode === "fast"}
@@ -174,7 +174,7 @@ export function DiscoverSourcesModal({
                   />
                   Fast (~10–30 s)
                 </label>
-                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-ink-fade">
                   <input
                     type="radio"
                     checked={mode === "deep"}
@@ -186,8 +186,8 @@ export function DiscoverSourcesModal({
                 </label>
               </div>
               {phase === "searching" && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.1em] text-ink-fade bg-paper-light border border-rule rounded-[1px] p-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-terracotta shrink-0" />
                   <span>
                     Searching the web for &ldquo;{query.trim()}&rdquo;…
                     {mode === "deep" && " This can take a few minutes."}
@@ -201,14 +201,14 @@ export function DiscoverSourcesModal({
           {(phase === "results" || phase === "importing") && (
             <>
               <div className="flex items-center justify-between">
-                <p className="text-sm">
-                  Found <span className="font-medium">{sources.length}</span> source{sources.length !== 1 ? "s" : ""} for &ldquo;{foundQuery}&rdquo;
+                <p className="font-serif text-[13.5px] text-ink-soft">
+                  Found <span className="text-ink font-semibold">{sources.length}</span> source{sources.length !== 1 ? "s" : ""} for <span className="italic">&ldquo;{foundQuery}&rdquo;</span>
                 </p>
                 <div className="flex gap-1.5">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectAll} disabled={phase === "importing"}>
+                  <Button variant="ghost" size="sm" className="h-7 font-mono text-[10px] tracking-[0.14em] uppercase" onClick={selectAll} disabled={phase === "importing"}>
                     Select all
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectNone} disabled={phase === "importing"}>
+                  <Button variant="ghost" size="sm" className="h-7 font-mono text-[10px] tracking-[0.14em] uppercase" onClick={selectNone} disabled={phase === "importing"}>
                     None
                   </Button>
                 </div>
@@ -220,8 +220,8 @@ export function DiscoverSourcesModal({
                   return (
                     <label
                       key={i}
-                      className={`flex items-start gap-3 rounded-lg border p-2.5 cursor-pointer transition-colors ${
-                        isChecked ? "border-primary/50 bg-primary/5" : "border-border/50 hover:bg-muted/40"
+                      className={`flex items-start gap-3 rounded-[1px] border p-2.5 cursor-pointer transition-colors ${
+                        isChecked ? "border-ink bg-paper-light" : "border-rule bg-vellum hover:bg-paper-light"
                       } ${phase === "importing" ? "opacity-60 pointer-events-none" : ""}`}
                     >
                       <input
@@ -230,11 +230,11 @@ export function DiscoverSourcesModal({
                         onChange={() => toggle(key)}
                         className="mt-1 h-4 w-4 shrink-0"
                       />
-                      <Globe className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <Globe className="h-4 w-4 text-ink-fade shrink-0 mt-0.5" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium leading-tight truncate">{s.title || s.url}</p>
+                        <p className="font-serif text-[14px] text-ink leading-tight truncate">{s.title || s.url}</p>
                         {s.url && (
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{s.url}</p>
+                          <p className="font-mono text-[10px] tracking-[0.08em] text-ink-mute truncate mt-0.5">{s.url}</p>
                         )}
                       </div>
                     </label>
@@ -246,16 +246,16 @@ export function DiscoverSourcesModal({
 
           {/* Done */}
           {phase === "done" && (
-            <div className="flex flex-col items-center justify-center py-8 gap-3 text-emerald-600">
+            <div className="flex flex-col items-center justify-center py-8 gap-3 text-mint">
               <CheckCircle2 className="h-10 w-10" />
-              <p className="font-medium">
+              <p className="font-serif-display text-[20px] tracking-tight">
                 Imported {importedCount} source{importedCount !== 1 ? "s" : ""}
               </p>
             </div>
           )}
 
           {error && (
-            <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/5 border border-destructive/20 rounded-md p-2.5">
+            <div className="flex items-start gap-2 font-mono text-[11px] tracking-[0.08em] text-terracotta bg-vellum border border-terracotta/40 rounded-[1px] p-2.5">
               <AlertCircle className="h-4 w-4 shrink-0 mt-px" />
               <span className="break-words">{error}</span>
             </div>
@@ -263,18 +263,18 @@ export function DiscoverSourcesModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t bg-muted/30">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-rule bg-paper-light">
           {phase === "input" && (
             <>
               <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-              <Button size="sm" onClick={handleSearch} disabled={!query.trim()} className="gap-2">
+              <Button size="sm" onClick={handleSearch} disabled={!query.trim()} className="gap-2 rounded-[1px]">
                 <Search className="h-3.5 w-3.5" />
                 Search
               </Button>
             </>
           )}
           {phase === "searching" && (
-            <Button variant="outline" size="sm" onClick={() => { cancelRef.current = true; setPhase("input"); }}>
+            <Button variant="outline" size="sm" onClick={() => { cancelRef.current = true; setPhase("input"); }} className="rounded-[1px]">
               Cancel search
             </Button>
           )}
@@ -285,15 +285,15 @@ export function DiscoverSourcesModal({
                 size="sm"
                 onClick={handleImport}
                 disabled={selected.size === 0}
-                className="gap-2"
+                className="gap-2 rounded-[1px]"
               >
                 Add {selected.size} source{selected.size !== 1 ? "s" : ""}
               </Button>
             </>
           )}
           {phase === "importing" && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade">
+              <Loader2 className="h-4 w-4 animate-spin text-terracotta" />
               Importing…
             </div>
           )}

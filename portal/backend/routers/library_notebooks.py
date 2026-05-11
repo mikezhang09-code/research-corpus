@@ -268,10 +268,22 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
         for f in files
     ) or "  (no files yet)"
     description = nb.get("description") or ""
+    lang = (body.language or "en").lower()
+    if lang == "zh":
+        lang_directive = (
+            "Always respond in Simplified Chinese (中文), regardless of the "
+            "language used in the question or source materials."
+        )
+    else:
+        lang_directive = (
+            "Always respond in English, regardless of the language used in "
+            "the question or source materials."
+        )
     system_prompt = (
         f'You are an AI assistant for the library notebook "{nb["title"]}".\n'
         + (f"Description: {description}\n" if description else "")
         + f"Files in this notebook:\n{file_lines}\n\n"
+        f"{lang_directive}\n"
         "Answer questions based on the context of this notebook. "
         "Be concise and helpful."
     )
