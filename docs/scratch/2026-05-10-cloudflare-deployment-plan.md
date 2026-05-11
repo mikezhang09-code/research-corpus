@@ -1,219 +1,235 @@
 # Cloudflare Deployment Plan — research-corpus portal
 
-**Date:** 2026-05-10
+**Date:** 2026-05-10 (rescoped 2026-05-11)
 **Status:** Draft for review
-**Author:** Claude (working with Mike)
+**Scope:** Personal-use only — single user (Mike). No multi-tenancy. No domain required.
 
 ## Goal
 
-Ship the portal so users other than Mike can run it without a local dev environment. Stretch goal: do it on Cloudflare end-to-end (Pages + Workers + R2) since R2 is already wired in.
+Use the portal from any device, any network, without keeping the laptop open or messing with port forwarding. Backend stays on the Oracle ARM VM; only the frontend moves to Cloudflare.
 
-## Current architecture
-
-| Component | Tech | Location | Notes |
-|-----------|------|----------|-------|
-| Frontend | Next.js 16 (App Router, RSC) | `portal/frontend/` | `npm run dev` on port 3000 |
-| Backend | FastAPI + Python 3.12 | `portal/backend/` | uvicorn at `127.0.0.1:8000` |
-| Core engine | `notebooklm-py` | `src/notebooklm/` | Library that talks to NotebookLM RPCs |
-| Database | Supabase Postgres | cloud (`llusronucprogsrgzxrw.supabase.co`) | already cloud-hosted |
-| Object storage | Cloudflare R2 | cloud | already cloud-hosted |
-| Auth tokens | local file `~/.notebooklm/auth.json` | per-machine | single user, captured via Playwright |
-
-## Hard constraints
-
-These are the reasons "everything on Cloudflare Workers" doesn't work directly:
-
-1. **Workers don't run Python natively.** `notebooklm-py` uses `httpx` (native deps), and Workers Python (Pyodide) is beta with no native-extension support.
-2. **Login flow uses Playwright.** Workers can't drive a real browser. Every NotebookLM session needs cookies that Google issues only after a Playwright-driven sign-in. There is no public OAuth path.
-3. **Long-running requests.** Chat = 30–60 s, research import = 30–90 s, deep research = up to 5 min. Workers free tier has a 30 s CPU limit; paid tier has 5 min wall time but 30 s CPU. Cutting close to limits.
-4. **Multi-tenancy is not built.** The backend assumes a single global auth token. Shipping to N users requires:
-   - Per-user accounts and authentication
-   - Per-user NotebookLM cookies stored server-side
-   - Row-level security on the Supabase tables (`notebooks`, `nlm_artifacts`, `library_items`)
-   - A way to bootstrap each user's NotebookLM session (the hard part — see Phase 3)
-
-## Target architecture
+## Final architecture
 
 ```
+   Browser anywhere
+         │
+         ▼
    ┌─────────────────────────┐
-   │   Cloudflare Pages      │  ← Next.js frontend (static + edge)
-   │   notebooklm.pages.dev  │
-   └────────────┬────────────┘
-                │ /api/* via Pages rewrite to a public BACKEND_URL
-                ▼
+   │  Cloudflare Pages       │   Next.js frontend (free, global CDN)
+   │  <app>.pages.dev        │
+   └──────────┬──────────────┘
+              │ /api/* via Next.js rewrites → BACKEND_URL
+              ▼
    ┌─────────────────────────┐
-   │   Fly.io (or Railway)   │  ← FastAPI + notebooklm-py + Playwright Chromium
-   │   1 always-on VM        │     mounted volume for /data/notebooklm
-   └────────────┬────────────┘
-                │
-        ┌───────┼────────┐
-        ▼       ▼        ▼
-   Supabase   R2     NotebookLM (Google)
+   │  Cloudflare Tunnel      │   Public URL → VM. No port forward,
+   │  *.trycloudflare.com    │   no static IP, no router config.
+   └──────────┬──────────────┘
+              │
+              ▼
+   Oracle ARM VM, FastAPI at 127.0.0.1:8000
+   (start-backend.sh as today, plus a systemd unit for cloudflared)
 ```
 
-Why a VM and not Workers for the backend:
+Cost: **$0** (or $10/yr if you decide you want a stable hostname later — see Phase 1).
 
-- It runs Python, including native deps (httpx, asyncpg, Playwright).
-- It can hold a long-running `httpx.AsyncClient` session with cookie state.
-- It can install Chromium for the rare case we need to refresh login.
-- A `shared-cpu-1x` Fly machine with 512 MB is ~$2/month idle.
+## What's not in scope
 
-R2 stays as-is (already used). Supabase stays as-is (already used). Only the frontend and backend change *deployment targets*.
+The previous draft of this plan included multi-tenancy, Fly.io migration,
+and a 1-week Phase 3. **All cut**, because:
 
-## Phases
+- It's just for Mike — no user accounts needed
+- The backend runs fine on the Oracle VM — no reason to migrate it
+- Cloudflare Access / Supabase Auth complicate everything for zero gain in a single-user product
 
-Each phase is a separate PR / shippable milestone. After each phase the project is more deployable but still works.
+## Phase 1 — Cloudflare Tunnel on the VM
 
-### Phase 1 — Frontend on Cloudflare Pages
+**Effort:** ~30 minutes · **Cost:** $0 (free) or $10/yr (stable hostname)
 
-**Effort:** ~1 day · **Risk:** low · **Outcome:** anyone with the URL can load the UI; backend still on Mike's laptop or a tunnel.
+### 1a. Free path — Quick Tunnel
 
-Tasks:
+```bash
+# install on the Oracle ARM VM
+sudo apt install cloudflared
 
-1. Add `@cloudflare/next-on-pages` adapter (or use Cloudflare's built-in Next.js support since v3).
-2. Add `wrangler.toml` with `pages_build_output_dir = ".vercel/output/static"`.
-3. Set `BACKEND_URL` in Pages environment to whatever public URL the backend is at (initially a `cloudflared` tunnel from Mike's laptop, later the Fly.io URL).
-4. Configure `next.config.ts` rewrites to use `process.env.BACKEND_URL`.
-5. Add a GitHub Action: on push to `main`, run `wrangler pages deploy`.
-6. Test: open the `.pages.dev` URL on a phone, confirm the landing page loads and `/api/notebooks` proxies through.
-
-Open questions:
-
-- Does Cloudflare's Next.js compat handle our experimental flags (`proxyTimeout`)? — likely yes, it's a server-side concern.
-- Do we want a custom domain? (`portal.<your-domain>`)
-
-### Phase 2 — Backend on Fly.io with Docker
-
-**Effort:** ~1–2 days · **Risk:** medium · **Outcome:** portal runs without Mike's laptop.
-
-Tasks:
-
-1. New `portal/backend/Dockerfile`:
-   - Base: `python:3.12-slim`
-   - Install: `uv`, system deps for Playwright Chromium, our project deps via `uv sync`
-   - Run: `uvicorn portal.backend.main:app --host 0.0.0.0 --port 8080`
-2. New `fly.toml`:
-   - 1 machine, `shared-cpu-1x`, 512 MB RAM
-   - 1 GB persistent volume mounted at `/data/notebooklm` for auth tokens
-   - Health check on `/api/notebooks`
-   - Auto-stop disabled (we want it warm so chat is fast)
-3. Migration: change `notebooklm-py` storage path to honour `NOTEBOOKLM_HOME=/data/notebooklm` (already supported per `paths.py`).
-4. Bootstrap: `fly ssh console` once, run `notebooklm login` to capture cookies into the volume. Document this step.
-5. Set Fly secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `R2_*`, `BACKEND_PORT=8080`.
-6. Update Pages `BACKEND_URL` to the Fly URL.
-7. Test: chat, generate, download, discover all work end-to-end with the laptop closed.
-
-Open questions:
-
-- Should we keep auth tokens on a Fly volume or move them to Supabase (encrypted)? Volume is simpler for Phase 2; Supabase makes Phase 3 easier.
-- Do we want Cloudflare Access in front of the Fly URL for now (so only logged-in users can hit the API)?
-
-### Phase 3 — Multi-tenancy
-
-**Effort:** ~1 week · **Risk:** high (auth UX is hostile) · **Outcome:** real users can sign up and use their own notebooks.
-
-This is where the project goes from "deployed for Mike" to "deployed for everyone." Three sub-problems, each needs a decision.
-
-#### 3a. User accounts
-
-- Use **Supabase Auth** (email + Google OAuth). It's already in the project; adding sign-up takes a day.
-- Add `owner_user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE` to: `notebooks`, `nlm_artifacts`, `library_items`.
-- Turn on RLS with policy `auth.uid() = owner_user_id` on each table.
-- Frontend: gate the `/notebooklm` and `/library` pages behind a sign-in.
-
-#### 3b. Per-user NotebookLM session
-
-This is the hard part. Each user needs their own Google cookies stored on our backend. Options:
-
-| Option | UX | Implementation effort | Reliability |
-|--------|-----|----------------------|-------------|
-| (i) Browser extension | Best — click "Connect", extension grabs cookies, POSTs them | 2–3 days | High — same flow Google expects |
-| (ii) Paste-cookie wizard | Bad — user opens DevTools, copies 3 cookies, pastes into a form | 0.5 day | Medium — users mis-copy |
-| (iii) Local CLI + upload | OK for power users only | 0 days (already works) | High |
-| (iv) "Magic" QR code that opens Google login | Doesn't exist; Google blocks Playwright on serverless | N/A | N/A |
-
-Recommendation: ship (ii) and (iii) in Phase 3 since they need no extra code. Build (i) as a Phase 4 polish if the project gets traction.
-
-New table:
-
-```sql
-CREATE TABLE user_secrets (
-  user_id        uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  notebooklm_auth jsonb NOT NULL,  -- the auth.json blob, encrypted at rest
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE user_secrets ENABLE ROW LEVEL SECURITY;
-CREATE POLICY user_secrets_owner ON user_secrets
-  FOR ALL TO authenticated USING (auth.uid() = user_id);
+# expose the local backend
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
 
-Encryption: use `pgcrypto` or a Cloudflare KV-stored master key. Decision needed.
+You get a public URL like `https://<random-words>.trycloudflare.com`.
 
-#### 3c. Backend session loading
+**Drawback:** the URL rotates whenever `cloudflared` restarts. To minimize
+that:
 
-Today: `NotebookLMClient.from_storage()` reads `~/.notebooklm/auth.json`.
+```bash
+# Run as a systemd service so it stays up across reboots
+sudo cloudflared service install
+```
 
-Multi-user version: a thin wrapper that takes `user_id`, fetches their `user_secrets` row, writes it to a temp file (or in-memory), then calls `from_storage(storage_path=...)`.
+Each rotation requires updating one Pages env var. In practice if the
+service is persistent and the VM is stable (Oracle Always Free is), the
+URL might last weeks at a time.
 
-This means every API endpoint needs to know "who is calling." We add a FastAPI dependency that reads the Supabase JWT from the `Authorization` header and extracts `user_id`. All existing endpoints get a `user: User = Depends(get_current_user)` parameter.
+### 1b. Stable path — Named Tunnel + cheap domain (~$10/yr)
 
-This is a big diff — every endpoint in `routers/notebooks.py` and `routers/artifacts.py`. Estimate ~half a day for the mechanical change plus a day for thorough testing.
+Skip unless 1a's URL rotation becomes annoying.
 
-### Phase 4 — Cloudflare-native polish (optional)
+1. Buy a `.com` (~$9.15/yr) or `.xyz` (~$2/yr) at Cloudflare Registrar.
+   Sold at cost — no markup.
+2. The domain auto-registers as a Cloudflare zone.
+3. Create a named tunnel:
 
-After Phase 3 ships, these are nice-to-haves that lean on Cloudflare's edge.
+   ```bash
+   cloudflared tunnel login
+   cloudflared tunnel create research-corpus
+   cloudflared tunnel route dns research-corpus backend.<yourdomain>.com
+   ```
 
-- **Worker in front of the Fly backend** for:
-  - Per-user rate limiting (Workers KV counters)
-  - Edge caching of `GET /notebooks` and `GET /description` — these are read-heavy and rarely change
-  - Request logging into Cloudflare Logpush or Workers Analytics
-- **Cloudflare Access** in front of admin pages (sync logs, internal dashboards)
-- **R2 signed URLs** instead of streaming through the backend — frontend gets a presigned URL, downloads directly from R2. Saves backend bandwidth.
-- **Durable Objects** for chat sessions if we want true streaming responses (Server-Sent Events from Worker → browser).
+4. Run it via systemd, persistent URL forever.
 
-## Costs (estimate at low scale)
+### Open questions
 
-| Service | Free tier | Paid (low scale) |
-|---------|-----------|------------------|
-| Cloudflare Pages | unlimited bandwidth, 100 builds/mo | $20/mo Pro if needed |
-| Cloudflare R2 | 10 GB storage, 1M class A ops/mo | $0.015/GB-month over 10 GB |
-| Cloudflare Workers (Phase 4) | 100k requests/day | $5/mo + $0.50/M requests |
-| Fly.io | 3 shared-cpu-1x VMs free | ~$2/mo when over the free allowance |
-| Supabase | 500 MB DB, 2 GB egress | $25/mo Pro tier when DB > 500 MB |
-| **Total at <100 users** | mostly free tier | **~$5–10/month** |
+- Are you OK starting with 1a (free, rotating URL) and upgrading later
+  only if it bites? My recommendation: yes.
 
-## Multi-user implications NOT in scope of this plan
+## Phase 2 — Frontend on Cloudflare Pages
 
-These would all become issues if the project gets significant adoption — flagging now so we don't get surprised:
+**Effort:** ~1 hour (mostly waiting for builds) · **Cost:** $0
 
-- **Google rate limits NotebookLM per-account.** If many users do heavy work, individual accounts get throttled. Not our problem — it's user-by-user.
-- **NotebookLM auth tokens expire.** Backend already has refresh logic; verify it works in the multi-user path.
-- **Storage abuse.** R2 is per-bucket; one user could fill it. Need a per-user quota in Phase 4.
-- **GDPR / data deletion.** Need a "delete my account" flow that nukes the user's notebooks + artifacts + R2 files + auth tokens. Cascading FKs make most of this automatic.
-- **Trademark / ToS.** "Unofficial NotebookLM client" — Google may not love this being public. Consider naming the deployed product something neutral.
+### 2a. Add the Next.js adapter
 
-## Recommendation
+```bash
+cd portal/frontend
+npm install --save-dev @cloudflare/next-on-pages
+```
 
-Ship in this order:
+### 2b. Add `wrangler.toml` to `portal/frontend/`
 
-1. **Phase 1** (Pages, ~1 day) — biggest UX win for cost; we get a public URL even with zero backend changes.
-2. **Phase 2** (Fly, ~1–2 days) — moves the backend off Mike's laptop. After this, we have a working single-user product anyone with the URL can use IF they trust Mike's auth tokens (they don't — but the URL works).
-3. **Phase 3** (multi-tenancy, ~1 week) — needed before sharing the URL with anyone who isn't Mike. Schema changes + auth UX = the riskiest piece.
-4. **Phase 4** (Cloudflare polish, optional) — only worth it once Phase 3 is stable and we have real usage to optimize.
+```toml
+name = "research-corpus-portal"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+```
 
-**Decision points before starting any of this:**
+### 2c. Verify the existing `next.config.ts` honors `BACKEND_URL`
 
-- Are we OK with Fly.io as the backend host, or do you want me to evaluate Railway / Render / DigitalOcean droplet?
-- Phase 3: which of (i) browser extension, (ii) paste-cookie, (iii) CLI upload do you want to build first? My recommendation: ship (iii) for our own use first (it's already implemented), then build (i) for real users since (ii) is a UX disaster.
-- Phase 3: comfortable with Supabase Auth, or want to use Clerk / Auth0 / Cloudflare Access for sign-in instead?
+It already does (line 12):
+```ts
+const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
+```
+
+So locally it stays at `127.0.0.1:8000`; in production Pages provides
+the tunnel URL. No code change needed.
+
+### 2d. Connect repo to Cloudflare Pages
+
+1. Cloudflare dashboard → Pages → "Connect to Git"
+2. Pick `mikezhang09-code/research-corpus`
+3. Set build output: `portal/frontend`
+4. Build command: `npx @cloudflare/next-on-pages`
+5. Set env var `BACKEND_URL` = the tunnel URL from Phase 1
+6. Set env var `PORTAL_TOKEN` = a random 32-char string (see Phase 3)
+7. Deploy
+
+You get `<app>.pages.dev`. Bookmark it.
+
+### Open questions
+
+- Is `portal/frontend` the right Pages project root, or should we add a
+  `portal/frontend/.cloudflare/` config dir to keep wrangler files
+  contained?
+- Auto-deploy on every push to `main`, or only on a `release` branch?
+
+## Phase 3 — Single-secret authentication
+
+**Effort:** ~30 minutes · **Cost:** $0
+
+The Pages frontend is public, the tunnel URL is effectively public. Without
+auth, anyone who finds either URL can hit the backend with Mike's
+NotebookLM session. We don't need real user accounts — just keep
+randos out.
+
+### 3a. Backend middleware
+
+`portal/backend/main.py`:
+
+```python
+import os, secrets
+from fastapi import Request, HTTPException
+
+PORTAL_TOKEN = os.environ.get("PORTAL_TOKEN")
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    # Allow health checks and the docs page without auth
+    if request.url.path in ("/", "/docs", "/openapi.json"):
+        return await call_next(request)
+    if not PORTAL_TOKEN:
+        return await call_next(request)  # dev mode — no token configured
+    supplied = request.headers.get("X-Portal-Token", "")
+    if not secrets.compare_digest(supplied, PORTAL_TOKEN):
+        raise HTTPException(401, "Unauthorized")
+    return await call_next(request)
+```
+
+Set `PORTAL_TOKEN` in `portal/.env` to a 32-char random string:
+
+```bash
+openssl rand -hex 16
+```
+
+### 3b. Frontend injects the token
+
+`portal/frontend/src/lib/api.ts` — the `request()` helper currently does:
+
+```ts
+const res = await fetch(`${BASE}${path}`, {
+  headers: { "Content-Type": "application/json", ...init?.headers },
+  ...init,
+});
+```
+
+Change to read `process.env.NEXT_PUBLIC_PORTAL_TOKEN` and add it to every
+request. Wait — `NEXT_PUBLIC_*` is exposed to the browser, which means
+anyone who views source can read the token. **That's fine for our threat
+model** (Mike's only sharing the URL with himself; the token just stops
+random crawlers and bots scanning for open APIs).
+
+Actually a cleaner option: have Next.js inject the token server-side via
+a rewrite-with-header. Cloudflare Pages' rewrites support adding headers.
+Then the token never reaches the browser. Decision for the implementation.
+
+### 3c. Local dev still works
+
+Skip the token when running locally:
+- Locally, `BACKEND_URL` is empty → Next.js proxies via rewrites
+- Locally, no `PORTAL_TOKEN` env var → backend middleware skips the check
+- In production, both are set
+
+### Open questions
+
+- Inject the token client-side (simpler, public knowledge) or server-side
+  via Pages middleware (slightly more secure, more wiring)?
+
+## Out of scope (skipped vs. previous draft)
+
+- ~~Phase 2 — Backend on Fly.io~~ → stays on Oracle ARM VM
+- ~~Phase 3 — Multi-tenancy (Supabase Auth, RLS, per-user secrets)~~ → single user
+- ~~Phase 4 — Cloudflare-native polish~~ → revisit if/when relevant
+- ~~Cloudflare Access~~ → replaced by simpler shared-token approach
+
+## Implementation order
+
+1. **Phase 1a** (free quick tunnel) — confirm everything works end-to-end with a `.trycloudflare.com` URL
+2. **Phase 3** (token auth) — lock it down before exposing publicly
+3. **Phase 2** (Pages deploy) — point the new frontend at the tunnel URL
+4. Use the portal from your phone / a coffee shop laptop, confirm it works
+5. **Decide on Phase 1b** — if the URL rotation becomes a real pain (more than once a month?), spend $10 on a stable domain. Otherwise stay free.
+
+**Total time estimate: 2–3 hours of actual work, almost all of it config / dashboard clicks rather than code.**
 
 ## Files this plan would touch
 
-For reference when estimating scope:
-
-- New: `portal/backend/Dockerfile`, `fly.toml`, `wrangler.toml`, `.github/workflows/deploy.yml`
-- Modified: `portal/frontend/next.config.ts` (BACKEND_URL env), `portal/backend/database.py` (per-user supabase client), every router (add user dependency)
-- New SQL migrations: `004_owner_user_id.sql`, `005_user_secrets.sql`, `006_rls_policies.sql`
-- New frontend pages: `/login`, `/connect-notebooklm`
+- New: `portal/frontend/wrangler.toml`
+- Modified: `portal/backend/main.py` (token middleware), `portal/.env.example` (document `PORTAL_TOKEN`), `portal/frontend/src/lib/api.ts` (token header — if going client-side route)
+- New: systemd unit file for `cloudflared` (one-time setup, not in repo)
