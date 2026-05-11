@@ -343,3 +343,54 @@ class ResearchStatusResponse(BaseModel):
 class ResearchImportRequest(BaseModel):
     task_id: str
     sources: list[ResearchSource]
+
+
+# ---------------------------------------------------------------------------
+# Library Notebooks
+# ---------------------------------------------------------------------------
+
+class LibraryNotebookRead(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    cover_emoji: str | None
+    hidden: bool
+    file_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class LibraryNotebookCreate(BaseModel):
+    title: str
+    cover_emoji: str | None = None
+
+
+class LibraryNotebookUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    cover_emoji: str | None = None
+
+
+class LibraryFileRead(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    original_name: str
+    mime_type: str | None
+    file_ext: str | None
+    file_category: str
+    r2_key: str | None
+    r2_url: str | None
+    file_size_bytes: int | None
+    notebook_id: UUID
+    added_at: datetime
+    last_modified: datetime | None
+
+
+class LibraryNotebookListResponse(BaseModel):
+    items: list[LibraryNotebookRead]
+    total: int
+
+
+class LibraryChatRequest(BaseModel):
+    message: str

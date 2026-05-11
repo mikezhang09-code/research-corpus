@@ -21,8 +21,9 @@ export type ChatPanelHandle = {
   send: (prompt: string) => void;
 };
 
-export const ChatPanel = forwardRef<ChatPanelHandle, { notebookId: string }>(function ChatPanel(
-  { notebookId },
+export const ChatPanel = forwardRef<ChatPanelHandle, { notebookId: string; apiPrefix?: string }>(
+function ChatPanel(
+  { notebookId, apiPrefix },
   ref,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -38,7 +39,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, { notebookId: string }>(fun
   // Load history on mount
   useEffect(() => {
     setHistoryLoading(true);
-    getChatHistory(notebookId)
+    getChatHistory(notebookId, { apiPrefix })
       .then((data) => {
         if (data.turns.length > 0) {
           const restored: ChatMessage[] = [];
@@ -74,6 +75,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, { notebookId: string }>(fun
     try {
       const res = await askChat(notebookId, trimmed, {
         conversationId: conversationId ?? undefined,
+        apiPrefix,
       });
       setConversationId(res.conversation_id);
       setMessages((prev) => [

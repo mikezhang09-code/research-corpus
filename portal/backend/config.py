@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # NotebookLM (optional override)
     notebooklm_home: str = ""
 
+    # Claude-compatible chat API (Xiaomi MiMo proxy)
+    anthropic_api_key: str = ""
+    anthropic_base_url: str = "https://token-plan-sgp.xiaomimimo.com/anthropic"
+    anthropic_model: str = "mimo-v2.5-pro"
+    anthropic_max_tokens: int = 2048
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",
         env_file_encoding="utf-8",

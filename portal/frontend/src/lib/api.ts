@@ -86,19 +86,22 @@ export const generateArtifact = (notebookId: string, data: GenerateRequest) =>
 export const askChat = (
   notebookId: string,
   question: string,
-  opts?: { conversationId?: string }
-) =>
-  request<ChatResponse>(`/api/notebooks/${notebookId}/chat`, {
+  opts?: { conversationId?: string; apiPrefix?: string }
+) => {
+  const prefix = opts?.apiPrefix ?? "/api/notebooks";
+  return request<ChatResponse>(`${prefix}/${notebookId}/chat`, {
     method: "POST",
     body: JSON.stringify({ question, conversation_id: opts?.conversationId ?? null }),
   });
+};
 
-export const getChatHistory = (notebookId: string, opts?: { conversationId?: string }) => {
+export const getChatHistory = (notebookId: string, opts?: { conversationId?: string; apiPrefix?: string }) => {
+  const prefix = opts?.apiPrefix ?? "/api/notebooks";
   const params = new URLSearchParams();
   if (opts?.conversationId) params.set("conversation_id", opts.conversationId);
   const qs = params.toString();
   return request<ChatHistoryResponse>(
-    `/api/notebooks/${notebookId}/chat/history${qs ? `?${qs}` : ""}`
+    `${prefix}/${notebookId}/chat/history${qs ? `?${qs}` : ""}`
   );
 };
 
@@ -310,4 +313,106 @@ export interface ResearchStatusResponse {
   task_id: string | null;
   summary: string;
   sources: ResearchSource[];
+}
+
+// ---- Library Notebooks ----
+
+export interface LibraryNotebook {
+  id: string;
+  title: string;
+  description: string;
+  cover_emoji: string | null;
+  hidden: boolean;
+  file_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LibraryFile {
+  id: string;
+  title: string;
+  description: string;
+  original_name: string;
+  mime_type: string | null;
+  file_ext: string | null;
+  file_category: string;
+  r2_url: string | null;
+  file_size_bytes: number | null;
+  notebook_id: string;
+  added_at: string;
+  last_modified: string | null;
+}
+
+export interface LibraryNotebookListResponse {
+  items: LibraryNotebook[];
+  total: number;
+}
+
+export const getLibraryNotebooks = (opts?: { includeHidden?: boolean }) =>
+  request<LibraryNotebookListResponse>(
+    `/api/library-notebooks${opts?.includeHidden ? "?include_hidden=true" : ""}`
+  );
+
+export const createLibraryNotebook = (data: { title: string; cover_emoji?: string | null }) =>
+  request<LibraryNotebook>("/api/library-notebooks", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getLibraryNotebook = (id: string) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${id}`);
+
+export const updateLibraryNotebook = (
+  id: string,
+  data: { title?: string; description?: string; cover_emoji?: string | null }
+) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteLibraryNotebook = (id: string) =>
+  request<void>(`/api/library-notebooks/${id}`, { method: "DELETE" });
+
+export const hideLibraryNotebook = (id: string) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${id}/hide`, { method: "POST" });
+
+export const restoreLibraryNotebook = (id: string) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${id}/restore`, { method: "POST" });
+
+export const getLibraryNotebookFiles = (id: string, params?: { category?: string }) => {
+  const q = params?.category ? `?category=${encodeURIComponent(params.category)}` : "";
+  return request<LibraryFile[]>(`/api/library-notebooks/${id}/files${q}`);
+};
+
+export async function uploadLibraryNotebookFile(
+  notebookId: string,
+  file: File,
+  category: string,
+  title?: string
+): Promise<LibraryFile> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("category", category);
+  if (title) form.append("title", title);
+  const res = await fetch(`${BASE}/api/library-notebooks/${notebookId}/files/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
+  request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, { method: "DELETE" });
+
+export async function getLibraryFileContent(
+  notebookId: string,
+  fileId: string,
+  format?: "html"
+): Promise<string> {
+  const qs = format ? `?format=${format}` : "";
+  const res = await fetch(`${BASE}/api/library-notebooks/${notebookId}/files/${fileId}/content${qs}`);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.text();
 }

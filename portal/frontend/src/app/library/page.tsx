@@ -1,216 +1,424 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Upload, Link2, Library, FileText, Music, Video, Image, Globe, Play, Folder } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Plus, MoreVertical, Pencil, EyeOff, Trash2, Loader2, ArrowUpDown,
+  RotateCcw, BookOpen,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { deleteLibraryItem, getCollections, getLibraryItems, type LibraryItem } from "@/lib/api";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  getLibraryNotebooks, updateLibraryNotebook, hideLibraryNotebook,
+  restoreLibraryNotebook, deleteLibraryNotebook, type LibraryNotebook,
+} from "@/lib/api";
+import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNotebookModal";
+import { EmojiPicker } from "@/components/notebook/EmojiPicker";
+import { emojiFromSeed } from "@/components/notebook/emoji";
 
-const SOURCE_ICONS: Record<string, React.ElementType> = {
-  upload: FileText,
-  drive: FileText,
-  youtube_link: Play,
-  web_link: Globe,
-};
+const PALETTE = [
+  { header: "bg-blue-100",    icon: "text-blue-500"    },
+  { header: "bg-violet-100",  icon: "text-violet-500"  },
+  { header: "bg-teal-100",    icon: "text-teal-500"    },
+  { header: "bg-amber-100",   icon: "text-amber-500"   },
+  { header: "bg-rose-100",    icon: "text-rose-500"    },
+  { header: "bg-indigo-100",  icon: "text-indigo-500"  },
+  { header: "bg-emerald-100", icon: "text-emerald-500" },
+  { header: "bg-orange-100",  icon: "text-orange-500"  },
+];
 
-const EXT_ICONS: Record<string, React.ElementType> = {
-  ".mp3": Music,
-  ".mp4": Video,
-  ".png": Image,
-  ".jpg": Image,
-  ".jpeg": Image,
-};
+function CreateNotebookCard({ onClick }: { onClick: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      className="group cursor-pointer rounded-2xl border border-dashed border-border/70 bg-background hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-3 py-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <div className="h-14 w-14 rounded-full bg-primary/10 group-hover:bg-primary/15 flex items-center justify-center transition-colors">
+        <Plus className="h-7 w-7 text-primary" />
+      </div>
+      <p className="text-sm font-medium text-foreground/80 group-hover:text-primary transition-colors">
+        Create new notebook
+      </p>
+    </div>
+  );
+}
 
-function LibraryCard({ item, onDelete }: { item: LibraryItem; onDelete: () => void }) {
-  const Icon = EXT_ICONS[item.file_ext ?? ""] ?? SOURCE_ICONS[item.source_type] ?? FileText;
-  const size = item.file_size_bytes
-    ? item.file_size_bytes > 1_000_000
-      ? `${(item.file_size_bytes / 1_000_000).toFixed(1)} MB`
-      : `${Math.round(item.file_size_bytes / 1024)} KB`
-    : null;
+function NotebookCard({
+  notebook, index, onOpen, onEdit, onHide, onRestore, onDelete,
+}: {
+  notebook: LibraryNotebook;
+  index: number;
+  onOpen: () => void;
+  onEdit: () => void;
+  onHide: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
+}) {
+  const color = PALETTE[index % PALETTE.length];
+  const created = new Date(notebook.created_at).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+  });
 
   return (
-    <Card className="group hover:shadow-md transition-shadow border-border/60">
-      <CardHeader className="pb-3">
-        <div className="flex items-start gap-3">
-          <div className="shrink-0 rounded-md bg-violet-500/10 p-2">
-            <Icon className="h-4 w-4 text-violet-600" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <CardTitle className="text-sm font-medium truncate">{item.title || item.original_name}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.original_name}</p>
-          </div>
-          <Badge
-            variant="outline"
-            className="shrink-0 text-xs capitalize border-violet-200 text-violet-600 bg-violet-500/5"
-          >
-            {item.source_type.replace("_", " ")}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 space-y-3">
-        {item.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className="group relative cursor-pointer text-left rounded-2xl overflow-hidden border border-border/50 bg-card shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <div className={`${color.header} flex items-center justify-center h-36 relative`}>
+        <span className="text-6xl leading-none select-none" aria-hidden="true">
+          {notebook.cover_emoji || emojiFromSeed(notebook.id)}
+        </span>
+        {notebook.hidden && (
+          <span className="absolute top-2 left-2 text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/80 text-foreground/60">
+            Hidden
+          </span>
         )}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-1 flex-wrap items-center">
-            {item.file_ext && (
-              <Badge variant="outline" className="text-xs uppercase">{item.file_ext.slice(1)}</Badge>
-            )}
-            {size && <span className="text-xs text-muted-foreground">{size}</span>}
-            {item.collection && (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Folder className="h-3 w-3" />{item.collection}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-1">
-            {(item.r2_url || item.external_url) && (
-              <a href={item.r2_url ?? item.external_url ?? "#"} target="_blank" rel="noopener noreferrer">
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">Open</Button>
-              </a>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-              onClick={async () => { await deleteLibraryItem(item.id); onDelete(); }}
+        <span className="absolute bottom-3 right-3 text-xs font-medium px-2 py-0.5 rounded-full bg-white/70 text-foreground/70">
+          {notebook.file_count} file{notebook.file_count !== 1 ? "s" : ""}
+        </span>
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="More actions"
+              onClick={(e) => e.stopPropagation()}
+              className="h-7 w-7 rounded-full bg-white/85 hover:bg-white shadow-sm flex items-center justify-center text-foreground/70 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-              Delete
-            </Button>
-          </div>
+              <MoreVertical className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="h-4 w-4" /> Edit (title &amp; emoji)
+              </DropdownMenuItem>
+              {notebook.hidden ? (
+                <DropdownMenuItem onClick={onRestore}>
+                  <RotateCcw className="h-4 w-4" /> Restore to list
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={onHide}>
+                  <EyeOff className="h-4 w-4" /> Hide from list
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onDelete} variant="destructive">
+                <Trash2 className="h-4 w-4" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        {item.tags.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
-            {item.tags.map((t) => (
-              <Badge key={t} variant="outline" className="text-xs text-muted-foreground">{t}</Badge>
-            ))}
-          </div>
+      </div>
+
+      <div className="px-4 py-3 bg-background">
+        <p className="font-semibold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+          {notebook.title}
+        </p>
+        {notebook.description && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{notebook.description}</p>
         )}
-      </CardContent>
-    </Card>
+        <p className="text-xs text-muted-foreground mt-1">{created}</p>
+      </div>
+    </div>
+  );
+}
+
+function EditDialog({ notebook, onClose, onSaved }: {
+  notebook: LibraryNotebook;
+  onClose: () => void;
+  onSaved: (updated: LibraryNotebook) => void;
+}) {
+  const [title, setTitle] = useState(notebook.title);
+  const [emoji, setEmoji] = useState<string>(notebook.cover_emoji || emojiFromSeed(notebook.id));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const titleChanged = title.trim() !== notebook.title;
+  const emojiChanged = emoji !== (notebook.cover_emoji || emojiFromSeed(notebook.id));
+  const dirty = titleChanged || emojiChanged;
+
+  async function handleSave() {
+    const t = title.trim();
+    if (!t) return;
+    if (!dirty) { onClose(); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateLibraryNotebook(notebook.id, {
+        ...(titleChanged ? { title: t } : {}),
+        ...(emojiChanged ? { cover_emoji: emoji } : {}),
+      });
+      onSaved(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit notebook</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-start gap-2">
+          <EmojiPicker value={emoji} onChange={setEmoji} />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }}
+            autoFocus
+            disabled={saving}
+            className="h-12"
+          />
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving || !title.trim() || !dirty}>
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export default function LibraryPage() {
-  const [items, setItems] = useState<LibraryItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [collections, setCollections] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const [activeCollection, setActiveCollection] = useState<string | null>(null);
+  const router = useRouter();
+  const [notebooks, setNotebooks] = useState<LibraryNotebook[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<LibraryNotebook | null>(null);
+  const [hideTarget, setHideTarget] = useState<LibraryNotebook | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LibraryNotebook | null>(null);
+  const [pendingAction, setPendingAction] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [sortBy, setSortBy] = useState<"recent" | "title" | "files">("recent");
 
-  async function load(q = search, col = activeCollection) {
+  async function load(includeHidden = showHidden) {
     setLoading(true);
-    const params: Record<string, string> = {};
-    if (q) params.search = q;
-    if (col) params.collection = col;
-    const [lib, cols] = await Promise.all([getLibraryItems(params), getCollections()]);
-    setItems(lib.items);
-    setTotal(lib.total);
-    setCollections(cols);
-    setLoading(false);
+    try {
+      const res = await getLibraryNotebooks({ includeHidden });
+      setNotebooks(res.items);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load(showHidden);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHidden]);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    const form = new FormData();
-    form.append("file", file);
-    form.append("title", file.name);
-    await fetch("http://localhost:8000/api/library/upload", { method: "POST", body: form });
-    await load();
-    setUploading(false);
-    e.target.value = "";
+  const filtered = useMemo(() => {
+    let list = notebooks;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((n) => n.title.toLowerCase().includes(q));
+    }
+    return [...list].sort((a, b) => {
+      if (sortBy === "title") return a.title.localeCompare(b.title);
+      if (sortBy === "files") return b.file_count - a.file_count;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [notebooks, search, sortBy]);
+
+  async function handleHide() {
+    if (!hideTarget) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      await hideLibraryNotebook(hideTarget.id);
+      setNotebooks((prev) =>
+        showHidden
+          ? prev.map((n) => n.id === hideTarget.id ? { ...n, hidden: true } : n)
+          : prev.filter((n) => n.id !== hideTarget.id)
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPendingAction(false);
+      setHideTarget(null);
+    }
+  }
+
+  async function handleRestore(nb: LibraryNotebook) {
+    try {
+      const updated = await restoreLibraryNotebook(nb.id);
+      setNotebooks((prev) => prev.map((n) => n.id === nb.id ? updated : n));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      await deleteLibraryNotebook(deleteTarget.id);
+      setNotebooks((prev) => prev.filter((n) => n.id !== deleteTarget.id));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPendingAction(false);
+      setDeleteTarget(null);
+    }
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-7xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <Library className="h-6 w-6 text-violet-600" />
-            Library
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {total} item{total !== 1 ? "s" : ""} · {collections.length} collection{collections.length !== 1 ? "s" : ""}
-          </p>
+    <div className="p-6 max-w-[1400px] mx-auto">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <BookOpen className="h-7 w-7 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold">Library</h1>
+            <p className="text-sm text-muted-foreground">
+              {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} />
-          <Button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            size="sm"
-            className="gap-2 bg-violet-600 hover:bg-violet-700 text-white"
-          >
-            <Upload className="h-4 w-4" />
-            {uploading ? "Uploading…" : "Upload file"}
-          </Button>
-        </div>
+        <Button onClick={() => setShowCreate(true)} className="gap-2">
+          <Plus className="h-4 w-4" />
+          New notebook
+        </Button>
       </div>
 
-      <div className="flex gap-6">
-        {/* Collections sidebar */}
-        {collections.length > 0 && (
-          <aside className="w-44 shrink-0 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground px-2 mb-2">Collections</p>
-            <button
-              onClick={() => { setActiveCollection(null); load(search, null); }}
-              className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors ${!activeCollection ? "bg-accent font-medium" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"}`}
-            >
-              All items
-            </button>
-            {collections.map((c) => (
-              <button
-                key={c}
-                onClick={() => { setActiveCollection(c); load(search, c); }}
-                className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center gap-2 transition-colors ${activeCollection === c ? "bg-accent font-medium" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"}`}
-              >
-                <Folder className="h-3.5 w-3.5 shrink-0" />{c}
-              </button>
-            ))}
-          </aside>
-        )}
-
-        <div className="flex-1 space-y-4 min-w-0">
-          <Input
-            placeholder="Search library…"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); load(e.target.value, activeCollection); }}
-            className="max-w-sm"
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <Input
+          placeholder="Search notebooks…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-xs"
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger className="inline-flex items-center gap-2 h-9 rounded-md border border-input bg-transparent hover:bg-accent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            Sort: {sortBy === "recent" ? "Recent" : sortBy === "title" ? "Title" : "Files"}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy("title")}>Title</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy("files")}>Files</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <label className="flex items-center gap-2 text-sm cursor-pointer ml-auto">
+          <input
+            type="checkbox"
+            checked={showHidden}
+            onChange={(e) => setShowHidden(e.target.checked)}
+            className="rounded"
           />
-
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-44 rounded-xl" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
-              <Library className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No items yet. Upload a file to get started.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {items.map((item) => (
-                <LibraryCard key={item.id} item={item} onDelete={() => load()} />
-              ))}
-            </div>
-          )}
-        </div>
+          Show hidden
+        </label>
       </div>
+
+      {actionError && (
+        <p className="text-sm text-destructive mb-4">{actionError}</p>
+      )}
+
+      {/* Grid */}
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-2xl overflow-hidden border border-border/50">
+              <Skeleton className="h-36 w-full" />
+              <div className="p-4 space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          <CreateNotebookCard onClick={() => setShowCreate(true)} />
+          {filtered.map((nb, i) => (
+            <NotebookCard
+              key={nb.id}
+              notebook={nb}
+              index={i}
+              onOpen={() => router.push(`/library/${nb.id}`)}
+              onEdit={() => setEditTarget(nb)}
+              onHide={() => setHideTarget(nb)}
+              onRestore={() => handleRestore(nb)}
+              onDelete={() => setDeleteTarget(nb)}
+            />
+          ))}
+        </div>
+      )}
+
+      {showCreate && <CreateLibraryNotebookModal onClose={() => setShowCreate(false)} />}
+
+      {editTarget && (
+        <EditDialog
+          notebook={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={(updated) => {
+            setNotebooks((prev) => prev.map((n) => n.id === updated.id ? updated : n));
+            setEditTarget(null);
+          }}
+        />
+      )}
+
+      <AlertDialog open={!!hideTarget} onOpenChange={(open) => { if (!open) setHideTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hide notebook?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{hideTarget?.title}&rdquo; will be hidden from the list. You can restore it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pendingAction}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleHide} disabled={pendingAction}>
+              {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : "Hide"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete notebook?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{deleteTarget?.title}&rdquo; and all its files will be permanently deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pendingAction}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={pendingAction}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

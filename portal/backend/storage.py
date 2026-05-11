@@ -58,3 +58,8 @@ def r2_key_for_upload(item_id: str, filename: str) -> str:
 
 def r2_key_for_drive(item_id: str, drive_file_id: str, ext: str) -> str:
     return f"library/drive/{item_id}/{drive_file_id}.{ext}"
+
+
+def get_file_bytes(key: str) -> bytes:
+    s = get_settings()
+    return get_r2().get_object(Bucket=s.r2_bucket_name, Key=key)["Body"].read()

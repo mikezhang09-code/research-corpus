@@ -242,8 +242,11 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
 - Add by URL / pasted text / file upload
 - "Discover sources" — fast or deep web research that returns a list of sources to import with one click
 
-**Personal library**
-- Independent storage of saved artifacts and uploads, with collections, tags, and full-text search
+**Library notebooks**
+- Create named notebooks (e.g. "Research for AI Development"), each with cover emoji, editable description, and per-notebook chat
+- Upload files into a notebook — auto-categorised as **Slides / Notes / Reports / Audio / Video / Mindmap / Images** by extension, overridable on upload
+- Inline viewers for Markdown, `.docx` (mammoth → HTML), JSON mind maps, images, audio, and video
+- Per-notebook chat powered by an Anthropic-compatible API (defaults to Xiaomi's MiMo proxy — model configurable via `ANTHROPIC_MODEL`); history persists across reloads
 
 ### Prerequisites
 
@@ -275,7 +278,7 @@ Two helper scripts run from the repo root:
 
 API docs at **http://localhost:8000/docs**, portal at **http://localhost:3000**.
 
-Click **Sync notebooks** to pull your existing NotebookLM notebooks into the portal. Use the **Library** page to upload files or import from Google Drive.
+Click **Sync notebooks** to pull your existing NotebookLM notebooks into the portal. Use the **Library** page to create notebooks, upload files into them, and chat with their contents.
 
 ---
 
