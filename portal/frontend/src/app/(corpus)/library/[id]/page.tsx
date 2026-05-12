@@ -21,6 +21,7 @@ import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
 import { LibraryNotebookDescription } from "@/components/library/LibraryNotebookDescription";
 import { FilesPanel } from "@/components/library/FilesPanel";
+import { CollapsedRail, CollapseButton } from "@/components/corpus/CollapsiblePanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function LibraryNotebookDetailPage() {
@@ -33,6 +34,8 @@ export default function LibraryNotebookDetailPage() {
   const [notebook, setNotebook] = useState<LibraryNotebook | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   useEffect(() => {
     getLibraryNotebook(notebookId)
@@ -65,8 +68,18 @@ export default function LibraryNotebookDetailPage() {
 
   return (
     <div className="flex h-full min-h-0">
+      {/* Left rail (collapsed) */}
+      {leftCollapsed && (
+        <CollapsedRail
+          side="left"
+          label="Folio"
+          onExpand={() => setLeftCollapsed(false)}
+        />
+      )}
+
       {/* Left column */}
-      <div className="flex-1 min-w-0 overflow-auto px-10 py-8 space-y-6 border-r border-rule">
+      {!leftCollapsed && (
+      <div className="flex-1 min-w-0 overflow-auto px-10 py-8 space-y-6 border-r border-rule relative">
         {/* Back navigation */}
         <div className="flex items-center gap-3">
           <Button
@@ -138,17 +151,33 @@ export default function LibraryNotebookDetailPage() {
             </TabsContent>
           )}
         </Tabs>
-      </div>
 
-      {/* Right column: chat panel (desktop only) */}
-      {!isMobile && (
-        <div className="w-[400px] shrink-0 h-full sticky top-0 bg-vellum">
+        <CollapseButton side="left" onClick={() => setLeftCollapsed(true)} />
+      </div>
+      )}
+
+      {/* Right column: chat panel (desktop only).
+          Grows to fill freed space when the left panel is collapsed. */}
+      {!isMobile && !rightCollapsed && (
+        <div
+          className={`${leftCollapsed ? "flex-1 min-w-0" : "w-[400px] shrink-0"} h-full sticky top-0 bg-vellum relative`}
+        >
           <ChatPanel
             ref={chatRef}
             notebookId={notebookId}
             apiPrefix="/api/library-notebooks"
           />
+          <CollapseButton side="right" onClick={() => setRightCollapsed(true)} />
         </div>
+      )}
+
+      {/* Right rail (collapsed) */}
+      {!isMobile && rightCollapsed && (
+        <CollapsedRail
+          side="right"
+          label="Marginalia"
+          onExpand={() => setRightCollapsed(false)}
+        />
       )}
 
       {/* Edit dialog */}

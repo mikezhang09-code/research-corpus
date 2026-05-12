@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronRight, Trash2,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronLeft, ChevronRight, Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { GenerateModal } from "@/components/generate/GenerateModal";
 import { SourcesPanel } from "@/components/notebook/SourcesPanel";
 import { ChatPanel, type ChatPanelHandle } from "@/components/notebook/ChatPanel";
 import { NotebookDescription } from "@/components/notebook/NotebookDescription";
+import { CollapsedRail, CollapseButton } from "@/components/corpus/CollapsiblePanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // ---- Artifact type config ----
@@ -50,6 +52,21 @@ const DEFAULT_CONFIG: ArtifactConfig = {
   icon: FileText, bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "Artifact",
 };
 
+// ---- Modal portal helper ----
+//
+// Modals are rendered as siblings of the ArtifactCard inside a CSS grid; if
+// any ancestor on the way up creates a containing block (transform, filter,
+// will-change, contain, backdrop-filter, etc.), `position: fixed` resolves
+// to that block instead of the viewport — the modal ends up tiny and the
+// card grid bleeds through. Portaling to document.body sidesteps it.
+function useModalPortal() {
+  const [mounted, setMounted] = useState(false);
+  // Intentional mount-once trigger so we can safely call createPortal(document.body).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMounted(true); }, []);
+  return mounted;
+}
+
 // ---- Markdown viewer modal ----
 
 function MarkdownModal({ portalId, title, onClose }: {
@@ -59,6 +76,7 @@ function MarkdownModal({ portalId, title, onClose }: {
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useModalPortal();
 
   useEffect(() => {
     getArtifactContent(portalId)
@@ -66,9 +84,10 @@ function MarkdownModal({ portalId, title, onClose }: {
       .catch((e) => setError(e.message));
   }, [portalId]);
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
@@ -111,7 +130,8 @@ function MarkdownModal({ portalId, title, onClose }: {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -147,6 +167,7 @@ function CsvTableModal({ portalId, title, onClose }: {
 }) {
   const [rows, setRows] = useState<string[][] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useModalPortal();
 
   useEffect(() => {
     getArtifactContent(portalId)
@@ -157,9 +178,10 @@ function CsvTableModal({ portalId, title, onClose }: {
   const headers = rows?.[0] ?? [];
   const dataRows = rows?.slice(1) ?? [];
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
@@ -216,7 +238,8 @@ function CsvTableModal({ portalId, title, onClose }: {
           <span>{dataRows.length} row{dataRows.length !== 1 ? "s" : ""} · {headers.length} column{headers.length !== 1 ? "s" : ""}</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -286,6 +309,7 @@ function MindMapModal({ portalId, title, onClose }: {
   const [root, setRoot] = useState<MindNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const mounted = useModalPortal();
 
   useEffect(() => {
     getArtifactContent(portalId)
@@ -306,9 +330,10 @@ function MindMapModal({ portalId, title, onClose }: {
     });
   }
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -375,7 +400,194 @@ function MindMapModal({ portalId, title, onClose }: {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ---- Flashcard viewer ----
+
+type Flashcard = { f: string; b: string };
+
+function FlashcardsModal({ portalId, title, onClose }: {
+  portalId: string;
+  title: string;
+  onClose: () => void;
+}) {
+  const [cards, setCards] = useState<Flashcard[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [index, setIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [correct, setCorrect] = useState(0);
+  const [incorrect, setIncorrect] = useState(0);
+  const mounted = useModalPortal();
+
+  useEffect(() => {
+    getArtifactContent(portalId)
+      .then((text) => {
+        try {
+          const parsed = JSON.parse(text);
+          // Backend stores `{title, cards: [{front, back}, ...]}`; tolerate
+          // a few other shapes seen in older exports / raw NotebookLM data.
+          const raw: unknown =
+            Array.isArray(parsed) ? parsed
+            : Array.isArray(parsed?.cards) ? parsed.cards
+            : Array.isArray(parsed?.flashcards) ? parsed.flashcards
+            : Array.isArray(parsed?.questions) ? parsed.questions
+            : null;
+          if (!Array.isArray(raw)) throw new Error("Could not find a card list in the JSON");
+          const normalized: Flashcard[] = raw
+            .map((c: Record<string, unknown>) => ({
+              f: String(c.f ?? c.front ?? c.question ?? ""),
+              b: String(c.b ?? c.back ?? c.answer ?? ""),
+            }))
+            .filter((c) => c.f || c.b);
+          if (normalized.length === 0) throw new Error("No cards found");
+          setCards(normalized);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Invalid flashcard JSON");
+        }
+      })
+      .catch((e) => setError(e.message));
+  }, [portalId]);
+
+  function go(delta: number) {
+    if (!cards) return;
+    const next = (index + delta + cards.length) % cards.length;
+    setIndex(next);
+    setFlipped(false);
+  }
+
+  function score(kind: "correct" | "incorrect") {
+    if (kind === "correct") setCorrect((n) => n + 1);
+    else setIncorrect((n) => n + 1);
+    if (cards && index < cards.length - 1) go(1);
+  }
+
+  // Keyboard nav
+  useEffect(() => {
+    if (!cards) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
+      else if (e.key === " " || e.key === "Enter") { e.preventDefault(); setFlipped((f) => !f); }
+      else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, index]);
+
+  if (!mounted) return null;
+  const current = cards?.[index];
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
+          <div className="min-w-0">
+            <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
+            {cards && (
+              <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute mt-1">
+                Based on {cards.length} card{cards.length !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6">
+          {error ? (
+            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Failed to load: {error}
+            </div>
+          ) : !cards || !current ? (
+            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : (
+            <>
+              {/* Card */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setFlipped((f) => !f)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFlipped((f) => !f); } }}
+                className="relative cursor-pointer bg-ink text-paper rounded-[3px] border border-ink shadow-[3px_3px_0_rgb(42_36_24_/_0.18)] min-h-[280px] flex flex-col p-6 hover:-translate-y-px transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta"
+              >
+                <span className="absolute top-3 left-4 font-mono text-[10px] tracking-[0.18em] uppercase text-paper/60">
+                  {index + 1} / {cards.length}
+                </span>
+                <span className="absolute top-3 right-4 font-mono text-[10px] tracking-[0.18em] uppercase text-paper/60">
+                  {flipped ? "Answer" : "Question"}
+                </span>
+                <div className="flex-1 flex items-center justify-center mt-6">
+                  <p className="font-serif text-[20px] leading-[1.4] text-paper text-center max-w-[90%] whitespace-pre-wrap">
+                    {flipped ? current.b : current.f}
+                  </p>
+                </div>
+                <div className="text-center font-mono text-[10px] tracking-[0.18em] uppercase text-paper/50 mt-2">
+                  {flipped ? "Tap to flip back" : "Tap to see answer"}
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="flex items-center justify-between gap-3 mt-5">
+                <button
+                  type="button"
+                  aria-label="Previous card"
+                  onClick={() => go(-1)}
+                  className="h-10 w-10 rounded-full border border-ink bg-vellum hover:bg-paper-deep flex items-center justify-center text-ink-fade hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => score("incorrect")}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-full border border-terracotta bg-vellum hover:bg-terracotta/10 text-terracotta font-mono text-[11px] tracking-[0.12em] uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    {incorrect}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => score("correct")}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-full border border-mint bg-vellum hover:bg-mint/10 text-mint font-mono text-[11px] tracking-[0.12em] uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint"
+                  >
+                    {correct}
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="Next card"
+                  onClick={() => go(1)}
+                  className="h-10 w-10 rounded-full border border-ink bg-vellum hover:bg-paper-deep flex items-center justify-center text-ink-fade hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-ink-mute text-center mt-4">
+                Space / Enter to flip · ← → to navigate · Esc to close
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -401,6 +613,7 @@ function ArtifactCard({
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [showCsv, setShowCsv] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
+  const [showFlashcards, setShowFlashcards] = useState(false);
   const cfg = TYPE_CONFIG[artifact.artifact_type] ?? DEFAULT_CONFIG;
   const Icon = cfg.icon;
 
@@ -413,6 +626,7 @@ function ArtifactCard({
   const isMarkdown = artifact.file_format === "md";
   const isCsv = artifact.file_format === "csv";
   const isMindMap = artifact.artifact_type === "mind_map";
+  const isFlashcards = artifact.artifact_type === "flashcards";
 
   async function handleSave() {
     setSaving(true);
@@ -474,6 +688,13 @@ function ArtifactCard({
           portalId={artifact.portal_id}
           title={artifact.title}
           onClose={() => setShowMindMap(false)}
+        />
+      )}
+      {showFlashcards && artifact.portal_id && (
+        <FlashcardsModal
+          portalId={artifact.portal_id}
+          title={artifact.title}
+          onClose={() => setShowFlashcards(false)}
         />
       )}
 
@@ -611,6 +832,16 @@ function ArtifactCard({
                     <Brain className="h-3 w-3" />
                     View
                   </Button>
+                ) : isFlashcards ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8 text-xs shrink-0"
+                    onClick={() => setShowFlashcards(true)}
+                  >
+                    <StickyNote className="h-3 w-3" />
+                    Study
+                  </Button>
                 ) : artifact.r2_url ? (
                   <a href={artifact.r2_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
                     <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs">
@@ -726,11 +957,23 @@ export default function NotebookDetailPage() {
 
   const savedCount = artifacts.filter((a) => a.download_status === "done").length;
   const isMobile = useIsMobile();
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   return (
     <div className="flex h-full min-h-0">
+      {/* Left rail (collapsed state) */}
+      {leftCollapsed && (
+        <CollapsedRail
+          side="left"
+          label="Notebook"
+          onExpand={() => setLeftCollapsed(false)}
+        />
+      )}
+
       {/* Left column */}
-      <div className="flex-1 min-w-0 overflow-auto px-10 py-8 space-y-6 border-r border-rule">
+      {!leftCollapsed && (
+      <div className="flex-1 min-w-0 overflow-auto px-10 py-8 space-y-6 border-r border-rule relative">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -849,14 +1092,38 @@ export default function NotebookDetailPage() {
             </TabsContent>
           )}
         </Tabs>
-      </div>
 
-      {/* Right column: chat panel (desktop only) */}
-      {!isMobile && (
-        <div className="w-[400px] shrink-0 h-full sticky top-0 bg-vellum">
+        <CollapseButton
+          side="left"
+          onClick={() => setLeftCollapsed(true)}
+        />
+      </div>
+      )}
+
+      {/* Right column: chat panel (desktop only).
+          When the left panel is collapsed, the chat grows to fill the freed
+          space; otherwise it sits at a fixed 400px on the right. */}
+      {!isMobile && !rightCollapsed && (
+        <div
+          className={`${leftCollapsed ? "flex-1 min-w-0" : "w-[400px] shrink-0"} h-full sticky top-0 bg-vellum relative`}
+        >
           <ChatPanel ref={chatRef} notebookId={notebookId} />
+          <CollapseButton
+            side="right"
+            onClick={() => setRightCollapsed(true)}
+          />
         </div>
+      )}
+
+      {/* Right rail (collapsed) */}
+      {!isMobile && rightCollapsed && (
+        <CollapsedRail
+          side="right"
+          label="Marginalia"
+          onExpand={() => setRightCollapsed(false)}
+        />
       )}
     </div>
   );
 }
+

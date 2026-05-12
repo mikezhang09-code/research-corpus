@@ -226,27 +226,39 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
 
 ### Features
 
-**Notebook landing page**
-- Live grid of your NotebookLM notebooks with cover emojis, real source counts, search, and sort by recent / alphabetical / most sources
+**Visual design**
+- Warm-paper / archival aesthetic — Cormorant Garamond for display, Source Serif 4 for body, JetBrains Mono for metadata
+- Shared **Masthead** with a NotebookLM / My Research section switch and a global **Output language** toggle (English / 中文) that's threaded into every chat and generate call
+- Two tabs share one shell via the `(corpus)` route group
+
+**Notebook landing page** (`/notebooklm` → "My Corpus")
+- Paper-card grid (`CorpusCard`) with deterministic accent swatches, cover emojis, source counts, search, and sort by recent / alphabetical / most sources
 - Create, edit (title + emoji), hide, restore, and delete notebooks — all synced to NotebookLM
 - Hide-from-list flag preserves saved artifacts and R2 files; delete cleans them up
 
 **Notebook detail page**
-- AI-generated overview + clickable suggested topics that auto-send into the chat
-- Persistent split-pane: artifacts/sources on the left, chat with citations on the right (or as a tab on mobile)
+- **Collapsible split-pane**: content + Marginalia (chat) — either side folds to a vertical rail; chat grows to fill the freed space when the content panel is collapsed
+- AI-generated Synopsis + clickable suggested topics that auto-send into the chat
 - Generate any NotebookLM studio type (audio, video, report, quiz, flashcards, infographic, slide deck, data table, mind map) and watch progress live
-- Inline viewers for Markdown reports, CSV data tables, and mind map JSON (rendered as a horizontal collapsible tree)
-- Save any artifact to the personal library so it survives notebook deletion
+- Inline viewers, all rendered via React portal with a frosted backdrop:
+  - **Markdown** reports
+  - **CSV** data tables (paper headers + alternating rows)
+  - **Mind maps** (horizontal collapsible tree, ink + terracotta nodes)
+  - **Flashcards** — interactive study mode with flip / prev / next / ✓ / ✗ counters and keyboard navigation
+- Per-artifact **Save to portal** (preserves the file in R2 + Supabase even if you delete it in NotebookLM) and **Delete from portal**
 
 **Sources panel**
 - Add by URL / pasted text / file upload
 - "Discover sources" — fast or deep web research that returns a list of sources to import with one click
 
-**Library notebooks**
+**Library notebooks** (`/library` → "My Research")
+- Folio-card grid (`FolioCard`) with five paper-cover variants (stitch / manila / index / pinned / photo), each chosen deterministically per folio id
 - Create named notebooks (e.g. "Research for AI Development"), each with cover emoji, editable description, and per-notebook chat
-- Upload files into a notebook — auto-categorised as **Slides / Notes / Reports / Audio / Video / Mindmap / Images** by extension, overridable on upload
+- Upload files — auto-categorised as **Slides / Notes / Reports / Audio / Video / Mindmap / Images** by extension, overridable on upload
 - Inline viewers for Markdown, `.docx` (mammoth → HTML), JSON mind maps, images, audio, and video
 - Per-notebook chat powered by an Anthropic-compatible API (defaults to Xiaomi's MiMo proxy — model configurable via `ANTHROPIC_MODEL`); history persists across reloads
+- System prompt is language-aware and explicitly tells the model it has no tools and no file-content access, so it answers directly instead of stalling with "let me check the files…"
+- Reasoning (`<think>…</think>` and Anthropic-style thinking blocks) is stripped server-side before the answer reaches the UI; `ANTHROPIC_MAX_TOKENS` defaults to **8192** so reasoning preambles don't truncate the actual answer
 
 ### Prerequisites
 

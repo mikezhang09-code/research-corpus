@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 from io import BytesIO
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
@@ -46,6 +48,44 @@ def _notebook_or_404(db, nb_id: UUID) -> dict:
     if not nb:
         raise HTTPException(404, "Notebook not found")
     return nb
+
+
+# MiMo's reasoning shows up in two places — as separate `thinking` /
+# `reasoning` content blocks (Anthropic-style), and as inline `<think>...
+# </think>` (or `<thinking>...</thinking>`) wrappers inside a regular text
+# block. Strip both so only the final answer is shown to the user.
+_REASONING_TAG_RE = re.compile(
+    r"<(?:think|thinking|reasoning)>.*?</(?:think|thinking|reasoning)>",
+    flags=re.DOTALL | re.IGNORECASE,
+)
+_REASONING_BLOCK_TYPES = {"thinking", "reasoning", "redacted_thinking"}
+
+
+def _extract_answer(content: list[Any]) -> str:
+    parts: list[str] = []
+    for block in content:
+        btype = getattr(block, "type", None)
+        if btype in _REASONING_BLOCK_TYPES:
+            continue
+        if btype == "text":
+            text = getattr(block, "text", "") or ""
+            if text:
+                parts.append(text)
+    joined = "".join(parts)
+    # Strip nested/repeated reasoning wrappers by re-applying until stable.
+    for _ in range(4):
+        new = _REASONING_TAG_RE.sub("", joined)
+        if new == joined:
+            break
+        joined = new
+    # Drop an unclosed reasoning block (truncated by max_tokens) so we don't
+    # leak half a thought.
+    open_tag = re.search(r"<(think|thinking|reasoning)>", joined, flags=re.IGNORECASE)
+    if open_tag:
+        joined = joined[: open_tag.start()]
+    # Strip orphan closing tags left behind by malformed nesting.
+    joined = re.sub(r"</(think|thinking|reasoning)>", "", joined, flags=re.IGNORECASE)
+    return joined.strip()
 
 
 def _enrich(nb: dict, file_count: int) -> dict:
@@ -279,13 +319,21 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
             "Always respond in English, regardless of the language used in "
             "the question or source materials."
         )
+    # The file list is metadata-only — we do NOT inject file contents here.
+    # If we let the model think it can "open" or "check" those files it
+    # produces a useless "let me look at the files first" stub and stops.
+    # So spell out the constraint and tell it to just answer.
     system_prompt = (
-        f'You are an AI assistant for the library notebook "{nb["title"]}".\n'
-        + (f"Description: {description}\n" if description else "")
-        + f"Files in this notebook:\n{file_lines}\n\n"
-        f"{lang_directive}\n"
-        "Answer questions based on the context of this notebook. "
-        "Be concise and helpful."
+        f'You are an AI assistant for the research notebook "{nb["title"]}".\n'
+        + (f"Notebook description: {description}\n" if description else "")
+        + f"Files attached to this notebook (titles only — you do NOT have access to their contents):\n{file_lines}\n\n"
+        f"{lang_directive}\n\n"
+        "Answer the user's question directly and substantively, in a single turn.\n"
+        "Use the notebook title and description for context, plus your own general knowledge. "
+        "If a question is broader than the notebook, answer from general knowledge.\n"
+        "DO NOT say things like \"let me check the files\", \"I'll look into\", \"please wait\", "
+        "or ask the user to provide more context — you cannot retrieve file contents and you have no tools. "
+        "Just give the best answer you can right now."
     )
 
     # Fetch prior turns as conversation history
@@ -305,11 +353,7 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
         system=system_prompt,
         messages=messages,
     )
-    # MiMo may emit `thinking` blocks alongside `text` — pick the first text block.
-    answer = next(
-        (b.text for b in response.content if getattr(b, "type", None) == "text"),
-        "",
-    )
+    answer = _extract_answer(response.content)
 
     # Persist both turns
     repo.append_chat(db, nb_id, "user", body.message)

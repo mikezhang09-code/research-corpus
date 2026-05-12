@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_base_url: str = "https://token-plan-sgp.xiaomimimo.com/anthropic"
     anthropic_model: str = "mimo-v2.5-pro"
-    anthropic_max_tokens: int = 2048
+    # MiMo emits a long `thinking` preamble that counts against this budget,
+    # so anything under ~6k routinely truncates the actual answer.
+    anthropic_max_tokens: int = 8192
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",
