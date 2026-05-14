@@ -279,18 +279,54 @@ notebooklm login
 notebooklm list
 ```
 
-### 2 — Start the backend and frontend
+### 2 — Run it (development)
 
 Two helper scripts run from the repo root:
 
 ```bash
 ./portal/start-backend.sh    # FastAPI on :8000  (uvicorn --reload, watching portal/backend)
-./portal/start-frontend.sh   # Next.js on :3000
+./portal/start-frontend.sh   # Next.js dev on :3000
 ```
 
 API docs at **http://localhost:8000/docs**, portal at **http://localhost:3000**.
 
 Click **Sync notebooks** to pull your existing NotebookLM notebooks into the portal. Use the **Library** page to create notebooks, upload files into them, and chat with their contents.
+
+### 3 — Run it always-on (production)
+
+For a persistent deployment (survives SSH disconnects and reboots), the portal runs as two
+systemd services instead of the dev scripts. Reference unit files and a runbook live in
+[`portal/deploy/`](portal/deploy/README.md).
+
+```bash
+# one-time install
+sudo cp portal/deploy/research-portal-backend.service  /etc/systemd/system/
+sudo cp portal/deploy/research-portal-frontend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now research-portal-backend.service
+sudo systemctl enable --now research-portal-frontend.service
+```
+
+- **Backend** — `uvicorn` (no `--reload`) bound to `127.0.0.1:8000`
+- **Frontend** — Next.js **production build** (`next start`) bound to `0.0.0.0:3000`; the
+  `/api/*` rewrite proxies to the backend, so the backend is never bound to a public interface
+
+Access it over a private network (e.g. Tailscale) at `http://<host>:3000`, or keep using an
+SSH port-forward to `localhost:3000`. Don't open port 3000 on your cloud provider's firewall —
+the private network plus that firewall are the single-user security boundary.
+
+**After pulling new code**, the dev hot-reload no longer applies — you must rebuild/restart:
+
+```bash
+# backend changes — just restart
+sudo systemctl restart research-portal-backend.service
+
+# frontend changes — rebuild first (production builds are not hot-reloaded)
+cd portal/frontend && npm run build
+sudo systemctl restart research-portal-frontend.service
+```
+
+See [`portal/deploy/README.md`](portal/deploy/README.md) for status/log commands and the full runbook.
 
 ---
 

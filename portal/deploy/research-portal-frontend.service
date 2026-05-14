@@ -1,0 +1,20 @@
+[Unit]
+Description=Research Corpus portal — Next.js frontend (production)
+After=research-portal-backend.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Documents/research-corpus/portal/frontend
+Environment=NODE_ENV=production
+# Bind 0.0.0.0 so both the SSH port-forward (localhost:3000) and the
+# Tailscale IP (100.x:3000) reach it. Public inbound is still blocked by
+# the Oracle Cloud security list — Tailscale + that firewall are the
+# security boundary. The next binary forwards SIGTERM cleanly (npm does not).
+ExecStart=/home/ubuntu/Documents/research-corpus/portal/frontend/node_modules/.bin/next start -H 0.0.0.0 -p 3000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
