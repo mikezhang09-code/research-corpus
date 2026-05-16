@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, ChevronRight, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 
 // ---- layout constants ----
 const MM_NW = 180;
@@ -73,6 +74,7 @@ export function MindMapModal({
   const [root, setRoot] = useState<MindNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     fetchContent()
@@ -99,12 +101,15 @@ export function MindMapModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-7xl max-h-[90vh]"} flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-auto flex-1 bg-paper">

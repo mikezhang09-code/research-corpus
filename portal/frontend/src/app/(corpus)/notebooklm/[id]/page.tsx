@@ -18,6 +18,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { getLiveArtifacts, getArtifactContent, saveArtifact, deleteArtifact, type LiveArtifact } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
@@ -76,6 +77,7 @@ function MarkdownModal({ portalId, title, onClose }: {
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const mounted = useModalPortal();
 
   useEffect(() => {
@@ -90,13 +92,16 @@ function MarkdownModal({ portalId, title, onClose }: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-3xl max-h-[85vh]"} flex flex-col overflow-hidden`}>
         {/* Modal header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
@@ -167,6 +172,7 @@ function CsvTableModal({ portalId, title, onClose }: {
 }) {
   const [rows, setRows] = useState<string[][] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const mounted = useModalPortal();
 
   useEffect(() => {
@@ -184,12 +190,15 @@ function CsvTableModal({ portalId, title, onClose }: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-6xl max-h-[85vh]"} flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-auto flex-1">
@@ -309,6 +318,7 @@ function MindMapModal({ portalId, title, onClose }: {
   const [root, setRoot] = useState<MindNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState(false);
   const mounted = useModalPortal();
 
   useEffect(() => {
@@ -336,12 +346,15 @@ function MindMapModal({ portalId, title, onClose }: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-7xl max-h-[90vh]"} flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-auto flex-1 bg-paper">
@@ -420,6 +433,7 @@ function FlashcardsModal({ portalId, title, onClose }: {
   const [flipped, setFlipped] = useState(false);
   const [correct, setCorrect] = useState(0);
   const [incorrect, setIncorrect] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const mounted = useModalPortal();
 
   useEffect(() => {
@@ -486,7 +500,7 @@ function FlashcardsModal({ portalId, title, onClose }: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-2xl flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-2xl"} flex flex-col overflow-hidden`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <div className="min-w-0">
@@ -497,9 +511,12 @@ function FlashcardsModal({ portalId, title, onClose }: {
               </p>
             )}
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Body */}
@@ -1105,7 +1122,7 @@ export default function NotebookDetailPage() {
           space; otherwise it sits at a fixed 400px on the right. */}
       {!isMobile && !rightCollapsed && (
         <div
-          className={`${leftCollapsed ? "flex-1 min-w-0" : "w-[400px] shrink-0"} h-full sticky top-0 bg-vellum relative`}
+          className={`${leftCollapsed ? "flex-1 min-w-0" : "w-[400px] shrink-0"} h-[calc(100dvh-7rem)] sticky top-0 bg-vellum relative`}
         >
           <ChatPanel ref={chatRef} notebookId={notebookId} />
           <CollapseButton

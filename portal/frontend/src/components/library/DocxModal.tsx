@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getLibraryFileContent } from "@/lib/api";
+import { getLibraryFileBlob } from "@/lib/api";
+import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 
+// docx-preview renders the .docx client-side with much higher fidelity than
+// mammoth's server-side HTML conversion — in particular it keeps numbers
+// and formatting inside table cells, which mammoth was dropping.
 export function DocxModal({
   notebookId,
   fileId,
@@ -16,13 +20,39 @@ export function DocxModal({
   title: string;
   onClose: () => void;
 }) {
-  const [html, setHtml] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    getLibraryFileContent(notebookId, fileId, "html")
-      .then(setHtml)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    let cancelled = false;
+    (async () => {
+      try {
+        const buf = await getLibraryFileBlob(notebookId, fileId);
+        if (cancelled) return;
+        const { renderAsync } = await import("docx-preview");
+        if (!containerRef.current) return;
+        containerRef.current.innerHTML = "";
+        await renderAsync(buf, containerRef.current, undefined, {
+          className: "docx-preview",
+          inWrapper: false,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: false,
+          experimental: true,
+          useBase64URL: true,
+        });
+        if (!cancelled) setLoading(false);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : String(e));
+          setLoading(false);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, [notebookId, fileId]);
 
   return (
@@ -30,34 +60,34 @@ export function DocxModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-4xl max-h-[90vh]"} flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-6 py-4">
-          {error ? (
+        <div className="overflow-y-auto flex-1 px-6 py-4 bg-paper-light">
+          {error && (
             <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase">
               <AlertCircle className="h-4 w-4 shrink-0" />
               Failed to load: {error}
             </div>
-          ) : html === null ? (
+          )}
+          {loading && !error && (
             <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : (
-            /* mammoth output from user's own uploaded docx — no sanitization needed */
-            <div
-              className="prose prose-sm max-w-none font-serif
-                prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
-                prose-p:leading-relaxed prose-p:text-ink-soft
-                prose-strong:text-ink prose-a:text-terracotta"
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
           )}
+          <div
+            ref={containerRef}
+            className="docx-preview-host"
+            style={{ display: loading || error ? "none" : "block" }}
+          />
         </div>
       </div>
     </div>

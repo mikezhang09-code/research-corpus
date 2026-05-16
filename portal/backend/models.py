@@ -396,3 +396,11 @@ class LibraryNotebookListResponse(BaseModel):
 class LibraryChatRequest(BaseModel):
     message: str
     language: str | None = None  # "en" | "zh"; user's preferred output language
+
+
+class GenerateDescriptionRequest(BaseModel):
+    language: str | None = None  # "en" | "zh"; user's preferred output language
+
+
+class GenerateDescriptionResponse(BaseModel):
+    description: str

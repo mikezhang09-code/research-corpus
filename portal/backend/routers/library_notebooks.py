@@ -15,6 +15,8 @@ from ..models import (
     ChatHistoryResponse,
     ChatResponse,
     ChatTurn,
+    GenerateDescriptionRequest,
+    GenerateDescriptionResponse,
     LibraryChatRequest,
     LibraryFileRead,
     LibraryNotebookCreate,
@@ -31,6 +33,8 @@ _CATEGORY_MAP: dict[str, str] = {
     ".ppt": "slide", ".pptx": "slide", ".key": "slide", ".odp": "slide",
     ".txt": "note", ".md": "note",
     ".docx": "report", ".doc": "report", ".pdf": "report",
+    ".xlsx": "spreadsheet", ".xls": "spreadsheet", ".xlsm": "spreadsheet",
+    ".csv": "spreadsheet", ".ods": "spreadsheet",
     ".mp3": "audio", ".m4a": "audio", ".wav": "audio", ".ogg": "audio", ".aac": "audio",
     ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
     ".json": "mindmap",
@@ -292,6 +296,14 @@ async def chat_history(nb_id: UUID):
     return ChatHistoryResponse(turns=turns, conversation_id=str(nb_id))
 
 
+@router.delete("/{nb_id}/chat/history", status_code=204)
+async def clear_chat_history(nb_id: UUID):
+    """Wipe persisted chat history for this folio (used after saving a chat as a note)."""
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+    repo.clear_chat_history(db, nb_id)
+
+
 @router.post("/{nb_id}/chat", response_model=ChatResponse)
 async def chat(nb_id: UUID, body: LibraryChatRequest):
     db = get_supabase()
@@ -367,3 +379,65 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
         is_follow_up=turn_number > 1,
         references=[],
     )
+
+
+@router.post("/{nb_id}/description/generate", response_model=GenerateDescriptionResponse)
+async def generate_description(nb_id: UUID, body: GenerateDescriptionRequest):
+    """Draft a short description for the folio from its title + file list.
+
+    Does NOT persist — the frontend fills the textarea so the user can edit
+    and Save manually.
+    """
+    db = get_supabase()
+    nb = _notebook_or_404(db, nb_id)
+    s = get_settings()
+    if not s.anthropic_api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY is not configured")
+
+    files = repo.list_files(db, nb_id)
+    file_lines = "\n".join(
+        f"  - {f.get('title') or f.get('original_name', 'Untitled')} "
+        f"({f.get('file_category', 'file')})"
+        for f in files
+    ) or "  (no files yet)"
+
+    lang = (body.language or "en").lower()
+    if lang == "zh":
+        lang_directive = "Write the description in Simplified Chinese (中文)."
+    else:
+        lang_directive = "Write the description in English."
+
+    system_prompt = (
+        "You are an AI research librarian. Write a concise 2–3 sentence "
+        "description for a research folio that summarises what kind of "
+        "research or material it collects, based on its title and the file "
+        "list. You only see file titles — not contents — so stay general; "
+        "rely on the titles and categories.\n\n"
+        f"{lang_directive}\n\n"
+        "Return ONLY the description text. No preamble, no quotes, no "
+        "markdown headers, no bullet points. Do not start with phrases like "
+        "\"This folio…\", \"Here is…\", or \"The notebook…\"."
+    )
+    user_prompt = (
+        f"Folio title: {nb['title']}\n"
+        f"Files:\n{file_lines}"
+    )
+
+    import anthropic
+    client = anthropic.AsyncAnthropic(
+        api_key=s.anthropic_api_key,
+        base_url=s.anthropic_base_url,
+    )
+    response = await client.messages.create(
+        model=s.anthropic_model,
+        max_tokens=s.anthropic_max_tokens,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    description = _extract_answer(response.content)
+    # Strip any stray surrounding quotes the model might still add despite
+    # the instruction.
+    description = description.strip().strip('"').strip("'").strip()
+    if not description:
+        raise HTTPException(502, "Model returned an empty description")
+    return GenerateDescriptionResponse(description=description)

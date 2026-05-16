@@ -422,3 +422,27 @@ export async function getLibraryFileContent(
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.text();
 }
+
+/** Raw bytes — for client-side renderers (docx-preview, SheetJS, etc). */
+export async function getLibraryFileBlob(
+  notebookId: string,
+  fileId: string
+): Promise<ArrayBuffer> {
+  const res = await fetch(`${BASE}/api/library-notebooks/${notebookId}/files/${fileId}/content`);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.arrayBuffer();
+}
+
+/** Wipe persisted chat history for a library folio (used after saving as a note). */
+export const clearLibraryChatHistory = (notebookId: string) =>
+  request<void>(`/api/library-notebooks/${notebookId}/chat/history`, { method: "DELETE" });
+
+/** Draft a description for the folio (does NOT persist — user reviews + Saves). */
+export const generateLibraryNotebookDescription = (
+  notebookId: string,
+  language?: string,
+) =>
+  request<{ description: string }>(
+    `/api/library-notebooks/${notebookId}/description/generate`,
+    { method: "POST", body: JSON.stringify({ language: language ?? null }) },
+  );

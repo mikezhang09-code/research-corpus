@@ -160,7 +160,7 @@ export default function LibraryNotebookDetailPage() {
           Grows to fill freed space when the left panel is collapsed. */}
       {!isMobile && !rightCollapsed && (
         <div
-          className={`${leftCollapsed ? "flex-1 min-w-0" : "w-[400px] shrink-0"} h-full sticky top-0 bg-vellum relative`}
+          className={`${leftCollapsed ? "flex-1 min-w-0" : "w-[400px] shrink-0"} h-[calc(100dvh-7rem)] sticky top-0 bg-vellum relative`}
         >
           <ChatPanel
             ref={chatRef}

@@ -240,7 +240,7 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
 - **Collapsible split-pane**: content + Marginalia (chat) — either side folds to a vertical rail; chat grows to fill the freed space when the content panel is collapsed
 - AI-generated Synopsis + clickable suggested topics that auto-send into the chat
 - Generate any NotebookLM studio type (audio, video, report, quiz, flashcards, infographic, slide deck, data table, mind map) and watch progress live
-- Inline viewers, all rendered via React portal with a frosted backdrop:
+- Inline viewers — every one is portal-rendered with a frosted backdrop and has a **maximize / restore** toggle to fill the viewport:
   - **Markdown** reports
   - **CSV** data tables (paper headers + alternating rows)
   - **Mind maps** (horizontal collapsible tree, ink + terracotta nodes)
@@ -254,9 +254,16 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
 **Library notebooks** (`/library` → "My Research")
 - Folio-card grid (`FolioCard`) with five paper-cover variants (stitch / manila / index / pinned / photo), each chosen deterministically per folio id
 - Create named notebooks (e.g. "Research for AI Development"), each with cover emoji, editable description, and per-notebook chat
-- Upload files — auto-categorised as **Slides / Notes / Reports / Audio / Video / Mindmap / Images** by extension, overridable on upload
-- Inline viewers for Markdown, `.docx` (mammoth → HTML), JSON mind maps, images, audio, and video
+- **Generate description with AI** — drafts a 2–3 sentence summary from the folio's title + file list (no file-content access), language-aware, fills the textarea so you can edit before saving
+- Upload files — auto-categorised as **Slides / Notes / Reports / Spreadsheets / Audio / Video / Mindmap / Images** by extension, overridable on upload
+- Inline viewers, all maximize/restore-able:
+  - **Markdown** / `.txt`
+  - **DOCX** — client-side via `docx-preview` (preserves table content and numbers that the previous `mammoth` server-side conversion was dropping)
+  - **Excel / CSV / ODS** — multi-sheet workbook viewer via SheetJS, with paper-styled tabs per sheet
+  - JSON **mind maps**, images, audio, video
 - Per-notebook chat powered by an Anthropic-compatible API (defaults to Xiaomi's MiMo proxy — model configurable via `ANTHROPIC_MODEL`); history persists across reloads
+  - **Save chat as note** button: dumps the conversation to a Markdown file in the folio's Notes, then clears server + client history so the next turn starts fresh
+  - Chat column is viewport-bounded (`calc(100dvh - 7rem)`) — messages scroll inside the panel instead of growing the page
 - System prompt is language-aware and explicitly tells the model it has no tools and no file-content access, so it answers directly instead of stalling with "let me check the files…"
 - Reasoning (`<think>…</think>` and Anthropic-style thinking blocks) is stripped server-side before the answer reaches the UI; `ANTHROPIC_MAX_TOKENS` defaults to **8192** so reasoning preambles don't truncate the actual answer
 

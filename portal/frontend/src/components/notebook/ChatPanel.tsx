@@ -1,14 +1,19 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { MessageSquare, Plus, Send, Loader2, AlertCircle } from "lucide-react";
+import { MessageSquare, Plus, Send, Loader2, AlertCircle, Save } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { askChat, getChatHistory, type ChatReference, type ChatTurn } from "@/lib/api";
+import {
+  askChat, getChatHistory, uploadLibraryNotebookFile, clearLibraryChatHistory,
+  type ChatReference, type ChatTurn,
+} from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
+
+const LIBRARY_PREFIX = "/api/library-notebooks";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -37,6 +42,11 @@ function ChatPanel(
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [language] = useLanguage();
+  const [saving, setSaving] = useState(false);
+
+  // Save-as-folio-note is only meaningful for the library chat path (folios).
+  // NotebookLM's chat lives in Google's product and isn't ours to persist.
+  const canSave = apiPrefix === LIBRARY_PREFIX && messages.length > 0 && !loading && !saving;
 
   // Load history on mount
   useEffect(() => {
@@ -125,6 +135,36 @@ function ChatPanel(
     textareaRef.current?.focus();
   }
 
+  async function handleSaveAsNote() {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const now = new Date();
+      const stampDisplay = now.toLocaleString("en-US", {
+        year: "numeric", month: "short", day: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+      const stampFile = now
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .replace(/T/, "_")
+        .slice(0, 19);
+      const md = buildChatMarkdown(messages, stampDisplay);
+      const file = new File([md], `chat-${stampFile}.md`, { type: "text/markdown" });
+      await uploadLibraryNotebookFile(notebookId, file, "note", `Chat — ${stampDisplay}`);
+      // Wipe server-side history so the next turn starts fresh
+      await clearLibraryChatHistory(notebookId);
+      setConversationId(null);
+      setMessages([]);
+      textareaRef.current?.focus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-vellum">
       {/* Header */}
@@ -133,15 +173,31 @@ function ChatPanel(
           <MessageSquare className="h-4 w-4 text-terracotta" />
           <span className="font-serif-display italic text-[16px] tracking-tight text-ink">Marginalia</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 h-7 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink"
-          onClick={handleNewChat}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New
-        </Button>
+        <div className="flex items-center gap-1">
+          {apiPrefix === LIBRARY_PREFIX && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 h-7 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink disabled:opacity-50"
+              onClick={handleSaveAsNote}
+              disabled={!canSave}
+              title="Save this chat to the folio as a note, then clear it"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {saving ? "Saving" : "Save"}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 h-7 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink"
+            onClick={handleNewChat}
+            disabled={saving}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </Button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -293,4 +349,29 @@ function CitationBadge({
       )}
     </span>
   );
+}
+
+function buildChatMarkdown(messages: ChatMessage[], stamp: string): string {
+  const lines: string[] = [`# Chat — ${stamp}`, ""];
+  let turn = 1;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role === "user") {
+      lines.push(`## Question ${turn}`, "", m.text.trim(), "");
+      const a = messages[i + 1];
+      if (a && a.role === "assistant") {
+        lines.push("### Answer", "", a.text.trim(), "");
+        i++;
+        turn++;
+      } else {
+        lines.push("### Answer", "", "_(no answer captured)_", "");
+        turn++;
+      }
+      lines.push("---", "");
+    } else if (m.role === "assistant" && i === 0) {
+      // orphan assistant message — render under a placeholder question
+      lines.push("## Answer", "", m.text.trim(), "", "---", "");
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }

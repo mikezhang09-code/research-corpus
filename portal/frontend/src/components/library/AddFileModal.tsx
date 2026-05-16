@@ -7,20 +7,23 @@ import { Input } from "@/components/ui/input";
 import { uploadLibraryNotebookFile, type LibraryFile } from "@/lib/api";
 
 const CATEGORY_OPTIONS = [
-  { value: "note",    label: "Note"     },
-  { value: "report",  label: "Report"   },
-  { value: "slide",   label: "Slide"    },
-  { value: "audio",   label: "Audio"    },
-  { value: "video",   label: "Video"    },
-  { value: "mindmap", label: "Mind Map" },
-  { value: "image",   label: "Image"    },
-  { value: "other",   label: "Other"    },
+  { value: "note",        label: "Note"        },
+  { value: "report",      label: "Report"      },
+  { value: "slide",       label: "Slide"       },
+  { value: "spreadsheet", label: "Spreadsheet" },
+  { value: "audio",       label: "Audio"       },
+  { value: "video",       label: "Video"       },
+  { value: "mindmap",     label: "Mind Map"    },
+  { value: "image",       label: "Image"       },
+  { value: "other",       label: "Other"       },
 ];
 
 const CATEGORY_MAP: Record<string, string> = {
   ".ppt": "slide", ".pptx": "slide", ".key": "slide", ".odp": "slide",
   ".txt": "note", ".md": "note",
   ".docx": "report", ".doc": "report", ".pdf": "report",
+  ".xlsx": "spreadsheet", ".xls": "spreadsheet", ".xlsm": "spreadsheet",
+  ".csv": "spreadsheet", ".ods": "spreadsheet",
   ".mp3": "audio", ".m4a": "audio", ".wav": "audio", ".ogg": "audio", ".aac": "audio",
   ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
   ".json": "mindmap",

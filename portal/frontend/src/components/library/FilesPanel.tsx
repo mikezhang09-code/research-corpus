@@ -9,14 +9,15 @@ import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
 
 const CATEGORIES = [
-  { value: "",        label: "All"      },
-  { value: "slide",   label: "Slides"   },
-  { value: "note",    label: "Notes"    },
-  { value: "report",  label: "Reports"  },
-  { value: "audio",   label: "Audio"    },
-  { value: "video",   label: "Video"    },
-  { value: "mindmap", label: "Mindmap"  },
-  { value: "image",   label: "Images"   },
+  { value: "",            label: "All"          },
+  { value: "slide",       label: "Slides"       },
+  { value: "note",        label: "Notes"        },
+  { value: "report",      label: "Reports"      },
+  { value: "spreadsheet", label: "Spreadsheets" },
+  { value: "audio",       label: "Audio"        },
+  { value: "video",       label: "Video"        },
+  { value: "mindmap",     label: "Mindmap"      },
+  { value: "image",       label: "Images"       },
 ];
 
 export function FilesPanel({ notebookId }: { notebookId: string }) {

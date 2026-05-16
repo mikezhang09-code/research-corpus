@@ -382,4 +382,49 @@
   .src-thumb-pptx::before { content: ""; position: absolute; left: 6px; right: 6px; top: 10px; bottom: 18px; background: rgb(184 92 56 / 0.25); border: 1px solid var(--color-ink); }
   .src-thumb-url   { background: var(--color-paper-light); }
   .src-thumb-url::before { content: "↗"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--color-ink-fade); }
+
+  /* Excel viewer — SheetJS emits a plain <table> with inline styles.
+     We don't override its column widths/spans, but we wrap it in our palette
+     for readability against the vellum modal background. */
+  .excel-sheet {
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .excel-sheet table {
+    border-collapse: collapse;
+    background: var(--color-vellum);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-ink);
+  }
+  .excel-sheet td, .excel-sheet th {
+    border: 1px solid var(--color-rule);
+    padding: 4px 8px;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+  .excel-sheet tr:nth-child(even) td { background: var(--color-paper-light); }
+  .excel-sheet th {
+    background: var(--color-paper-deep);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+  }
+
+  /* docx-preview viewer — give the rendered page room to breathe inside
+     our paper modal and keep table cells readable. */
+  .docx-preview-host {
+    background: var(--color-vellum);
+    color: var(--color-ink);
+  }
+  .docx-preview-host .docx-preview { padding: 4px; }
+  .docx-preview-host table {
+    border-collapse: collapse;
+  }
+  .docx-preview-host table td, .docx-preview-host table th {
+    border: 1px solid var(--color-rule);
+    padding: 4px 8px;
+    vertical-align: top;
+  }
 }

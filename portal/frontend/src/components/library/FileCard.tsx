@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Layers, FileText, BookOpen, Music, Video, Network, ImageIcon, File,
+  Layers, FileText, BookOpen, Music, Video, Network, ImageIcon, File, Table,
   ExternalLink, Trash2, Loader2, AlertCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -10,7 +10,9 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { deleteLibraryNotebookFile, getLibraryFileContent, type LibraryFile } from "@/lib/api";
+import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { DocxModal } from "./DocxModal";
+import { ExcelModal } from "./ExcelModal";
 import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
@@ -18,17 +20,18 @@ import { MindMapModal } from "./MindMapModal";
 
 // ---- category config ----
 
-type CatKey = "slide" | "note" | "report" | "audio" | "video" | "mindmap" | "image" | "other";
+type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "image" | "other";
 
 const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string; iconColor: string; label: string }> = {
-  slide:   { icon: Layers,    bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Slide"    },
-  note:    { icon: FileText,  bg: "#ece0c2", iconColor: "var(--color-ochre)",      label: "Note"     },
-  report:  { icon: BookOpen,  bg: "#cfd9e3", iconColor: "var(--color-sky)",        label: "Report"   },
-  audio:   { icon: Music,     bg: "#dcd5e8", iconColor: "var(--color-lavender)",   label: "Audio"    },
-  video:   { icon: Video,     bg: "#ecd5d6", iconColor: "var(--color-blush)",      label: "Video"    },
-  mindmap: { icon: Network,   bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Mind Map" },
-  image:   { icon: ImageIcon, bg: "#dde2cf", iconColor: "var(--color-mint)",       label: "Image"    },
-  other:   { icon: File,      bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "File" },
+  slide:       { icon: Layers,    bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Slide"       },
+  note:        { icon: FileText,  bg: "#ece0c2", iconColor: "var(--color-ochre)",      label: "Note"        },
+  report:      { icon: BookOpen,  bg: "#cfd9e3", iconColor: "var(--color-sky)",        label: "Report"      },
+  spreadsheet: { icon: Table,     bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Spreadsheet" },
+  audio:       { icon: Music,     bg: "#dcd5e8", iconColor: "var(--color-lavender)",   label: "Audio"       },
+  video:       { icon: Video,     bg: "#ecd5d6", iconColor: "var(--color-blush)",      label: "Video"       },
+  mindmap:     { icon: Network,   bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Mind Map"    },
+  image:       { icon: ImageIcon, bg: "#dde2cf", iconColor: "var(--color-mint)",       label: "Image"       },
+  other:       { icon: File,      bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "File" },
 };
 
 const DEFAULT_CAT = FILE_CATEGORY_CONFIG.other;
@@ -54,6 +57,7 @@ function MarkdownModal({
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     getLibraryFileContent(notebookId, fileId)
@@ -66,12 +70,15 @@ function MarkdownModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className={`bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full ${expanded ? EXPANDED_MODAL : "max-w-3xl max-h-[85vh]"} flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
-            ✕
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
+              ✕
+            </Button>
+          </div>
         </div>
         <div className="overflow-y-auto flex-1 px-8 py-6">
           {error ? (
@@ -112,16 +119,17 @@ export function FileCard({
   const Icon = cfg.icon;
 
   const [deleting, setDeleting] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "mindmap" | "image" | "audio" | "video" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
   const isDocx = ext === ".docx" || ext === ".doc";
+  const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
   const isMindMap = file.file_category === "mindmap";
   const isImage = file.file_category === "image";
   const isAudio = file.file_category === "audio";
   const isVideo = file.file_category === "video";
-  const hasViewer = isMarkdown || isDocx || isMindMap || isImage || isAudio || isVideo;
+  const hasViewer = isMarkdown || isDocx || isExcel || isMindMap || isImage || isAudio || isVideo;
 
   const added = new Date(file.added_at).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
@@ -140,6 +148,7 @@ export function FileCard({
 
   function openViewer() {
     if (isDocx) setViewer("docx");
+    else if (isExcel) setViewer("excel");
     else if (isMarkdown) setViewer("markdown");
     else if (isMindMap) setViewer("mindmap");
     else if (isImage) setViewer("image");
@@ -154,6 +163,9 @@ export function FileCard({
       )}
       {viewer === "docx" && (
         <DocxModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />
+      )}
+      {viewer === "excel" && (
+        <ExcelModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />
       )}
       {viewer === "mindmap" && (
         <MindMapModal

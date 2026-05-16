@@ -114,3 +114,7 @@ def append_chat(db: Client, nb_id: UUID, role: str, content: str) -> dict:
         .execute()
         .data[0]
     )
+
+
+def clear_chat_history(db: Client, nb_id: UUID) -> None:
+    db.table(CHAT_TABLE).delete().eq("notebook_id", str(nb_id)).execute()
