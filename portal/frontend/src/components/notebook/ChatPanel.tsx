@@ -128,10 +128,23 @@ function ChatPanel(
     }
   }
 
-  function handleNewChat() {
+  async function handleNewChat() {
+    // For library folios, also wipe the persisted server-side history so
+    // re-entering the folio doesn't restore what we just cleared. NotebookLM
+    // chats live in Google's product, not ours — we only clear locally.
+    let clearErr: string | null = null;
+    if (apiPrefix === LIBRARY_PREFIX) {
+      try {
+        await clearLibraryChatHistory(notebookId);
+      } catch (e) {
+        // Surface the error but still clear locally so the user gets a
+        // fresh canvas — better than a "broken New button" feel.
+        clearErr = e instanceof Error ? e.message : String(e);
+      }
+    }
     setConversationId(null);
     setMessages([]);
-    setError(null);
+    setError(clearErr);
     textareaRef.current?.focus();
   }
 
