@@ -88,6 +88,129 @@ _REASONING_TAG_RE = re.compile(
 _REASONING_BLOCK_TYPES = {"thinking", "reasoning", "redacted_thinking"}
 
 
+# ---------------------------------------------------------------------------
+# File-text extraction for chat context
+# ---------------------------------------------------------------------------
+
+# Per-file truncation cap — keeps a single huge file from monopolising context.
+_FILE_CHAR_CAP = 30_000
+# Total cap across all files in one chat request. MiMo's context is generous
+# but not unlimited; ~200k chars is roughly 50k tokens which leaves room for
+# the conversation history and the model's reasoning.
+_TOTAL_CHAR_CAP = 200_000
+# Strip HTML tags without pulling in BeautifulSoup for one regex.
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_WHITESPACE_RE = re.compile(r"[ \t]+")
+_HTML_NEWLINES_RE = re.compile(r"\n{3,}")
+
+
+def _extract_file_text(file_row: dict) -> str | None:
+    """Return plain-text contents for a library file, or None if not extractable.
+
+    Best-effort across formats — text-bearing files get a real extraction,
+    binary media (audio/video/images) return None so the prompt can list them
+    as "(binary, not shown)" rather than crash.
+    """
+    if not file_row.get("r2_key"):
+        return None
+    ext = (file_row.get("file_ext") or "").lower()
+    try:
+        data = get_file_bytes(file_row["r2_key"])
+    except Exception:
+        return None
+
+    try:
+        if ext in (".md", ".txt"):
+            return data.decode("utf-8", errors="replace")
+        if ext == ".json":
+            return data.decode("utf-8", errors="replace")
+        if ext in (".html", ".htm"):
+            text = data.decode("utf-8", errors="replace")
+            text = _HTML_TAG_RE.sub(" ", text)
+            text = _HTML_WHITESPACE_RE.sub(" ", text)
+            return _HTML_NEWLINES_RE.sub("\n\n", text).strip()
+        if ext in (".docx", ".doc"):
+            import mammoth
+            result = mammoth.extract_raw_text(BytesIO(data))
+            return result.value
+        if ext == ".pdf":
+            import pypdf
+            reader = pypdf.PdfReader(BytesIO(data))
+            pages = []
+            for i, page in enumerate(reader.pages, 1):
+                try:
+                    pages.append(f"--- page {i} ---\n{page.extract_text() or ''}")
+                except Exception:
+                    pages.append(f"--- page {i} (extraction failed) ---")
+                if sum(len(p) for p in pages) > _FILE_CHAR_CAP:
+                    break
+            return "\n\n".join(pages)
+        if ext in (".xlsx", ".xlsm", ".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(BytesIO(data), read_only=True, data_only=True)
+            chunks: list[str] = []
+            for ws in wb.worksheets:
+                chunks.append(f"=== sheet: {ws.title} ===")
+                for row in ws.iter_rows(values_only=True):
+                    cells = [str(c) if c is not None else "" for c in row]
+                    if any(cells):
+                        chunks.append("\t".join(cells))
+                    if sum(len(c) for c in chunks) > _FILE_CHAR_CAP:
+                        chunks.append("(truncated)")
+                        return "\n".join(chunks)
+            return "\n".join(chunks)
+        if ext == ".csv":
+            return data.decode("utf-8", errors="replace")
+        # Best-effort utf-8 for unknown text-y files; binary returns garbage
+        # but is rejected by the truncation step below.
+        try:
+            text = data.decode("utf-8")
+            return text if text.isprintable() or "\n" in text else None
+        except UnicodeDecodeError:
+            return None
+    except Exception:
+        return None
+
+
+def _build_files_context(files: list[dict]) -> str:
+    """Format file contents for inclusion in the system prompt.
+
+    Files exceeding _FILE_CHAR_CAP are truncated with a marker. Once the
+    running total exceeds _TOTAL_CHAR_CAP, remaining files are listed by
+    title only.
+    """
+    if not files:
+        return "  (no files in this notebook)"
+    sections: list[str] = []
+    total = 0
+    for f in files:
+        title = f.get("title") or f.get("original_name", "Untitled")
+        category = f.get("file_category", "file")
+        header = f"=== FILE: {title}  [category: {category}] ==="
+
+        if total >= _TOTAL_CHAR_CAP:
+            sections.append(f"{header}\n(omitted — context budget reached)")
+            continue
+
+        text = _extract_file_text(f)
+        if text is None:
+            sections.append(f"{header}\n(binary or non-text — contents not shown)")
+            continue
+        text = text.strip()
+        if not text:
+            sections.append(f"{header}\n(empty)")
+            continue
+        if len(text) > _FILE_CHAR_CAP:
+            text = text[:_FILE_CHAR_CAP] + f"\n…(truncated, full file is {len(text):,} chars)"
+        # If even truncated this would blow the total budget, cut harder.
+        remaining = _TOTAL_CHAR_CAP - total
+        if len(text) > remaining:
+            text = text[:remaining] + "\n…(truncated to fit total context budget)"
+        sections.append(f"{header}\n{text}")
+        total += len(text)
+    return "\n\n".join(sections)
+
+
 def _extract_answer(content: list[Any]) -> str:
     parts: list[str] = []
     for block in content:
@@ -372,15 +495,12 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
     if not s.anthropic_api_key:
         raise HTTPException(503, "ANTHROPIC_API_KEY is not configured")
 
-    # Build system prompt from notebook context
+    # Build system prompt from notebook context — including extracted text
+    # from attached files so the model can actually answer from them. Heavy
+    # files are truncated per-file and overall to fit the model's context
+    # window; binary media (audio/video/images) get a placeholder line.
     files = repo.list_files(db, nb_id)
-    file_lines = (
-        "\n".join(
-            f"  - {f.get('title') or f.get('original_name', 'Untitled')} ({f.get('file_category', 'file')})"
-            for f in files
-        )
-        or "  (no files yet)"
-    )
+    files_context = _build_files_context(files)
     description = nb.get("description") or ""
     lang = (body.language or "en").lower()
     if lang == "zh":
@@ -393,21 +513,22 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
             "Always respond in English, regardless of the language used in "
             "the question or source materials."
         )
-    # The file list is metadata-only — we do NOT inject file contents here.
-    # If we let the model think it can "open" or "check" those files it
-    # produces a useless "let me look at the files first" stub and stops.
-    # So spell out the constraint and tell it to just answer.
     system_prompt = (
         f'You are an AI assistant for the research notebook "{nb["title"]}".\n'
-        + (f"Notebook description: {description}\n" if description else "")
-        + f"Files attached to this notebook (titles only — you do NOT have access to their contents):\n{file_lines}\n\n"
+        + (f"Notebook description: {description}\n\n" if description else "\n")
+        + "The following files are attached to this notebook. Their extracted "
+        "text appears below — treat it as the PRIMARY source for your answer. "
+        "Some files may be truncated (very long PDFs, large spreadsheets) or "
+        "shown as placeholders (audio/video/images, binary formats).\n\n"
+        f"{files_context}\n\n"
         f"{lang_directive}\n\n"
         "Answer the user's question directly and substantively, in a single turn.\n"
-        "Use the notebook title and description for context, plus your own general knowledge. "
-        "If a question is broader than the notebook, answer from general knowledge.\n"
-        'DO NOT say things like "let me check the files", "I\'ll look into", "please wait", '
-        "or ask the user to provide more context — you cannot retrieve file contents and you have no tools. "
-        "Just give the best answer you can right now."
+        "Cite information from the files when you draw on them — name the file "
+        "(e.g. \"per the 中科大.xlsx data…\"). If the files don't cover the "
+        "question, fall back to your own general knowledge and say so explicitly.\n"
+        'DO NOT say things like "let me check the files", "I\'ll look into", '
+        '"please wait", or ask the user to provide more context — the file '
+        "contents are already in this prompt and you have no tools."
     )
 
     # Fetch prior turns as conversation history

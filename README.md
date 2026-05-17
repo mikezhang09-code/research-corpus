@@ -262,9 +262,10 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
   - **Excel / CSV / ODS** — multi-sheet workbook viewer via SheetJS, with paper-styled tabs per sheet
   - JSON **mind maps**, images, audio, video
 - Per-notebook chat powered by an Anthropic-compatible API (defaults to Xiaomi's MiMo proxy — model configurable via `ANTHROPIC_MODEL`); history persists across reloads
+  - **File contents are injected as primary context** — extracted text from `.pdf` (pypdf), `.docx` (mammoth), `.xlsx`/`.xls`/`.xlsm` (openpyxl), `.md`/`.txt`/`.csv`/`.json` (raw), `.html` (regex-stripped) is shipped in the system prompt so the model answers from actual file data, not just titles. Audio/video/image files show up as placeholders. Per-file cap 30 k chars, total cap 200 k chars to stay within context window.
   - **Save chat as note** button: dumps the conversation to a Markdown file in the folio's Notes, then clears server + client history so the next turn starts fresh
   - Chat column is viewport-bounded (`calc(100dvh - 7rem)`) — messages scroll inside the panel instead of growing the page
-- System prompt is language-aware and explicitly tells the model it has no tools and no file-content access, so it answers directly instead of stalling with "let me check the files…"
+- System prompt is language-aware, instructs the model to cite the source filename inline, and falls back to general knowledge only when the files don't cover the question
 - Reasoning (`<think>…</think>` and Anthropic-style thinking blocks) is stripped server-side before the answer reaches the UI; `ANTHROPIC_MAX_TOKENS` defaults to **8192** so reasoning preambles don't truncate the actual answer
 
 ### Prerequisites
