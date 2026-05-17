@@ -134,6 +134,10 @@ strict_optional = true
 target-version = "py310"
 line-length = 100
 src = ["src", "tests"]
+# `portal/` is the personal FastAPI/Next.js app built on top of this library —
+# not part of the published package. Exclude it from the upstream-library
+# lint+format gate; the frontend has its own tsc/eslint pipeline.
+extend-exclude = ["portal"]
 
 [tool.ruff.lint]
 select = [
