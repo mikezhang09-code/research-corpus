@@ -50,7 +50,9 @@ def restore(db: Client, nb_id: UUID) -> dict | None:
 
 def get_file_counts(db: Client) -> dict[str, int]:
     """Return {notebook_id: count} for all notebooks."""
-    rows = db.table(ITEMS_TABLE).select("notebook_id").not_.is_("notebook_id", "null").execute().data
+    rows = (
+        db.table(ITEMS_TABLE).select("notebook_id").not_.is_("notebook_id", "null").execute().data
+    )
     counts: dict[str, int] = {}
     for row in rows:
         nid = row.get("notebook_id")
@@ -87,6 +89,20 @@ def delete_file(db: Client, nb_id: UUID, file_id: UUID) -> dict | None:
     rows = (
         db.table(ITEMS_TABLE)
         .delete()
+        .eq("id", str(file_id))
+        .eq("notebook_id", str(nb_id))
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def update_file(db: Client, nb_id: UUID, file_id: UUID, patch: dict) -> dict | None:
+    if not patch:
+        return get_file(db, nb_id, file_id)
+    rows = (
+        db.table(ITEMS_TABLE)
+        .update(patch)
         .eq("id", str(file_id))
         .eq("notebook_id", str(nb_id))
         .execute()

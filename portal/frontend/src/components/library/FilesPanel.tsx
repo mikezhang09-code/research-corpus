@@ -48,6 +48,10 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
     setFiles((prev) => prev.filter((f) => f.id !== fileId));
   }
 
+  function handleFileUpdated(updated: LibraryFile) {
+    setFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+  }
+
   return (
     <div className="space-y-4">
       {/* Category filter pills */}
@@ -106,6 +110,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
               key={f.id}
               file={f}
               onDeleted={() => handleFileDeleted(f.id)}
+              onUpdated={handleFileUpdated}
             />
           ))}
         </div>
@@ -116,8 +121,9 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           notebookId={notebookId}
           onClose={() => setShowAdd(false)}
           onUploaded={(newFile) => {
+            // Stream each completed upload into the list; modal closes itself
+            // when the whole batch finishes.
             setFiles((prev) => [newFile, ...prev]);
-            setShowAdd(false);
           }}
         />
       )}

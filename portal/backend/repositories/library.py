@@ -9,7 +9,13 @@ from ..models import LibraryFilters, LibraryItemCreate, LibraryItemUpdate
 TABLE = "library_items"
 
 
-def create(db: Client, data: LibraryItemCreate, r2_key: str | None = None, r2_url: str | None = None, file_size_bytes: int | None = None) -> dict:
+def create(
+    db: Client,
+    data: LibraryItemCreate,
+    r2_key: str | None = None,
+    r2_url: str | None = None,
+    file_size_bytes: int | None = None,
+) -> dict:
     row = data.model_dump(mode="json", exclude_none=True)
     if r2_key:
         row["r2_key"] = r2_key

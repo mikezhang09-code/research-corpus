@@ -36,7 +36,9 @@ def list_all(db: Client, filters: ArtifactFilters) -> tuple[list[dict], int]:
         q = q.contains("tags", [filters.tag])
     if filters.search:
         q = q.ilike("title", f"%{filters.search}%")
-    q = q.order("portal_added_at", desc=True).range(filters.offset, filters.offset + filters.limit - 1)
+    q = q.order("portal_added_at", desc=True).range(
+        filters.offset, filters.offset + filters.limit - 1
+    )
     resp = q.execute()
     return resp.data, resp.count or 0
 
@@ -78,7 +80,9 @@ def delete(db: Client, artifact_id: UUID) -> None:
 
 
 def set_library_item(db: Client, artifact_id: UUID, library_item_id: UUID) -> None:
-    db.table(TABLE).update({"library_item_id": str(library_item_id)}).eq("id", str(artifact_id)).execute()
+    db.table(TABLE).update({"library_item_id": str(library_item_id)}).eq(
+        "id", str(artifact_id)
+    ).execute()
 
 
 def upsert_from_nlm(db: Client, data: NLMArtifactCreate) -> dict:

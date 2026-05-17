@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 async def download_artifact_to_r2(artifact_id: UUID) -> None:
     """Background task: fetch artifact from NotebookLM → upload to R2 → update Supabase."""
     from ..database import get_supabase
-    from ..repositories import artifacts as repo
     from ..models import DownloadStatus
+    from ..repositories import artifacts as repo
     from ..storage import r2_key_for_artifact, upload_file
 
     db = get_supabase()
@@ -44,8 +44,12 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
         url = upload_file(key, data, mime)
 
         repo.update_download_status(
-            db, artifact_id, DownloadStatus.DONE,
-            r2_key=key, r2_url=url, file_size_bytes=len(data),
+            db,
+            artifact_id,
+            DownloadStatus.DONE,
+            r2_key=key,
+            r2_url=url,
+            file_size_bytes=len(data),
         )
         logger.info("Artifact %s downloaded and uploaded to R2 (%d bytes)", artifact_id, len(data))
 
@@ -54,7 +58,9 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
         repo.update_download_status(db, artifact_id, DownloadStatus.FAILED, error=str(exc))
 
 
-async def _download_by_type(client, notebook_id: str, artifact_type: str, fmt: str, out_path: str) -> None:
+async def _download_by_type(
+    client, notebook_id: str, artifact_type: str, fmt: str, out_path: str
+) -> None:
     a = client.artifacts
     match artifact_type:
         case "audio":

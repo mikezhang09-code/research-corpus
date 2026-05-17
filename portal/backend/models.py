@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -27,6 +26,7 @@ class LibrarySourceType(str, Enum):
 # Notebooks
 # ---------------------------------------------------------------------------
 
+
 class NotebookRead(BaseModel):
     id: str
     title: str
@@ -41,6 +41,7 @@ class NotebookRead(BaseModel):
 # ---------------------------------------------------------------------------
 # NLM Artifacts
 # ---------------------------------------------------------------------------
+
 
 class NLMArtifactRead(BaseModel):
     id: UUID
@@ -90,6 +91,7 @@ class NLMArtifactListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Library Items
 # ---------------------------------------------------------------------------
+
 
 class LibraryItemRead(BaseModel):
     id: UUID
@@ -145,6 +147,7 @@ class LibraryItemListResponse(BaseModel):
 # Notebook create + source add
 # ---------------------------------------------------------------------------
 
+
 class NotebookCreateRequest(BaseModel):
     title: str
     cover_emoji: str | None = None
@@ -166,11 +169,12 @@ class SourceTextRequest(BaseModel):
 
 class SourceRead(BaseModel):
     """Live source state from the NLM API."""
+
     id: str
     title: str | None = None
     url: str | None = None
-    kind: str           # SourceType enum value, e.g. "pdf", "youtube", "web_page"
-    status: int         # 1=processing, 2=ready, 3=error
+    kind: str  # SourceType enum value, e.g. "pdf", "youtube", "web_page"
+    status: int  # 1=processing, 2=ready, 3=error
     is_ready: bool
     is_processing: bool
     is_error: bool
@@ -181,12 +185,14 @@ class SourceRead(BaseModel):
 # Generate request (single endpoint dispatches to all 9 generate_* methods)
 # ---------------------------------------------------------------------------
 
+
 class GenerateRequest(BaseModel):
     """Unified request for POST /api/notebooks/{id}/generate.
 
     Only fields relevant to `artifact_type` are read; the rest are ignored.
     Allowed string values mirror the CLI flag choices in src/notebooklm/cli/generate.py.
     """
+
     artifact_type: str  # audio | video | report | quiz | flashcards | infographic | slide_deck | data_table | mind_map
     description: str = ""
     language: str | None = None
@@ -196,24 +202,29 @@ class GenerateRequest(BaseModel):
     audio_length: str | None = None  # short | default | long
     # video
     video_format: str | None = None  # explainer | brief | cinematic
-    video_style: str | None = None   # auto | classic | whiteboard | kawaii | anime | watercolor | retro-print | heritage | paper-craft
+    video_style: str | None = (
+        None  # auto | classic | whiteboard | kawaii | anime | watercolor | retro-print | heritage | paper-craft
+    )
     # report
     report_format: str | None = None  # briefing-doc | study-guide | blog-post | custom
     # slide_deck
     deck_format: str | None = None  # detailed | presenter
     deck_length: str | None = None  # default | short
     # quiz / flashcards
-    quiz_quantity: str | None = None    # fewer | standard | more
+    quiz_quantity: str | None = None  # fewer | standard | more
     quiz_difficulty: str | None = None  # easy | medium | hard
     # infographic
     info_orientation: str | None = None  # landscape | portrait | square
-    info_detail: str | None = None       # concise | standard | detailed
-    info_style: str | None = None        # auto | sketch-note | professional | bento-grid | editorial | instructional | bricks | clay | anime | kawaii | scientific
+    info_detail: str | None = None  # concise | standard | detailed
+    info_style: str | None = (
+        None  # auto | sketch-note | professional | bento-grid | editorial | instructional | bricks | clay | anime | kawaii | scientific
+    )
 
 
 # ---------------------------------------------------------------------------
 # Live artifacts (read directly from NLM API, merged with portal state)
 # ---------------------------------------------------------------------------
+
 
 class LiveArtifact(BaseModel):
     nlm_id: str
@@ -243,6 +254,7 @@ class LiveArtifactsResponse(BaseModel):
 # Shared query params
 # ---------------------------------------------------------------------------
 
+
 class ArtifactFilters(BaseModel):
     artifact_type: str | None = None
     download_status: str | None = None
@@ -266,6 +278,7 @@ class LibraryFilters(BaseModel):
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
+
 
 class ChatRequest(BaseModel):
     question: str
@@ -302,6 +315,7 @@ class ChatHistoryResponse(BaseModel):
 # Notebook description (AI summary + suggested topics)
 # ---------------------------------------------------------------------------
 
+
 class SuggestedTopicRead(BaseModel):
     question: str
     prompt: str
@@ -316,10 +330,11 @@ class NotebookDescriptionResponse(BaseModel):
 # Web research / "Discover sources"
 # ---------------------------------------------------------------------------
 
+
 class ResearchStartRequest(BaseModel):
     query: str
-    source: str = "web"   # "web" or "drive"
-    mode: str = "fast"    # "fast" or "deep"
+    source: str = "web"  # "web" or "drive"
+    mode: str = "fast"  # "fast" or "deep"
 
 
 class ResearchStartResponse(BaseModel):
@@ -334,7 +349,7 @@ class ResearchSource(BaseModel):
 
 
 class ResearchStatusResponse(BaseModel):
-    status: str   # "in_progress" | "completed" | "no_research"
+    status: str  # "in_progress" | "completed" | "no_research"
     query: str = ""
     task_id: str | None = None
     summary: str = ""
@@ -349,6 +364,7 @@ class ResearchImportRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Library Notebooks
 # ---------------------------------------------------------------------------
+
 
 class LibraryNotebookRead(BaseModel):
     id: UUID
@@ -386,6 +402,12 @@ class LibraryFileRead(BaseModel):
     notebook_id: UUID
     added_at: datetime
     last_modified: datetime | None
+
+
+class LibraryFileUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    file_category: str | None = None
 
 
 class LibraryNotebookListResponse(BaseModel):

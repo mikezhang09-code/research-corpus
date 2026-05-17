@@ -33,19 +33,25 @@ async def generate_then_download(
 
         async with await NotebookLMClient.from_storage() as client:
             result = await client.artifacts.wait_for_completion(
-                notebook_id, task_id, timeout=timeout,
+                notebook_id,
+                task_id,
+                timeout=timeout,
             )
     except TimeoutError as exc:
         logger.warning("NLM generation timed out for %s: %s", task_id, exc)
         repo.update_download_status(
-            db, portal_id, DownloadStatus.FAILED,
+            db,
+            portal_id,
+            DownloadStatus.FAILED,
             error=f"NLM generation timed out after {int(timeout)}s",
         )
         return
     except Exception as exc:
         logger.exception("Failed waiting for NLM artifact %s", task_id)
         repo.update_download_status(
-            db, portal_id, DownloadStatus.FAILED,
+            db,
+            portal_id,
+            DownloadStatus.FAILED,
             error=f"Wait error: {exc}",
         )
         return
@@ -53,7 +59,9 @@ async def generate_then_download(
     if result.is_failed:
         logger.warning("NLM reported failure for %s: %s", task_id, result.error)
         repo.update_download_status(
-            db, portal_id, DownloadStatus.FAILED,
+            db,
+            portal_id,
+            DownloadStatus.FAILED,
             error=result.error or "NLM generation failed",
         )
         return

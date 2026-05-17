@@ -52,7 +52,7 @@ async def upload_file_endpoint(
     file: UploadFile = File(...),
     title: str = Form(""),
     description: str = Form(""),
-    tags: str = Form(""),           # comma-separated
+    tags: str = Form(""),  # comma-separated
     collection: str = Form(""),
 ):
     data = await file.read()

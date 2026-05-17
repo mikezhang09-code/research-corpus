@@ -15,6 +15,7 @@ async def lifespan(app: FastAPI):
     # Validate connections on startup
     from .database import get_supabase
     from .storage import get_r2
+
     get_supabase()
     get_r2()
     yield

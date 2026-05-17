@@ -412,6 +412,16 @@ export async function uploadLibraryNotebookFile(
 export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
   request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, { method: "DELETE" });
 
+export const updateLibraryNotebookFile = (
+  notebookId: string,
+  fileId: string,
+  patch: { title?: string; description?: string; file_category?: string },
+) =>
+  request<LibraryFile>(`/api/library-notebooks/${notebookId}/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
 export async function getLibraryFileContent(
   notebookId: string,
   fileId: string,

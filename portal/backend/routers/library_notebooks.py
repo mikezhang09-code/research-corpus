@@ -4,6 +4,7 @@ import mimetypes
 import re
 from io import BytesIO
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
@@ -19,27 +20,49 @@ from ..models import (
     GenerateDescriptionResponse,
     LibraryChatRequest,
     LibraryFileRead,
+    LibraryFileUpdate,
     LibraryNotebookCreate,
     LibraryNotebookListResponse,
     LibraryNotebookRead,
     LibraryNotebookUpdate,
 )
 from ..repositories import library_notebooks as repo
-from ..storage import delete_file, get_file_bytes, public_url, r2_key_for_upload, upload_file
+from ..storage import delete_file, get_file_bytes, r2_key_for_upload, upload_file
 
 router = APIRouter(prefix="/api/library-notebooks", tags=["library-notebooks"])
 
 _CATEGORY_MAP: dict[str, str] = {
-    ".ppt": "slide", ".pptx": "slide", ".key": "slide", ".odp": "slide",
-    ".txt": "note", ".md": "note",
-    ".docx": "report", ".doc": "report", ".pdf": "report",
-    ".xlsx": "spreadsheet", ".xls": "spreadsheet", ".xlsm": "spreadsheet",
-    ".csv": "spreadsheet", ".ods": "spreadsheet",
-    ".mp3": "audio", ".m4a": "audio", ".wav": "audio", ".ogg": "audio", ".aac": "audio",
-    ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
+    ".ppt": "slide",
+    ".pptx": "slide",
+    ".key": "slide",
+    ".odp": "slide",
+    ".txt": "note",
+    ".md": "note",
+    ".docx": "report",
+    ".doc": "report",
+    ".pdf": "report",
+    ".xlsx": "spreadsheet",
+    ".xls": "spreadsheet",
+    ".xlsm": "spreadsheet",
+    ".csv": "spreadsheet",
+    ".ods": "spreadsheet",
+    ".mp3": "audio",
+    ".m4a": "audio",
+    ".wav": "audio",
+    ".ogg": "audio",
+    ".aac": "audio",
+    ".mp4": "video",
+    ".mov": "video",
+    ".avi": "video",
+    ".mkv": "video",
+    ".webm": "video",
     ".json": "mindmap",
-    ".png": "image", ".jpg": "image", ".jpeg": "image",
-    ".gif": "image", ".webp": "image", ".svg": "image",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".gif": "image",
+    ".webp": "image",
+    ".svg": "image",
 }
 
 
@@ -99,6 +122,7 @@ def _enrich(nb: dict, file_count: int) -> dict:
 # ---------------------------------------------------------------------------
 # Notebook CRUD
 # ---------------------------------------------------------------------------
+
 
 @router.get("", response_model=LibraryNotebookListResponse)
 async def list_notebooks(include_hidden: bool = Query(False)):
@@ -174,6 +198,7 @@ async def restore_notebook(nb_id: UUID):
 # Files
 # ---------------------------------------------------------------------------
 
+
 @router.get("/{nb_id}/files", response_model=list[LibraryFileRead])
 async def list_files(nb_id: UUID, category: str | None = Query(None)):
     db = get_supabase()
@@ -221,6 +246,29 @@ async def upload_notebook_file(
     return result
 
 
+@router.patch("/{nb_id}/files/{file_id}", response_model=LibraryFileRead)
+async def update_notebook_file(nb_id: UUID, file_id: UUID, body: LibraryFileUpdate):
+    """Rename or recategorise a file. Only fields present in the body are updated."""
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+    if not repo.get_file(db, nb_id, file_id):
+        raise HTTPException(404, "File not found")
+    patch: dict = {}
+    if body.title is not None:
+        title = body.title.strip()
+        if not title:
+            raise HTTPException(400, "title cannot be empty")
+        patch["title"] = title
+    if body.description is not None:
+        patch["description"] = body.description
+    if body.file_category is not None:
+        patch["file_category"] = body.file_category.strip() or "other"
+    row = repo.update_file(db, nb_id, file_id, patch)
+    if not row:
+        raise HTTPException(404, "File not found")
+    return row
+
+
 @router.delete("/{nb_id}/files/{file_id}", status_code=204)
 async def delete_notebook_file(nb_id: UUID, file_id: UUID):
     db = get_supabase()
@@ -254,6 +302,7 @@ async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Quer
 
     if ext == ".docx" and format == "html":
         import mammoth  # lazy import — only installed if used
+
         result = mammoth.convert_to_html(BytesIO(data))
         return HTMLResponse(content=result.value)
 
@@ -264,16 +313,26 @@ async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Quer
     if mime.startswith("image/"):
         return Response(content=data, media_type=mime)
 
+    # HTTP headers must be latin-1, so non-ASCII filenames (e.g. Chinese)
+    # need RFC 5987 percent-encoding. Provide an ASCII-safe `filename=`
+    # fallback for older clients alongside the canonical `filename*=`.
+    ascii_fallback = original_name.encode("ascii", "ignore").decode() or "download"
     return Response(
         content=data,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{original_name}"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(original_name, safe='')}"
+            )
+        },
     )
 
 
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{nb_id}/chat/history", response_model=ChatHistoryResponse)
 async def chat_history(nb_id: UUID):
@@ -315,10 +374,13 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
 
     # Build system prompt from notebook context
     files = repo.list_files(db, nb_id)
-    file_lines = "\n".join(
-        f"  - {f.get('title') or f.get('original_name', 'Untitled')} ({f.get('file_category', 'file')})"
-        for f in files
-    ) or "  (no files yet)"
+    file_lines = (
+        "\n".join(
+            f"  - {f.get('title') or f.get('original_name', 'Untitled')} ({f.get('file_category', 'file')})"
+            for f in files
+        )
+        or "  (no files yet)"
+    )
     description = nb.get("description") or ""
     lang = (body.language or "en").lower()
     if lang == "zh":
@@ -343,7 +405,7 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
         "Answer the user's question directly and substantively, in a single turn.\n"
         "Use the notebook title and description for context, plus your own general knowledge. "
         "If a question is broader than the notebook, answer from general knowledge.\n"
-        "DO NOT say things like \"let me check the files\", \"I'll look into\", \"please wait\", "
+        'DO NOT say things like "let me check the files", "I\'ll look into", "please wait", '
         "or ask the user to provide more context — you cannot retrieve file contents and you have no tools. "
         "Just give the best answer you can right now."
     )
@@ -395,11 +457,14 @@ async def generate_description(nb_id: UUID, body: GenerateDescriptionRequest):
         raise HTTPException(503, "ANTHROPIC_API_KEY is not configured")
 
     files = repo.list_files(db, nb_id)
-    file_lines = "\n".join(
-        f"  - {f.get('title') or f.get('original_name', 'Untitled')} "
-        f"({f.get('file_category', 'file')})"
-        for f in files
-    ) or "  (no files yet)"
+    file_lines = (
+        "\n".join(
+            f"  - {f.get('title') or f.get('original_name', 'Untitled')} "
+            f"({f.get('file_category', 'file')})"
+            for f in files
+        )
+        or "  (no files yet)"
+    )
 
     lang = (body.language or "en").lower()
     if lang == "zh":
@@ -416,14 +481,12 @@ async def generate_description(nb_id: UUID, body: GenerateDescriptionRequest):
         f"{lang_directive}\n\n"
         "Return ONLY the description text. No preamble, no quotes, no "
         "markdown headers, no bullet points. Do not start with phrases like "
-        "\"This folio…\", \"Here is…\", or \"The notebook…\"."
+        '"This folio…", "Here is…", or "The notebook…".'
     )
-    user_prompt = (
-        f"Folio title: {nb['title']}\n"
-        f"Files:\n{file_lines}"
-    )
+    user_prompt = f"Folio title: {nb['title']}\n" f"Files:\n{file_lines}"
 
     import anthropic
+
     client = anthropic.AsyncAnthropic(
         api_key=s.anthropic_api_key,
         base_url=s.anthropic_base_url,

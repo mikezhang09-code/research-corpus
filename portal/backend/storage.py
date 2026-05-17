@@ -1,5 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
 
 import boto3
 from botocore.config import Config

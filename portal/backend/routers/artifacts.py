@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -83,6 +82,7 @@ async def delete_artifact(artifact_id: UUID):
         raise HTTPException(404, "Artifact not found")
     if row.get("r2_key"):
         from ..storage import delete_file
+
         delete_file(row["r2_key"])
     repo.delete(db, artifact_id)
 
@@ -102,6 +102,7 @@ async def retry_download(artifact_id: UUID, background: BackgroundTasks):
 async def get_artifact_content(artifact_id: UUID):
     """Stream the raw file bytes from R2 so the browser fetches via the same-origin proxy."""
     from ..storage import get_r2, get_settings
+
     db = get_supabase()
     row = repo.get(db, artifact_id)
     if not row:
@@ -131,11 +132,12 @@ async def get_artifact_content(artifact_id: UUID):
 @router.post("/{artifact_id}/save-to-library", status_code=201)
 async def save_to_library(artifact_id: UUID):
     """Copy a downloaded NLM artifact into the Library section."""
-    from ..repositories import library as lib_repo
-    from ..models import LibraryItemCreate, LibrarySourceType
-    from ..storage import r2_key_for_upload, upload_file, delete_file
     import boto3
+
     from ..config import get_settings
+    from ..models import LibraryItemCreate, LibrarySourceType
+    from ..repositories import library as lib_repo
+    from ..storage import r2_key_for_upload, upload_file
 
     db = get_supabase()
     row = repo.get(db, artifact_id)
@@ -159,8 +161,8 @@ async def save_to_library(artifact_id: UUID):
     obj = r2.get_object(Bucket=s.r2_bucket_name, Key=row["r2_key"])
     data = obj["Body"].read()
     filename = f"{row['title'] or row['artifact_type']}.{row['file_format']}"
-    from ..storage import public_url
     import uuid
+
     item_id = str(uuid.uuid4())
     new_key = r2_key_for_upload(item_id, filename)
     new_url = upload_file(new_key, data, obj.get("ContentType", "application/octet-stream"))

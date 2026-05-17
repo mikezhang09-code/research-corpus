@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Languages, User } from "lucide-react";
 import {
   DropdownMenu,
@@ -10,21 +12,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LANGUAGES, useLanguage, type Language } from "@/hooks/use-language";
 import { SectionSwitch } from "@/components/corpus/SectionSwitch";
+import { getLibraryNotebooks, getNotebooks } from "@/lib/api";
 
 export function Masthead() {
   return (
     <header className="px-14 pt-8 pb-5 border-b border-rule relative">
       <div className="flex items-end justify-between gap-6">
         <div className="flex items-baseline gap-5 shrink-0">
-          <div className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute leading-none pb-1">
-            Vol. XII · MMXXVI
-          </div>
+          <RomanDate />
           <h1 className="font-serif-display text-[44px] leading-[0.95] tracking-tight">
             Research <span className="italic">Corpus</span>
           </h1>
-          <div className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute pb-1">
-            № 0042
-          </div>
+          <ArchiveCount />
         </div>
         <div className="flex items-end justify-end gap-3 pb-1 flex-1 min-w-0">
           <SectionSwitch />
@@ -39,6 +38,86 @@ export function Masthead() {
       </div>
     </header>
   );
+}
+
+/** Today in elegant Latin: <month> · <day> · <year>, all Roman numerals. */
+function RomanDate() {
+  // Mount-gated so SSR and the first client paint render the same placeholder
+  // (otherwise hydration warns when the server's date differs by timezone).
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    // Tick at midnight so the date doesn't go stale if the tab is left open.
+    const next = new Date();
+    next.setHours(24, 0, 5, 0);
+    const t = setTimeout(() => setNow(new Date()), next.getTime() - Date.now());
+    return () => clearTimeout(t);
+  }, []);
+
+  const label = now
+    ? `${toRoman(now.getMonth() + 1)} · ${toRoman(now.getDate())} · ${toRoman(now.getFullYear())}`
+    : "— · — · —";
+  return (
+    <div
+      className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute leading-none pb-1"
+      title={now ? now.toDateString() : undefined}
+    >
+      {label}
+    </div>
+  );
+}
+
+/** Live total of NotebookLM corpora + library folios; refetches on route change. */
+function ArchiveCount() {
+  const pathname = usePathname();
+  const [counts, setCounts] = useState<{ corpora: number; folios: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getNotebooks().catch(() => []),
+      getLibraryNotebooks().catch(() => ({ items: [], total: 0 })),
+    ])
+      .then(([nbs, lib]) => {
+        if (cancelled) return;
+        // Untitled notebooks are placeholders from NotebookLM; don't count them.
+        const corpora = nbs.filter((n) => n.title?.trim()).length;
+        const folios = lib.items.length;
+        setCounts({ corpora, folios });
+      });
+    return () => { cancelled = true; };
+  }, [pathname]);
+
+  if (!counts) {
+    return (
+      <div className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute pb-1">
+        — · —
+      </div>
+    );
+  }
+  const { corpora, folios } = counts;
+  return (
+    <div
+      className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute pb-1"
+      title="Notebooks synced from NotebookLM · Personal folios in My Research"
+    >
+      {corpora} {corpora === 1 ? "corpus" : "corpora"} · {folios} {folios === 1 ? "folio" : "folios"}
+    </div>
+  );
+}
+
+function toRoman(n: number): string {
+  if (n <= 0) return "—";
+  const map: [number, string][] = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
+    [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+    [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ];
+  let out = "";
+  for (const [v, sym] of map) {
+    while (n >= v) { out += sym; n -= v; }
+  }
+  return out;
 }
 
 function LanguagePill() {

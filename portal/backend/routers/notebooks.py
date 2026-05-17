@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,8 +11,8 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from ..database import get_supabase
 from ..models import (
     ChatHistoryResponse,
-    ChatRequest,
     ChatReferenceRead,
+    ChatRequest,
     ChatResponse,
     ChatTurn,
     GenerateRequest,
@@ -89,7 +88,7 @@ async def sync_notebooks():
             "is_owner": nb.is_owner,
             "nlm_created_at": nb.created_at.isoformat() if nb.created_at else None,
         }
-        for nb, sources in zip(notebooks, source_lists)
+        for nb, sources in zip(notebooks, source_lists, strict=False)
     ]
 
     if rows:
@@ -132,13 +131,10 @@ async def delete_notebook(notebook_id: str):
     # Collect R2 keys for this notebook's saved artifacts before the cascade
     # drops the rows, so we can free up R2 storage too.
     artifact_rows = (
-        db.table("nlm_artifacts")
-        .select("r2_key")
-        .eq("notebook_id", notebook_id)
-        .execute()
-        .data
+        db.table("nlm_artifacts").select("r2_key").eq("notebook_id", notebook_id).execute().data
     )
     from ..storage import delete_file
+
     for row in artifact_rows:
         key = row.get("r2_key")
         if not key:
@@ -157,13 +153,7 @@ async def delete_notebook(notebook_id: str):
 async def restore_notebook(notebook_id: str):
     """Un-hide a notebook (clear the hidden flag set by remove-from-recent)."""
     db = get_supabase()
-    updated = (
-        db.table("notebooks")
-        .update({"hidden": False})
-        .eq("id", notebook_id)
-        .execute()
-        .data
-    )
+    updated = db.table("notebooks").update({"hidden": False}).eq("id", notebook_id).execute().data
     if not updated:
         raise HTTPException(404, f"Notebook {notebook_id} not found")
     return updated[0]
@@ -178,7 +168,7 @@ async def rename_notebook(notebook_id: str, req: NotebookRenameRequest):
     """
     new_title = req.title.strip() if req.title is not None else None
     new_emoji = req.cover_emoji
-    if new_title == "" :
+    if new_title == "":
         raise HTTPException(400, "Title cannot be empty")
     if new_title is None and new_emoji is None:
         raise HTTPException(400, "Provide at least one of title or cover_emoji")
@@ -253,15 +243,17 @@ async def sync_notebook_artifacts(notebook_id: str):
         if kind == "unknown":
             continue
         fmt = _FORMAT_MAP.get(kind, "bin")
-        rows.append({
-            "nlm_artifact_id": a.id,
-            "notebook_id": notebook_id,
-            "notebook_title": notebook_title,
-            "artifact_type": kind,
-            "file_format": fmt,
-            "title": a.title or kind,
-            "nlm_created_at": a.created_at.isoformat() if a.created_at else None,
-        })
+        rows.append(
+            {
+                "nlm_artifact_id": a.id,
+                "notebook_id": notebook_id,
+                "notebook_title": notebook_title,
+                "artifact_type": kind,
+                "file_format": fmt,
+                "title": a.title or kind,
+                "nlm_created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+        )
 
     if rows:
         db.table("nlm_artifacts").upsert(rows, on_conflict="nlm_artifact_id").execute()
@@ -313,9 +305,7 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
     async with await NotebookLMClient.from_storage() as client:
         nlm_artifacts = await client.artifacts.list(notebook_id)
 
-    saved_rows = (
-        db.table("nlm_artifacts").select("*").eq("notebook_id", notebook_id).execute().data
-    )
+    saved_rows = db.table("nlm_artifacts").select("*").eq("notebook_id", notebook_id).execute().data
 
     # Reconcile against NLM: drop failed orphans (artifact deleted in Google's
     # UI; nothing of value preserved on our side). Done orphans are kept and
@@ -330,6 +320,7 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
             if row.get("r2_key"):
                 try:
                     from ..storage import delete_file
+
                     delete_file(row["r2_key"])
                 except Exception:
                     pass  # best-effort; don't fail the whole sync
@@ -418,6 +409,7 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
 # Generate
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{notebook_id}/generate", response_model=LiveArtifact, status_code=201)
 async def generate_artifact(
     notebook_id: str,
@@ -431,9 +423,19 @@ async def generate_artifact(
     """
     try:
         from notebooklm import (
-            AudioFormat, AudioLength, InfographicDetail, InfographicOrientation,
-            InfographicStyle, NotebookLMClient, QuizDifficulty, QuizQuantity,
-            ReportFormat, SlideDeckFormat, SlideDeckLength, VideoFormat, VideoStyle,
+            AudioFormat,
+            AudioLength,
+            InfographicDetail,
+            InfographicOrientation,
+            InfographicStyle,
+            NotebookLMClient,
+            QuizDifficulty,
+            QuizQuantity,
+            ReportFormat,
+            SlideDeckFormat,
+            SlideDeckLength,
+            VideoFormat,
+            VideoStyle,
         )
     except ImportError:
         raise HTTPException(503, "notebooklm-py not available")
@@ -462,31 +464,65 @@ async def generate_artifact(
             t = req.artifact_type
             if t == "audio":
                 status = await client.artifacts.generate_audio(
-                    notebook_id, language=language, instructions=instructions,
-                    audio_format=_map(AudioFormat, req.audio_format, {
-                        "deep-dive": "DEEP_DIVE", "brief": "BRIEF",
-                        "critique": "CRITIQUE", "debate": "DEBATE",
-                    }),
-                    audio_length=_map(AudioLength, req.audio_length, {
-                        "short": "SHORT", "default": "DEFAULT", "long": "LONG",
-                    }),
+                    notebook_id,
+                    language=language,
+                    instructions=instructions,
+                    audio_format=_map(
+                        AudioFormat,
+                        req.audio_format,
+                        {
+                            "deep-dive": "DEEP_DIVE",
+                            "brief": "BRIEF",
+                            "critique": "CRITIQUE",
+                            "debate": "DEBATE",
+                        },
+                    ),
+                    audio_length=_map(
+                        AudioLength,
+                        req.audio_length,
+                        {
+                            "short": "SHORT",
+                            "default": "DEFAULT",
+                            "long": "LONG",
+                        },
+                    ),
                 )
             elif t == "video":
                 if req.video_format == "cinematic":
                     status = await client.artifacts.generate_cinematic_video(
-                        notebook_id, language=language, instructions=instructions,
+                        notebook_id,
+                        language=language,
+                        instructions=instructions,
                     )
                 else:
                     status = await client.artifacts.generate_video(
-                        notebook_id, language=language, instructions=instructions,
-                        video_format=_map(VideoFormat, req.video_format, {
-                            "explainer": "EXPLAINER", "brief": "BRIEF", "cinematic": "CINEMATIC",
-                        }),
-                        video_style=_map(VideoStyle, req.video_style, {
-                            "auto": "AUTO_SELECT", "classic": "CLASSIC", "whiteboard": "WHITEBOARD",
-                            "kawaii": "KAWAII", "anime": "ANIME", "watercolor": "WATERCOLOR",
-                            "retro-print": "RETRO_PRINT", "heritage": "HERITAGE", "paper-craft": "PAPER_CRAFT",
-                        }),
+                        notebook_id,
+                        language=language,
+                        instructions=instructions,
+                        video_format=_map(
+                            VideoFormat,
+                            req.video_format,
+                            {
+                                "explainer": "EXPLAINER",
+                                "brief": "BRIEF",
+                                "cinematic": "CINEMATIC",
+                            },
+                        ),
+                        video_style=_map(
+                            VideoStyle,
+                            req.video_style,
+                            {
+                                "auto": "AUTO_SELECT",
+                                "classic": "CLASSIC",
+                                "whiteboard": "WHITEBOARD",
+                                "kawaii": "KAWAII",
+                                "anime": "ANIME",
+                                "watercolor": "WATERCOLOR",
+                                "retro-print": "RETRO_PRINT",
+                                "heritage": "HERITAGE",
+                                "paper-craft": "PAPER_CRAFT",
+                            },
+                        ),
                     )
             elif t == "report":
                 # Mirrors CLI's smart routing in cli/generate.py:1117-1126.
@@ -496,101 +532,189 @@ async def generate_artifact(
                     "blog-post": ReportFormat.BLOG_POST,
                     "custom": ReportFormat.CUSTOM,
                 }
-                report_format = rf_map.get(req.report_format or "briefing-doc", ReportFormat.BRIEFING_DOC)
+                report_format = rf_map.get(
+                    req.report_format or "briefing-doc", ReportFormat.BRIEFING_DOC
+                )
                 custom_prompt: str | None = None
                 extra_instructions: str | None = None
                 if req.description:
-                    if report_format == ReportFormat.CUSTOM or req.report_format in (None, "briefing-doc"):
-                        report_format = ReportFormat.CUSTOM if req.report_format in (None, "briefing-doc") else report_format
+                    if report_format == ReportFormat.CUSTOM or req.report_format in (
+                        None,
+                        "briefing-doc",
+                    ):
+                        report_format = (
+                            ReportFormat.CUSTOM
+                            if req.report_format in (None, "briefing-doc")
+                            else report_format
+                        )
                         custom_prompt = req.description
                     else:
                         extra_instructions = req.description
                 status = await client.artifacts.generate_report(
-                    notebook_id, report_format=report_format, language=language,
-                    custom_prompt=custom_prompt, extra_instructions=extra_instructions,
+                    notebook_id,
+                    report_format=report_format,
+                    language=language,
+                    custom_prompt=custom_prompt,
+                    extra_instructions=extra_instructions,
                 )
             elif t == "slide_deck":
                 status = await client.artifacts.generate_slide_deck(
-                    notebook_id, language=language, instructions=instructions,
-                    slide_format=_map(SlideDeckFormat, req.deck_format, {
-                        "detailed": "DETAILED_DECK", "presenter": "PRESENTER_SLIDES",
-                    }),
-                    slide_length=_map(SlideDeckLength, req.deck_length, {
-                        "default": "DEFAULT", "short": "SHORT",
-                    }),
+                    notebook_id,
+                    language=language,
+                    instructions=instructions,
+                    slide_format=_map(
+                        SlideDeckFormat,
+                        req.deck_format,
+                        {
+                            "detailed": "DETAILED_DECK",
+                            "presenter": "PRESENTER_SLIDES",
+                        },
+                    ),
+                    slide_length=_map(
+                        SlideDeckLength,
+                        req.deck_length,
+                        {
+                            "default": "DEFAULT",
+                            "short": "SHORT",
+                        },
+                    ),
                 )
             elif t == "quiz":
                 status = await client.artifacts.generate_quiz(
-                    notebook_id, instructions=instructions,
-                    quantity=_map(QuizQuantity, req.quiz_quantity, {
-                        "fewer": "FEWER", "standard": "STANDARD", "more": "MORE",
-                    }),
-                    difficulty=_map(QuizDifficulty, req.quiz_difficulty, {
-                        "easy": "EASY", "medium": "MEDIUM", "hard": "HARD",
-                    }),
+                    notebook_id,
+                    instructions=instructions,
+                    quantity=_map(
+                        QuizQuantity,
+                        req.quiz_quantity,
+                        {
+                            "fewer": "FEWER",
+                            "standard": "STANDARD",
+                            "more": "MORE",
+                        },
+                    ),
+                    difficulty=_map(
+                        QuizDifficulty,
+                        req.quiz_difficulty,
+                        {
+                            "easy": "EASY",
+                            "medium": "MEDIUM",
+                            "hard": "HARD",
+                        },
+                    ),
                 )
             elif t == "flashcards":
                 status = await client.artifacts.generate_flashcards(
-                    notebook_id, instructions=instructions,
-                    quantity=_map(QuizQuantity, req.quiz_quantity, {
-                        "fewer": "FEWER", "standard": "STANDARD", "more": "MORE",
-                    }),
-                    difficulty=_map(QuizDifficulty, req.quiz_difficulty, {
-                        "easy": "EASY", "medium": "MEDIUM", "hard": "HARD",
-                    }),
+                    notebook_id,
+                    instructions=instructions,
+                    quantity=_map(
+                        QuizQuantity,
+                        req.quiz_quantity,
+                        {
+                            "fewer": "FEWER",
+                            "standard": "STANDARD",
+                            "more": "MORE",
+                        },
+                    ),
+                    difficulty=_map(
+                        QuizDifficulty,
+                        req.quiz_difficulty,
+                        {
+                            "easy": "EASY",
+                            "medium": "MEDIUM",
+                            "hard": "HARD",
+                        },
+                    ),
                 )
             elif t == "infographic":
                 status = await client.artifacts.generate_infographic(
-                    notebook_id, language=language, instructions=instructions,
-                    orientation=_map(InfographicOrientation, req.info_orientation, {
-                        "landscape": "LANDSCAPE", "portrait": "PORTRAIT", "square": "SQUARE",
-                    }),
-                    detail_level=_map(InfographicDetail, req.info_detail, {
-                        "concise": "CONCISE", "standard": "STANDARD", "detailed": "DETAILED",
-                    }),
-                    style=_map(InfographicStyle, req.info_style, {
-                        "auto": "AUTO_SELECT", "sketch-note": "SKETCH_NOTE", "professional": "PROFESSIONAL",
-                        "bento-grid": "BENTO_GRID", "editorial": "EDITORIAL", "instructional": "INSTRUCTIONAL",
-                        "bricks": "BRICKS", "clay": "CLAY", "anime": "ANIME",
-                        "kawaii": "KAWAII", "scientific": "SCIENTIFIC",
-                    }),
+                    notebook_id,
+                    language=language,
+                    instructions=instructions,
+                    orientation=_map(
+                        InfographicOrientation,
+                        req.info_orientation,
+                        {
+                            "landscape": "LANDSCAPE",
+                            "portrait": "PORTRAIT",
+                            "square": "SQUARE",
+                        },
+                    ),
+                    detail_level=_map(
+                        InfographicDetail,
+                        req.info_detail,
+                        {
+                            "concise": "CONCISE",
+                            "standard": "STANDARD",
+                            "detailed": "DETAILED",
+                        },
+                    ),
+                    style=_map(
+                        InfographicStyle,
+                        req.info_style,
+                        {
+                            "auto": "AUTO_SELECT",
+                            "sketch-note": "SKETCH_NOTE",
+                            "professional": "PROFESSIONAL",
+                            "bento-grid": "BENTO_GRID",
+                            "editorial": "EDITORIAL",
+                            "instructional": "INSTRUCTIONAL",
+                            "bricks": "BRICKS",
+                            "clay": "CLAY",
+                            "anime": "ANIME",
+                            "kawaii": "KAWAII",
+                            "scientific": "SCIENTIFIC",
+                        },
+                    ),
                 )
             elif t == "data_table":
                 if not req.description:
                     raise HTTPException(400, "data_table requires a description")
                 status = await client.artifacts.generate_data_table(
-                    notebook_id, language=language, instructions=instructions,
+                    notebook_id,
+                    language=language,
+                    instructions=instructions,
                 )
             elif t == "mind_map":
                 # Special: mind_map is synchronous and returns a dict, not GenerationStatus.
                 # Save the JSON straight to R2 — no waiting needed.
-                from ..repositories import artifacts as repo
-                from ..models import NLMArtifactCreate
-                from ..storage import r2_key_for_artifact, upload_file
                 import json as _json
 
+                from ..models import NLMArtifactCreate
+                from ..repositories import artifacts as repo
+                from ..storage import r2_key_for_artifact, upload_file
+
                 result = await client.artifacts.generate_mind_map(
-                    notebook_id, language=language, instructions=instructions,
+                    notebook_id,
+                    language=language,
+                    instructions=instructions,
                 )
                 mind_map_data = result.get("mind_map") if isinstance(result, dict) else None
                 note_id = result.get("note_id") if isinstance(result, dict) else None
                 nlm_id = note_id or f"mind_map_{notebook_id}"
-                row = repo.upsert_from_nlm(db, NLMArtifactCreate(
-                    nlm_artifact_id=nlm_id,
-                    notebook_id=notebook_id,
-                    notebook_title=notebook_title,
-                    artifact_type="mind_map",
-                    file_format="json",
-                    title=req.description or "Mind Map",
-                ))
+                row = repo.upsert_from_nlm(
+                    db,
+                    NLMArtifactCreate(
+                        nlm_artifact_id=nlm_id,
+                        notebook_id=notebook_id,
+                        notebook_title=notebook_title,
+                        artifact_type="mind_map",
+                        file_format="json",
+                        title=req.description or "Mind Map",
+                    ),
+                )
                 portal_id = UUID(row["id"])
                 key = r2_key_for_artifact(notebook_id, "mind_map", nlm_id, "json")
                 data = _json.dumps(mind_map_data, ensure_ascii=False, indent=2).encode("utf-8")
                 url = upload_file(key, data, "application/json; charset=utf-8")
                 from ..models import DownloadStatus
+
                 repo.update_download_status(
-                    db, portal_id, DownloadStatus.DONE,
-                    r2_key=key, r2_url=url, file_size_bytes=len(data),
+                    db,
+                    portal_id,
+                    DownloadStatus.DONE,
+                    r2_key=key,
+                    r2_url=url,
+                    file_size_bytes=len(data),
                 )
                 row = repo.get(db, portal_id)
                 return LiveArtifact(
@@ -616,27 +740,34 @@ async def generate_artifact(
         raise HTTPException(502, status.error or "NLM did not return a task_id")
 
     # Persist the new artifact row in 'generating' state
-    from ..repositories import artifacts as repo
     from ..models import NLMArtifactCreate
+    from ..repositories import artifacts as repo
 
     file_format = _FORMAT_MAP[req.artifact_type]
-    row = repo.upsert_from_nlm(db, NLMArtifactCreate(
-        nlm_artifact_id=status.task_id,
-        notebook_id=notebook_id,
-        notebook_title=notebook_title,
-        artifact_type=req.artifact_type,
-        file_format=file_format,
-        title=req.description or req.artifact_type.replace("_", " ").title(),
-    ))
+    row = repo.upsert_from_nlm(
+        db,
+        NLMArtifactCreate(
+            nlm_artifact_id=status.task_id,
+            notebook_id=notebook_id,
+            notebook_title=notebook_title,
+            artifact_type=req.artifact_type,
+            file_format=file_format,
+            title=req.description or req.artifact_type.replace("_", " ").title(),
+        ),
+    )
     portal_id = UUID(row["id"])
     db.table("nlm_artifacts").update({"download_status": "generating"}).eq(
         "id", str(portal_id)
     ).execute()
 
     from ..tasks.generator import generate_then_download
+
     background.add_task(
         generate_then_download,
-        notebook_id, status.task_id, portal_id, req.artifact_type,
+        notebook_id,
+        status.task_id,
+        portal_id,
+        req.artifact_type,
     )
 
     return LiveArtifact(
@@ -656,6 +787,7 @@ async def generate_artifact(
 # ---------------------------------------------------------------------------
 # Create notebook + source management
 # ---------------------------------------------------------------------------
+
 
 def _to_source_read(s) -> SourceRead:
     """Convert a notebooklm Source dataclass to the API response shape."""
@@ -785,6 +917,7 @@ async def add_source_file(notebook_id: str, file: UploadFile = File(...)):
 # Chat
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{notebook_id}/chat", response_model=ChatResponse)
 async def chat_ask(notebook_id: str, req: ChatRequest):
     """Ask the notebook a question, optionally continuing an existing conversation."""
@@ -867,6 +1000,7 @@ async def get_chat_history(
 # Notebook description (AI summary + suggested topics)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/{notebook_id}/description", response_model=NotebookDescriptionResponse)
 async def get_notebook_description(notebook_id: str):
     """Fetch NotebookLM's AI-generated summary + suggested topics for the notebook."""
@@ -884,8 +1018,7 @@ async def get_notebook_description(notebook_id: str):
     return NotebookDescriptionResponse(
         summary=desc.summary,
         suggested_topics=[
-            SuggestedTopicRead(question=t.question, prompt=t.prompt)
-            for t in desc.suggested_topics
+            SuggestedTopicRead(question=t.question, prompt=t.prompt) for t in desc.suggested_topics
         ],
     )
 
@@ -893,6 +1026,7 @@ async def get_notebook_description(notebook_id: str):
 # ---------------------------------------------------------------------------
 # Web research / "Discover sources" — proxies notebooklm.client.research.*
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{notebook_id}/research/start", response_model=ResearchStartResponse)
 async def research_start(notebook_id: str, req: ResearchStartRequest):
@@ -907,7 +1041,10 @@ async def research_start(notebook_id: str, req: ResearchStartRequest):
     try:
         async with await NotebookLMClient.from_storage() as client:
             result = await client.research.start(
-                notebook_id, req.query.strip(), req.source, req.mode,
+                notebook_id,
+                req.query.strip(),
+                req.source,
+                req.mode,
             )
     except Exception as exc:
         raise HTTPException(502, f"Research start failed: {exc}")
