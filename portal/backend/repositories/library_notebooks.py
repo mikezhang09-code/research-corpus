@@ -9,10 +9,17 @@ CHAT_TABLE = "library_notebook_chat"
 ITEMS_TABLE = "library_items"
 
 
-def create(db: Client, title: str, cover_emoji: str | None = None) -> dict:
+def create(
+    db: Client,
+    title: str,
+    cover_emoji: str | None = None,
+    tags: list[str] | None = None,
+) -> dict:
     row: dict = {"title": title}
     if cover_emoji:
         row["cover_emoji"] = cover_emoji
+    if tags:
+        row["tags"] = tags
     return db.table(NOTEBOOK_TABLE).insert(row).execute().data[0]
 
 
@@ -21,10 +28,18 @@ def get(db: Client, nb_id: UUID) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_all(db: Client, include_hidden: bool = False) -> list[dict]:
+def list_all(
+    db: Client,
+    include_hidden: bool = False,
+    tags: list[str] | None = None,
+) -> list[dict]:
     q = db.table(NOTEBOOK_TABLE).select("*")
     if not include_hidden:
         q = q.eq("hidden", False)
+    if tags:
+        # AND semantics: match folios whose tags array contains every filter
+        # tag. postgrest exposes the @> operator via `.contains()`.
+        q = q.contains("tags", tags)
     return q.order("created_at", desc=True).execute().data
 
 

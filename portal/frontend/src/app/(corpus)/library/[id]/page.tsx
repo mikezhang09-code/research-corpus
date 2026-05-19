@@ -21,6 +21,7 @@ import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
 import { LibraryNotebookDescription } from "@/components/library/LibraryNotebookDescription";
 import { FilesPanel } from "@/components/library/FilesPanel";
+import { TagInput } from "@/components/library/TagInput";
 import { CollapsedRail, CollapseButton } from "@/components/corpus/CollapsiblePanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -122,6 +123,24 @@ export default function LibraryNotebookDetailPage() {
           initialDescription={notebook.description}
           onSave={(desc) => setNotebook((nb) => nb ? { ...nb, description: desc } : nb)}
         />
+
+        {/* Tags */}
+        <div>
+          <label className="block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-2">Tags</label>
+          <TagInput
+            value={notebook.tags}
+            onChange={async (next) => {
+              setNotebook((nb) => nb ? { ...nb, tags: next } : nb);
+              try {
+                const updated = await updateLibraryNotebook(notebookId, { tags: next });
+                setNotebook(updated);
+              } catch {
+                // Revert on failure by re-fetching the source of truth.
+                getLibraryNotebook(notebookId).then(setNotebook).catch(() => {});
+              }
+            }}
+          />
+        </div>
 
         {/* Tabs */}
         <Tabs defaultValue="files">

@@ -248,9 +248,12 @@ def _enrich(nb: dict, file_count: int) -> dict:
 
 
 @router.get("", response_model=LibraryNotebookListResponse)
-async def list_notebooks(include_hidden: bool = Query(False)):
+async def list_notebooks(
+    include_hidden: bool = Query(False),
+    tag: list[str] | None = Query(None),
+):
     db = get_supabase()
-    notebooks = repo.list_all(db, include_hidden=include_hidden)
+    notebooks = repo.list_all(db, include_hidden=include_hidden, tags=tag)
     counts = repo.get_file_counts(db)
     items = [_enrich(nb, counts.get(nb["id"], 0)) for nb in notebooks]
     return {"items": items, "total": len(items)}
@@ -259,7 +262,9 @@ async def list_notebooks(include_hidden: bool = Query(False)):
 @router.post("", response_model=LibraryNotebookRead, status_code=201)
 async def create_notebook(body: LibraryNotebookCreate):
     db = get_supabase()
-    nb = repo.create(db, title=body.title, cover_emoji=body.cover_emoji)
+    nb = repo.create(
+        db, title=body.title, cover_emoji=body.cover_emoji, tags=body.tags or None
+    )
     return _enrich(nb, 0)
 
 

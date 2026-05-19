@@ -329,6 +329,7 @@ export interface LibraryNotebook {
   description: string;
   cover_emoji: string | null;
   hidden: boolean;
+  tags: string[];
   file_count: number;
   created_at: string;
   updated_at: string;
@@ -354,12 +355,24 @@ export interface LibraryNotebookListResponse {
   total: number;
 }
 
-export const getLibraryNotebooks = (opts?: { includeHidden?: boolean }) =>
-  request<LibraryNotebookListResponse>(
-    `/api/library-notebooks${opts?.includeHidden ? "?include_hidden=true" : ""}`
+export const getLibraryNotebooks = (opts?: {
+  includeHidden?: boolean;
+  tags?: string[];
+}) => {
+  const params = new URLSearchParams();
+  if (opts?.includeHidden) params.set("include_hidden", "true");
+  for (const t of opts?.tags ?? []) params.append("tag", t);
+  const qs = params.toString();
+  return request<LibraryNotebookListResponse>(
+    `/api/library-notebooks${qs ? `?${qs}` : ""}`
   );
+};
 
-export const createLibraryNotebook = (data: { title: string; cover_emoji?: string | null }) =>
+export const createLibraryNotebook = (data: {
+  title: string;
+  cover_emoji?: string | null;
+  tags?: string[];
+}) =>
   request<LibraryNotebook>("/api/library-notebooks", {
     method: "POST",
     body: JSON.stringify(data),
@@ -370,7 +383,12 @@ export const getLibraryNotebook = (id: string) =>
 
 export const updateLibraryNotebook = (
   id: string,
-  data: { title?: string; description?: string; cover_emoji?: string | null }
+  data: {
+    title?: string;
+    description?: string;
+    cover_emoji?: string | null;
+    tags?: string[];
+  }
 ) =>
   request<LibraryNotebook>(`/api/library-notebooks/${id}`, {
     method: "PATCH",

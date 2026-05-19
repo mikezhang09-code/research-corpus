@@ -254,6 +254,7 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
 **Library notebooks** (`/library` → "My Research")
 - Folio-card grid (`FolioCard`) with five paper-cover variants (stitch / manila / index / pinned / photo), each chosen deterministically per folio id
 - Create named notebooks (e.g. "Research for AI Development"), each with cover emoji, editable description, and per-notebook chat
+- **Tags & faceted filter** — free-form `text[]` tags per folio with cross-folio autocomplete; the My Research page renders a chip row above the grid (counts recompute dynamically against the current selection so each chip shows "matches if you add this filter"), AND-combined when multiple chips are active, and the search box matches tag text in addition to titles. Edit tags inline on the detail page (auto-saves) or in the grid's edit dialog. Backend filter is a single Postgres `tags @> ARRAY[…]` GIN-indexed lookup.
 - **Generate description with AI** — drafts a 2–3 sentence summary from the folio's title + file list (no file-content access), language-aware, fills the textarea so you can edit before saving
 - Upload files — auto-categorised as **Slides / Notes / Reports / Spreadsheets / Audio / Video / Mindmap / Images** by extension, overridable on upload
 - Inline viewers, all maximize/restore-able:

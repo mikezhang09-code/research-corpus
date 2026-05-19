@@ -8,11 +8,18 @@ import { Input } from "@/components/ui/input";
 import { createLibraryNotebook } from "@/lib/api";
 import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { randomEmoji } from "@/components/notebook/emoji";
+import { TagInput } from "@/components/library/TagInput";
 
-export function CreateLibraryNotebookModal({ onClose }: { onClose: () => void }) {
+export function CreateLibraryNotebookModal({
+  onClose, existingTags = [],
+}: {
+  onClose: () => void;
+  existingTags?: string[];
+}) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [emoji, setEmoji] = useState<string>(() => randomEmoji());
+  const [tags, setTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +28,11 @@ export function CreateLibraryNotebookModal({ onClose }: { onClose: () => void })
     setSubmitting(true);
     setError(null);
     try {
-      const nb = await createLibraryNotebook({ title: title.trim(), cover_emoji: emoji });
+      const nb = await createLibraryNotebook({
+        title: title.trim(),
+        cover_emoji: emoji,
+        tags,
+      });
       router.push(`/library/${nb.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -54,6 +65,11 @@ export function CreateLibraryNotebookModal({ onClose }: { onClose: () => void })
               onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) handleCreate(); }}
               className="h-12"
             />
+          </div>
+
+          <div>
+            <label className="block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-2">Tags</label>
+            <TagInput value={tags} onChange={setTags} suggestions={existingTags} disabled={submitting} />
           </div>
 
           {error && (

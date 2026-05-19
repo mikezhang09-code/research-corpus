@@ -372,6 +372,7 @@ class LibraryNotebookRead(BaseModel):
     description: str
     cover_emoji: str | None
     hidden: bool
+    tags: list[str] = Field(default_factory=list)
     file_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -380,12 +381,14 @@ class LibraryNotebookRead(BaseModel):
 class LibraryNotebookCreate(BaseModel):
     title: str
     cover_emoji: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class LibraryNotebookUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     cover_emoji: str | None = None
+    tags: list[str] | None = None
 
 
 class LibraryFileRead(BaseModel):
