@@ -2,8 +2,8 @@
 
 The portal runs as two systemd services on the Oracle ARM VM so it survives
 SSH disconnects and reboots. Access is over **Tailscale** — open
-`http://<vm-tailscale-ip>:3000` from any device on the tailnet (or the SSH
-port-forward `localhost:3000` as before). No domain, no Cloudflare, no public
+`http://<vm-tailscale-ip>:3001` from any device on the tailnet (or the SSH
+port-forward `localhost:3001` as before). No domain, no Cloudflare, no public
 inbound ports.
 
 ## Services
@@ -11,10 +11,14 @@ inbound ports.
 | Unit | What | Bind |
 |---|---|---|
 | `research-portal-backend.service` | FastAPI (uvicorn, no `--reload`) | `127.0.0.1:8000` |
-| `research-portal-frontend.service` | Next.js production (`next start`) | `0.0.0.0:3000` |
+| `research-portal-frontend.service` | Next.js production (`next start`) | `0.0.0.0:3001` |
 
 The frontend proxies `/api/*` → `127.0.0.1:8000` via Next.js rewrites, so the
 backend is never bound to a public/tailnet interface.
+
+The frontend listens on **3001**, not 3000 — port 3000 is taken by another
+local service. The port lives in `ExecStart` (`next start ... -p 3001`) in
+`research-portal-frontend.service`.
 
 ## Install (one-time)
 
@@ -37,6 +41,17 @@ cd portal/frontend && npm run build
 sudo systemctl restart research-portal-frontend.service
 ```
 
+## Start / stop / restart
+
+The one-time install above (`enable --now`) already starts both services and
+makes them launch on boot. To control them afterwards:
+
+```bash
+sudo systemctl start   research-portal-{backend,frontend}.service
+sudo systemctl stop    research-portal-{backend,frontend}.service
+sudo systemctl restart research-portal-{backend,frontend}.service
+```
+
 ## Common commands
 
 ```bash
@@ -50,5 +65,5 @@ sudo systemctl restart research-portal-frontend.service
 
 - Backend binds `127.0.0.1` only — unreachable except via the frontend's proxy.
 - Frontend binds `0.0.0.0` so the SSH forward *and* the Tailscale IP both work.
-  The Oracle Cloud **security list must not expose port 3000** to the public —
+  The Oracle Cloud **security list must not expose port 3001** to the public —
   Tailscale's private mesh + that cloud firewall are what keep it single-user.

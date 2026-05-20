@@ -317,12 +317,25 @@ sudo systemctl enable --now research-portal-frontend.service
 ```
 
 - **Backend** — `uvicorn` (no `--reload`) bound to `127.0.0.1:8000`
-- **Frontend** — Next.js **production build** (`next start`) bound to `0.0.0.0:3000`; the
+- **Frontend** — Next.js **production build** (`next start`) bound to `0.0.0.0:3001`; the
   `/api/*` rewrite proxies to the backend, so the backend is never bound to a public interface
 
-Access it over a private network (e.g. Tailscale) at `http://<host>:3000`, or keep using an
-SSH port-forward to `localhost:3000`. Don't open port 3000 on your cloud provider's firewall —
+`enable --now` both starts the services *and* sets them to launch on boot, so after the
+one-time install the portal is already running. To start, stop, or restart it later:
+
+```bash
+sudo systemctl start   research-portal-backend.service research-portal-frontend.service
+sudo systemctl stop    research-portal-backend.service research-portal-frontend.service
+sudo systemctl restart research-portal-backend.service research-portal-frontend.service
+systemctl status research-portal-{backend,frontend}.service   # check it's running
+```
+
+Access it over a private network (e.g. Tailscale) at `http://<host>:3001`, or keep using an
+SSH port-forward to `localhost:3001`. Don't open port 3001 on your cloud provider's firewall —
 the private network plus that firewall are the single-user security boundary.
+
+> The frontend runs on **3001** because port 3000 is used by another local service. It is
+> set in `ExecStart` (`next start ... -p 3001`) in `portal/deploy/research-portal-frontend.service`.
 
 **After pulling new code**, the dev hot-reload no longer applies — you must rebuild/restart:
 
