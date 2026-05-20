@@ -294,10 +294,10 @@ Two helper scripts run from the repo root:
 
 ```bash
 ./portal/start-backend.sh    # FastAPI on :8000  (uvicorn --reload, watching portal/backend)
-./portal/start-frontend.sh   # Next.js dev on :3000
+./portal/start-frontend.sh   # Next.js dev on :3002
 ```
 
-API docs at **http://localhost:8000/docs**, portal at **http://localhost:3000**.
+API docs at **http://localhost:8000/docs**, portal at **http://localhost:3002**.
 
 Click **Sync notebooks** to pull your existing NotebookLM notebooks into the portal. Use the **Library** page to create notebooks, upload files into them, and chat with their contents.
 

@@ -14,7 +14,10 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3002](http://localhost:3002) with your browser to see the result.
+
+> The dev server runs on **3002** (set via `next dev -p 3002` in `package.json`).
+> Port 3000 is used by another local service and 3001 by the production portal.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
