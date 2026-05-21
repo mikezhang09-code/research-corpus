@@ -1,0 +1,35 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# cloudflare / opennext
+/.open-next/
+/.wrangler/
+.dev.vars
+cloudflare-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+.cf-setup.env
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

@@ -1,0 +1,430 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RESEARCH CORPUS — design tokens (Tailwind v4)
+   Warm-paper / archival palette. The shadcn token block below maps each
+   shadcn primitive variable (--background, --card, --primary, …) onto
+   this palette so existing <Button>/<Card>/<Dialog>/etc. inherit the
+   new look automatically.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* Surfaces */
+  --color-paper:        #f4ede0;
+  --color-paper-light:  #faf5e9;
+  --color-paper-deep:   #ebe1cf;
+  --color-vellum:       #fffaf0;
+
+  /* Ink */
+  --color-ink:       #2a2418;
+  --color-ink-soft:  #3d3528;
+  --color-ink-fade:  #6b5f47;
+  --color-ink-mute:  #9a8d72;
+
+  /* Rules */
+  --color-rule:       #c7b89a;
+  --color-rule-light: #d8ccb3;
+
+  /* Accents */
+  --color-terracotta: #b85c38;
+  --color-sage:       #6b7a52;
+  --color-lavender:   #6d5e8e;
+  --color-ochre:      #b8893a;
+  --color-blush:      #a85458;
+  --color-sky:        #4a6e8e;
+  --color-mint:       #4a8068;
+
+  /* Type — variables come from next/font in layout.tsx; chain CJK
+     fallbacks here so Chinese/Japanese/Korean glyphs render across
+     Linux (Noto), macOS (PingFang / Hiragino), and Windows (YaHei /
+     Yu Gothic / Malgun Gothic). */
+  --font-serif-display: var(--font-serif-display), "Cormorant Garamond",
+    "Noto Serif SC", "Noto Serif CJK SC", "Noto Serif TC", "Noto Serif JP",
+    "Noto Serif KR", Georgia, serif;
+  --font-serif: var(--font-serif), "Source Serif 4", "Noto Serif SC",
+    "Noto Serif CJK SC", "Noto Serif TC", "Noto Serif JP", "Noto Serif KR",
+    Georgia, serif;
+  --font-sans: var(--font-sans), "Inter Tight", "Noto Sans SC",
+    "Noto Sans CJK SC", "Noto Sans TC", "Noto Sans CJK TC", "Noto Sans JP",
+    "Noto Sans KR", "PingFang SC", "Hiragino Sans GB", "Hiragino Sans",
+    "Microsoft YaHei", "Yu Gothic", "Malgun Gothic", system-ui,
+    -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+
+  /* Radius */
+  --radius-paper: 2px;
+  --radius-pill:  999px;
+}
+
+/* shadcn token bridge — keep existing primitives working but on the new palette */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* shadcn primitives remapped onto the paper/ink palette */
+  --background: #f4ede0;            /* paper */
+  --foreground: #2a2418;            /* ink */
+  --card: #fffaf0;                  /* vellum */
+  --card-foreground: #2a2418;
+  --popover: #fffaf0;
+  --popover-foreground: #2a2418;
+  --primary: #2a2418;               /* ink — primary buttons stay dark */
+  --primary-foreground: #faf5e9;    /* paper-light */
+  --secondary: #ebe1cf;             /* paper-deep */
+  --secondary-foreground: #2a2418;
+  --muted: #ebe1cf;
+  --muted-foreground: #6b5f47;      /* ink-fade */
+  --accent: #ebe1cf;
+  --accent-foreground: #2a2418;
+  --destructive: #a85458;           /* blush */
+  --border: #c7b89a;                /* rule */
+  --input: #c7b89a;
+  --ring: #6b5f47;                  /* ink-fade */
+  --chart-1: #b85c38;               /* terracotta */
+  --chart-2: #6b7a52;               /* sage */
+  --chart-3: #6d5e8e;               /* lavender */
+  --chart-4: #b8893a;               /* ochre */
+  --chart-5: #4a6e8e;               /* sky */
+  --radius: 0.625rem;
+  --sidebar: #faf5e9;
+  --sidebar-foreground: #2a2418;
+  --sidebar-primary: #2a2418;
+  --sidebar-primary-foreground: #faf5e9;
+  --sidebar-accent: #ebe1cf;
+  --sidebar-accent-foreground: #2a2418;
+  --sidebar-border: #c7b89a;
+  --sidebar-ring: #6b5f47;
+}
+
+/* ── Theme variants ─────────────────────────────────────────────────── */
+
+[data-theme="sepia"] {
+  --color-paper:       #ede0c7;
+  --color-paper-light: #f5ead0;
+  --color-paper-deep:  #e0d2b3;
+  --color-vellum:      #fbf0d4;
+  --background: #ede0c7;
+  --card: #fbf0d4;
+  --popover: #fbf0d4;
+  --secondary: #e0d2b3;
+  --muted: #e0d2b3;
+  --accent: #e0d2b3;
+}
+
+[data-theme="ink"] {
+  --color-paper:       #2a2418;
+  --color-paper-light: #36301f;
+  --color-paper-deep:  #1e1a10;
+  --color-vellum:      #3a3322;
+  --color-ink:         #f4ede0;
+  --color-ink-soft:    #d8ccb3;
+  --color-ink-fade:    #9a8d72;
+  --color-ink-mute:    #6b5f47;
+  --color-rule:        #4a3f2e;
+  --color-rule-light:  #3a3022;
+  --background: #2a2418;
+  --foreground: #f4ede0;
+  --card: #3a3322;
+  --card-foreground: #f4ede0;
+  --popover: #3a3322;
+  --popover-foreground: #f4ede0;
+  --primary: #f4ede0;
+  --primary-foreground: #2a2418;
+  --secondary: #36301f;
+  --secondary-foreground: #f4ede0;
+  --muted: #36301f;
+  --muted-foreground: #9a8d72;
+  --accent: #36301f;
+  --accent-foreground: #f4ede0;
+  --border: #4a3f2e;
+  --input: #4a3f2e;
+  --ring: #9a8d72;
+}
+
+[data-theme="dark"], .dark {
+  --color-paper:       #1a1a1a;
+  --color-paper-light: #242424;
+  --color-paper-deep:  #141414;
+  --color-vellum:      #2a2a26;
+  --color-ink:         #ebe1cf;
+  --color-ink-soft:    #c7b89a;
+  --color-ink-fade:    #9a8d72;
+  --color-ink-mute:    #6b5f47;
+  --color-rule:        #3a3a3a;
+  --color-rule-light:  #2c2c2c;
+  --background: #1a1a1a;
+  --foreground: #ebe1cf;
+  --card: #2a2a26;
+  --card-foreground: #ebe1cf;
+  --popover: #2a2a26;
+  --popover-foreground: #ebe1cf;
+  --primary: #ebe1cf;
+  --primary-foreground: #1a1a1a;
+  --secondary: #242424;
+  --secondary-foreground: #ebe1cf;
+  --muted: #242424;
+  --muted-foreground: #9a8d72;
+  --accent: #242424;
+  --accent-foreground: #ebe1cf;
+  --destructive: #b85458;
+  --border: #3a3a3a;
+  --input: #3a3a3a;
+  --ring: #9a8d72;
+  --sidebar: #242424;
+  --sidebar-foreground: #ebe1cf;
+  --sidebar-border: #3a3a3a;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────── */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-serif);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+  }
+
+  /* Paper grain — subtle */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.36  0 0 0 0 0.25  0 0 0 0.18 0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+    mix-blend-mode: multiply;
+  }
+}
+
+/* ── Component recipes used by CorpusCard / FolioCard / detail panes ── */
+
+@layer components {
+  /* Field-journal stitched spine */
+  .cover-stitch {
+    background: var(--color-vellum);
+    border: 1px solid var(--color-ink);
+    padding: 22px 22px 20px 36px;
+    border-radius: 1px 3px 3px 1px;
+    box-shadow: 2px 2px 0 rgb(42 36 24 / 0.10);
+    position: relative;
+  }
+  .cover-stitch::before {
+    content: ""; position: absolute; left: 16px; top: 0; bottom: 0;
+    width: 1px; background: var(--color-ink); opacity: 0.5;
+  }
+  .cover-stitch::after {
+    content: ""; position: absolute; left: 14px; top: 14px; bottom: 14px; width: 5px;
+    background-image: repeating-linear-gradient(to bottom,
+      var(--color-ink) 0, var(--color-ink) 6px,
+      transparent 6px, transparent 14px);
+    opacity: 0.55; border-radius: 1px;
+  }
+
+  /* Manila folder */
+  .cover-manila {
+    background: #e8d8a8;
+    border: 1px solid var(--color-ink);
+    padding: 28px 22px 20px;
+    border-radius: 0 3px 3px 3px;
+    box-shadow: 2px 2px 0 rgb(42 36 24 / 0.12);
+    position: relative;
+  }
+  .cover-manila::before {
+    content: attr(data-tab);
+    position: absolute; left: -1px; top: -16px;
+    padding: 4px 22px 4px 12px;
+    background: #e8d8a8;
+    border: 1px solid var(--color-ink);
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; font-weight: 600;
+    color: var(--color-ink); text-transform: uppercase;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+  }
+  [data-theme="dark"] .cover-manila, [data-theme="dark"] .cover-manila::before { background: #5a4a2a; }
+
+  /* Index card — ruled */
+  .cover-index {
+    background: var(--color-vellum);
+    border: 1px solid var(--color-ink);
+    padding: 16px 22px 20px;
+    border-radius: 2px;
+    box-shadow: 2px 2px 0 rgb(42 36 24 / 0.10);
+    background-image:
+      linear-gradient(to bottom, transparent 0, transparent 32px,
+        var(--color-terracotta) 32px, var(--color-terracotta) 33px, transparent 33px),
+      repeating-linear-gradient(to bottom, transparent 0, transparent 23px,
+        rgb(90 107 122 / 0.18) 23px, rgb(90 107 122 / 0.18) 24px);
+    position: relative;
+  }
+  .cover-index::before {
+    content: ""; position: absolute; left: 36px; top: 0; bottom: 0;
+    width: 1px; background: var(--color-terracotta); opacity: 0.5;
+  }
+
+  /* Pinned ephemera with washi tape */
+  .cover-pinned {
+    background: var(--color-paper-light);
+    border: 1px solid var(--color-ink);
+    padding: 26px 22px 20px;
+    border-radius: 2px;
+    box-shadow: 2px 2px 0 rgb(42 36 24 / 0.10);
+    transform: rotate(-0.4deg);
+    position: relative;
+  }
+  .cover-pinned::before {
+    content: ""; position: absolute; left: 50%; top: -8px;
+    width: 56px; height: 16px; margin-left: -28px;
+    background: rgb(232 200 122 / 0.55);
+    border: 1px solid rgb(42 36 24 / 0.12);
+    border-radius: 1px; transform: rotate(-1.5deg);
+  }
+
+  /* Photo stack — three layered cards */
+  .cover-photo {
+    background: var(--color-vellum);
+    border: 1px solid var(--color-ink);
+    padding: 22px 22px 20px;
+    border-radius: 2px;
+    box-shadow:
+      2px 2px 0 rgb(42 36 24 / 0.10),
+      6px 6px 0 -3px var(--color-paper-deep),
+      6px 6px 0 -2px var(--color-ink),
+      10px 10px 0 -6px var(--color-paper-deep),
+      10px 10px 0 -5px var(--color-ink);
+    position: relative;
+  }
+
+  /* Source thumb base */
+  .src-thumb {
+    width: 44px; height: 56px;
+    border: 1px solid var(--color-ink);
+    border-radius: 1px;
+    position: relative; overflow: hidden;
+    display: flex; align-items: flex-end; justify-content: center;
+    box-shadow: 1px 1px 0 rgb(42 36 24 / 0.08);
+    flex-shrink: 0;
+  }
+  .src-thumb-glyph {
+    font-family: var(--font-mono);
+    font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
+    padding: 2px 0; color: var(--color-ink-soft);
+  }
+  .src-thumb-pdf   { background: linear-gradient(180deg, var(--color-vellum) 0%, var(--color-vellum) 70%, var(--color-terracotta) 70%, var(--color-terracotta) 100%); }
+  .src-thumb-pdf .src-thumb-glyph { color: var(--color-paper-light); }
+  .src-thumb-md    { background: var(--color-vellum); }
+  .src-thumb-image { background: linear-gradient(135deg, #d8e2cc 0%, #b8c4a8 50%, #8a9870 100%); }
+  .src-thumb-audio { background: var(--color-vellum); }
+  .src-thumb-audio::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to right,
+      transparent 0, transparent 4px,
+      var(--color-ink-fade) 4px, var(--color-ink-fade) 5px);
+    mask: linear-gradient(to right, transparent 0, black 8%, black 92%, transparent 100%);
+    opacity: 0.45;
+  }
+  .src-thumb-html  { background: var(--color-paper-deep); }
+  .src-thumb-html::before { content: "</>"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--color-ink-soft); }
+  .src-thumb-pptx  { background: linear-gradient(135deg, var(--color-paper-light), var(--color-paper-deep)); }
+  .src-thumb-pptx::before { content: ""; position: absolute; left: 6px; right: 6px; top: 10px; bottom: 18px; background: rgb(184 92 56 / 0.25); border: 1px solid var(--color-ink); }
+  .src-thumb-url   { background: var(--color-paper-light); }
+  .src-thumb-url::before { content: "↗"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--color-ink-fade); }
+
+  /* Excel viewer — SheetJS emits a plain <table> with inline styles.
+     We don't override its column widths/spans, but we wrap it in our palette
+     for readability against the vellum modal background. */
+  .excel-sheet {
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .excel-sheet table {
+    border-collapse: collapse;
+    background: var(--color-vellum);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-ink);
+  }
+  .excel-sheet td, .excel-sheet th {
+    border: 1px solid var(--color-rule);
+    padding: 4px 8px;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+  .excel-sheet tr:nth-child(even) td { background: var(--color-paper-light); }
+  .excel-sheet th {
+    background: var(--color-paper-deep);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+  }
+
+  /* docx-preview viewer — give the rendered page room to breathe inside
+     our paper modal and keep table cells readable. */
+  .docx-preview-host {
+    background: var(--color-vellum);
+    color: var(--color-ink);
+  }
+  .docx-preview-host .docx-preview { padding: 4px; }
+  .docx-preview-host table {
+    border-collapse: collapse;
+  }
+  .docx-preview-host table td, .docx-preview-host table th {
+    border: 1px solid var(--color-rule);
+    padding: 4px 8px;
+    vertical-align: top;
+  }
+}

@@ -67,3 +67,16 @@ sudo systemctl restart research-portal-frontend.service
 - Frontend binds `0.0.0.0` so the SSH forward *and* the Tailscale IP both work.
   The Oracle Cloud **security list must not expose port 3001** to the public —
   Tailscale's private mesh + that cloud firewall are what keep it single-user.
+
+---
+
+# Public viewer
+
+`portal/public/` is a separate, **public-facing**, **view-only** app — browse
+*My Research* folios and the saved *NotebookLM Corpus*. It is a standalone
+Cloudflare Worker that reads Supabase and R2 directly; it does **not** involve
+this VPS, this backend, or a tunnel. The private Tailscale portal above is
+entirely unchanged.
+
+Build, deploy, and Cloudflare Access setup are documented in
+[`portal/public/README.md`](../public/README.md).

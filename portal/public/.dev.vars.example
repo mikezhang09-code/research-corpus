@@ -1,0 +1,6 @@
+# Local dev secrets for `next dev` / `opennextjs-cloudflare preview`.
+# Copy to `.dev.vars` (gitignored) and fill in real values — the same
+# Supabase project the private portal uses (see portal/.env).
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key

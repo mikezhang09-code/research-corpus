@@ -352,6 +352,35 @@ sudo systemctl restart research-portal-frontend.service
 
 See [`portal/deploy/README.md`](portal/deploy/README.md) for status/log commands and the full runbook.
 
+### 4 — Public viewer (Cloudflare)
+
+`portal/public/` is a separate, **public-facing**, **view-only** app that lets you browse
+your *My Research* folios and saved *NotebookLM Corpus* artifacts from any browser. It runs
+as a standalone **Cloudflare Worker** (Next.js via `@opennextjs/cloudflare`), gated by
+**Cloudflare Access** — no VPS, no backend, no tunnel. The private Tailscale portal above
+is entirely unchanged.
+
+```
+Browser ──Access login──▶ Cloudflare Worker (portal/public, OpenNext)
+                               ├─ reads Supabase   (folio/file/artifact metadata)
+                               └─ streams files    (R2, via public URLs)
+```
+
+- Read-only by construction — there are no write endpoints
+- Same visual design + inline viewers (DOCX, Excel, slides, audio, video, mind maps) as
+  the private portal
+- Auth is handled entirely by Cloudflare Access (email allow-list); no auth code in the app
+
+```bash
+cd portal/public
+npm install
+npm run dev           # local dev on http://localhost:3003
+npm run deploy        # build + deploy to Cloudflare
+```
+
+See [`portal/public/README.md`](portal/public/README.md) for environment setup, secrets,
+and Cloudflare Access configuration.
+
 ---
 
 ## Documentation
