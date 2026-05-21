@@ -18,6 +18,7 @@ import {
   type LibraryFile,
 } from "@/lib/api";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
+import { PresentationModal } from "@/components/corpus/PresentationModal";
 import { CATEGORY_OPTIONS } from "./file-categories";
 import { DocxModal } from "./DocxModal";
 import { ExcelModal } from "./ExcelModal";
@@ -130,17 +131,21 @@ export function FileCard({
 
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
   const isDocx = ext === ".docx" || ext === ".doc";
   const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
+  const isPresentation = ext === ".ppt" || ext === ".pptx";
   const isMindMap = file.file_category === "mindmap";
   const isImage = file.file_category === "image";
   const isAudio = file.file_category === "audio";
   const isVideo = file.file_category === "video";
-  const hasViewer = isMarkdown || isDocx || isExcel || isMindMap || isImage || isAudio || isVideo;
+  // The presentation viewer (Office Online embed) needs a public file URL.
+  const hasViewer =
+    isMarkdown || isDocx || isExcel || isMindMap || isImage || isAudio || isVideo ||
+    (isPresentation && !!file.r2_url);
 
   const added = new Date(file.added_at).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
@@ -165,6 +170,7 @@ export function FileCard({
     else if (isImage) setViewer("image");
     else if (isAudio) setViewer("audio");
     else if (isVideo) setViewer("video");
+    else if (isPresentation) setViewer("presentation");
   }
 
   return (
@@ -193,6 +199,9 @@ export function FileCard({
       )}
       {viewer === "video" && file.r2_url && (
         <VideoModal src={file.r2_url} title={file.title} onClose={() => setViewer(null)} />
+      )}
+      {viewer === "presentation" && file.r2_url && (
+        <PresentationModal src={file.r2_url} title={file.title} onClose={() => setViewer(null)} />
       )}
 
       <div className="rounded-[2px] overflow-hidden border border-ink bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all">

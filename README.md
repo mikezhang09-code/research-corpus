@@ -245,6 +245,7 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
   - **CSV** data tables (paper headers + alternating rows)
   - **Mind maps** (horizontal collapsible tree, ink + terracotta nodes)
   - **Flashcards** — interactive study mode with flip / prev / next / ✓ / ✗ counters and keyboard navigation
+  - **Presentation decks** (`.ppt` / `.pptx`) — slide-deck artifacts rendered inline via the Microsoft Office Online embed
 - Per-artifact **Save to portal** (preserves the file in R2 + Supabase even if you delete it in NotebookLM) and **Delete from portal**
 
 **Sources panel**
@@ -261,6 +262,7 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
   - **Markdown** / `.txt`
   - **DOCX** — client-side via `docx-preview` (preserves table content and numbers that the previous `mammoth` server-side conversion was dropping)
   - **Excel / CSV / ODS** — multi-sheet workbook viewer via SheetJS, with paper-styled tabs per sheet
+  - **Presentation decks** (`.ppt` / `.pptx`) — rendered inline via the Microsoft Office Online embed
   - JSON **mind maps**, images, audio, video
 - Per-notebook chat powered by an Anthropic-compatible API (defaults to Xiaomi's MiMo proxy — model configurable via `ANTHROPIC_MODEL`); history persists across reloads
   - **File contents are injected as primary context** — extracted text from `.pdf` (pypdf), `.docx` (mammoth), `.xlsx`/`.xls`/`.xlsm` (openpyxl), `.md`/`.txt`/`.csv`/`.json` (raw), `.html` (regex-stripped) is shipped in the system prompt so the model answers from actual file data, not just titles. Audio/video/image files show up as placeholders. Per-file cap 30 k chars, total cap 200 k chars to stay within context window.

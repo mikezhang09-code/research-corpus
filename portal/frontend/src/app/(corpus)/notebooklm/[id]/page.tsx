@@ -19,6 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
+import { PresentationModal } from "@/components/corpus/PresentationModal";
 import { getLiveArtifacts, getArtifactContent, saveArtifact, deleteArtifact, type LiveArtifact } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
@@ -631,6 +632,7 @@ function ArtifactCard({
   const [showCsv, setShowCsv] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [showPresentation, setShowPresentation] = useState(false);
   const cfg = TYPE_CONFIG[artifact.artifact_type] ?? DEFAULT_CONFIG;
   const Icon = cfg.icon;
 
@@ -644,6 +646,7 @@ function ArtifactCard({
   const isCsv = artifact.file_format === "csv";
   const isMindMap = artifact.artifact_type === "mind_map";
   const isFlashcards = artifact.artifact_type === "flashcards";
+  const isPresentation = artifact.file_format === "pptx" || artifact.file_format === "ppt";
 
   async function handleSave() {
     setSaving(true);
@@ -712,6 +715,13 @@ function ArtifactCard({
           portalId={artifact.portal_id}
           title={artifact.title}
           onClose={() => setShowFlashcards(false)}
+        />
+      )}
+      {showPresentation && artifact.r2_url && (
+        <PresentationModal
+          src={artifact.r2_url}
+          title={artifact.title}
+          onClose={() => setShowPresentation(false)}
         />
       )}
 
@@ -858,6 +868,16 @@ function ArtifactCard({
                   >
                     <StickyNote className="h-3 w-3" />
                     Study
+                  </Button>
+                ) : isPresentation && artifact.r2_url ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8 text-xs shrink-0"
+                    onClick={() => setShowPresentation(true)}
+                  >
+                    <Layers className="h-3 w-3" />
+                    View
                   </Button>
                 ) : artifact.r2_url ? (
                   <a href={artifact.r2_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
