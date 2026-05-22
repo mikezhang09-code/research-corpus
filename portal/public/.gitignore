@@ -3,6 +3,10 @@
 /.pnp
 .pnp.*
 
+# package-lock.json is ignored repo-wide by the root .gitignore (Python project);
+# this Node app needs it committed so CI `npm ci` is reproducible.
+!package-lock.json
+
 # next.js
 /.next/
 /out/
