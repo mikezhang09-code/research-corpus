@@ -32,3 +32,29 @@ export async function GET(req: NextRequest) {
   }));
   return NextResponse.json({ items, total: items.length });
 }
+
+// POST /api/library-notebooks  → create a folio
+export async function POST(req: NextRequest) {
+  const db = supabase();
+  let body: { title?: string; cover_emoji?: string | null; tags?: string[] };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const title = (body.title ?? "").trim();
+  if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
+
+  const row: Record<string, unknown> = { title };
+  if (body.cover_emoji) row.cover_emoji = body.cover_emoji;
+  if (body.tags?.length) row.tags = body.tags;
+
+  const { data, error } = await db
+    .from("library_notebooks")
+    .insert(row)
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ...data, file_count: 0 }, { status: 201 });
+}

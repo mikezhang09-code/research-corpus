@@ -1,20 +1,25 @@
 "use client";
 
-// View-only file card. Renders a library file and opens the matching inline
-// viewer. No edit/delete — management lives on the private portal.
-
 import { useEffect, useState } from "react";
 import {
   Layers, FileText, BookOpen, Music, Video, Network, ImageIcon, File, Table,
-  ExternalLink, Loader2, AlertCircle,
+  ExternalLink, Trash2, Pencil, Loader2, AlertCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getLibraryFileContent, type LibraryFile } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  deleteLibraryNotebookFile, getLibraryFileContent, updateLibraryNotebookFile,
+  type LibraryFile,
+} from "@/lib/api";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { PresentationModal } from "@/components/corpus/PresentationModal";
+import { CATEGORY_OPTIONS } from "./file-categories";
 import { DocxModal } from "./DocxModal";
 import { ExcelModal } from "./ExcelModal";
 import { ImageModal } from "./ImageModal";
@@ -112,13 +117,21 @@ function MarkdownModal({
 
 // ---- FileCard ----
 
-export function FileCard({ file }: { file: LibraryFile }) {
+export function FileCard({
+  file,
+  onDeleted,
+  onUpdated,
+}: {
+  file: LibraryFile;
+  onDeleted: () => void;
+  onUpdated?: (file: LibraryFile) => void;
+}) {
   const cfg = FILE_CATEGORY_CONFIG[file.file_category as CatKey] ?? DEFAULT_CAT;
   const Icon = cfg.icon;
 
-  const [viewer, setViewer] = useState<
-    "markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | null
-  >(null);
+  const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
@@ -129,6 +142,7 @@ export function FileCard({ file }: { file: LibraryFile }) {
   const isImage = file.file_category === "image";
   const isAudio = file.file_category === "audio";
   const isVideo = file.file_category === "video";
+  // The presentation viewer (Office Online embed) needs a public file URL.
   const hasViewer =
     isMarkdown || isDocx || isExcel || isMindMap || isImage || isAudio || isVideo ||
     (isPresentation && !!file.r2_url);
@@ -137,6 +151,16 @@ export function FileCard({ file }: { file: LibraryFile }) {
     month: "short", day: "numeric", year: "numeric",
   });
   const sizeStr = formatBytes(file.file_size_bytes);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteLibraryNotebookFile(file.notebook_id, file.id);
+      onDeleted();
+    } catch {
+      setDeleting(false);
+    }
+  }
 
   function openViewer() {
     if (isDocx) setViewer("docx");
@@ -208,28 +232,154 @@ export function FileCard({ file }: { file: LibraryFile }) {
             )}
           </div>
 
-          {/* Action */}
-          <div className="mt-1">
+          {/* Actions */}
+          <div className="flex items-center gap-2 mt-1">
             {hasViewer ? (
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full gap-1.5 h-8 rounded-[1px]"
+                className="flex-1 gap-1.5 h-8 rounded-[1px]"
                 onClick={openViewer}
               >
                 {isAudio || isVideo ? "Play" : "View"}
               </Button>
             ) : file.r2_url ? (
-              <a href={file.r2_url} target="_blank" rel="noopener noreferrer" className="block">
+              <a href={file.r2_url} target="_blank" rel="noopener noreferrer" className="flex-1">
                 <Button variant="outline" size="sm" className="w-full gap-1.5 h-8 rounded-[1px]">
                   <ExternalLink className="h-3 w-3" />
                   Open
                 </Button>
               </a>
             ) : null}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink"
+              onClick={() => setEditing(true)}
+              disabled={deleting}
+              title="Rename"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-ink-fade hover:text-terracotta"
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Delete"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
           </div>
         </div>
       </div>
+
+      {editing && (
+        <EditFileDialog
+          file={file}
+          onClose={() => setEditing(false)}
+          onSaved={(updated) => {
+            onUpdated?.(updated);
+            setEditing(false);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function EditFileDialog({
+  file,
+  onClose,
+  onSaved,
+}: {
+  file: LibraryFile;
+  onClose: () => void;
+  onSaved: (updated: LibraryFile) => void;
+}) {
+  const [title, setTitle] = useState(file.title);
+  const [category, setCategory] = useState(file.file_category);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmedTitle = title.trim();
+  const titleChanged = trimmedTitle !== file.title && trimmedTitle.length > 0;
+  const categoryChanged = category !== file.file_category;
+  const dirty = titleChanged || categoryChanged;
+
+  async function handleSave() {
+    if (!dirty) { onClose(); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateLibraryNotebookFile(file.notebook_id, file.id, {
+        ...(titleChanged ? { title: trimmedTitle } : {}),
+        ...(categoryChanged ? { file_category: category } : {}),
+      });
+      onSaved(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="font-serif-display text-[22px] tracking-tight">Edit file</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          <label className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">Title</label>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }}
+            autoFocus
+            disabled={saving}
+            className="h-11"
+          />
+          <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute">
+            Filename: {file.original_name}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">File type</label>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={saving}
+            className="w-full rounded-[1px] border border-rule bg-vellum px-3 py-2 font-serif text-[14px] text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink focus-visible:border-ink"
+          >
+            {CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 font-mono text-[11px] tracking-[0.08em] text-terracotta bg-vellum border border-terracotta/40 rounded-[1px] p-2.5">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-px" />
+            <span className="break-words">{error}</span>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!dirty || saving}>
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

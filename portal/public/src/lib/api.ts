@@ -1,13 +1,20 @@
-// Public Research Portal — API client (read-only).
+// Public Research Portal — API client.
 //
-// This app is view-only. `/api/*` is served by this app's own route handlers
-// (src/app/api/**), which query Supabase directly and stream files from R2.
-// There is no backend, no NotebookLM RPC, and no write/chat endpoints.
+// `/api/*` is served by this app's own route handlers (src/app/api/**),
+// which query Supabase directly and read/write files in R2. "My Research"
+// folios are fully editable here; the "NotebookLM Corpus" stays read-only,
+// and there is no chat — that lives on the private Tailscale portal.
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-async function request<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: init?.body
+      ? { "Content-Type": "application/json", ...init.headers }
+      : init?.headers,
+  });
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -41,6 +48,68 @@ export async function getLibraryFileBlob(notebookId: string, fileId: string): Pr
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.arrayBuffer();
 }
+
+// ---- Library Notebooks — write ops ----
+
+export const createLibraryNotebook = (data: {
+  title: string;
+  cover_emoji?: string | null;
+  tags?: string[];
+}) =>
+  request<LibraryNotebook>("/api/library-notebooks", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateLibraryNotebook = (
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    cover_emoji?: string | null;
+    tags?: string[];
+  },
+) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteLibraryNotebook = (id: string) =>
+  request<void>(`/api/library-notebooks/${id}`, { method: "DELETE" });
+
+export async function uploadLibraryNotebookFile(
+  notebookId: string,
+  file: File,
+  category: string,
+  title?: string,
+): Promise<LibraryFile> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("category", category);
+  if (title) form.append("title", title);
+  const res = await fetch(`${BASE}/api/library-notebooks/${notebookId}/files/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export const updateLibraryNotebookFile = (
+  notebookId: string,
+  fileId: string,
+  patch: { title?: string; description?: string; file_category?: string },
+) =>
+  request<LibraryFile>(`/api/library-notebooks/${notebookId}/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
+  request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, {
+    method: "DELETE",
+  });
 
 // ---- Artifacts (saved NotebookLM corpus) ----
 

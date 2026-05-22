@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, FolderOpen, ArrowUpDown } from "lucide-react";
+import { Search, FolderOpen, ArrowUpDown, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SectionHead } from "@/components/corpus/SectionHead";
 import { FolioCard, pickCover } from "@/components/corpus/FolioCard";
+import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNotebookModal";
 import { getLibraryNotebooks, type LibraryNotebook } from "@/lib/api";
 
 type SortKey = "recent" | "title" | "files";
@@ -22,6 +24,7 @@ export default function LibraryPage() {
   const [folios, setFolios] = useState<LibraryNotebook[] | null>(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +33,12 @@ export default function LibraryPage() {
       .catch(() => { if (!cancelled) setFolios([]); });
     return () => { cancelled = true; };
   }, []);
+
+  const existingTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of folios ?? []) for (const t of f.tags) set.add(t);
+    return [...set].sort();
+  }, [folios]);
 
   const visible = useMemo(() => {
     if (!folios) return [];
@@ -55,32 +64,45 @@ export default function LibraryPage() {
 
       <div className="px-14 space-y-6">
         <p className="font-serif text-[14px] text-ink-soft max-w-2xl">
-          Research folios and their files. Read-only — open any file to view it.
+          Research folios and their files. Create folios, upload files, and
+          organise — open any file to view it inline.
         </p>
 
-        {/* Toolbar: search · sort */}
-        {!loading && folios.length > 0 && (
+        {/* Toolbar: search · sort · new folio */}
+        {!loading && (
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative max-w-sm flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-mute pointer-events-none" />
-              <Input
-                placeholder="Search folios & tags…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 rounded-[1px] border border-rule bg-vellum hover:bg-paper-deep hover:border-ink px-3 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink transition-colors">
-                <ArrowUpDown className="h-3.5 w-3.5" />
-                {sortBy === "recent" ? "Recently updated" : sortBy === "title" ? "Alphabetical" : "Most files"}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSortBy("recent")}>Recently updated</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("title")}>Alphabetical</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("files")}>Most files</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {folios.length > 0 && (
+              <>
+                <div className="relative max-w-sm flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-mute pointer-events-none" />
+                  <Input
+                    placeholder="Search folios & tags…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 rounded-[1px] border border-rule bg-vellum hover:bg-paper-deep hover:border-ink px-3 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink transition-colors">
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                    {sortBy === "recent" ? "Recently updated" : sortBy === "title" ? "Alphabetical" : "Most files"}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setSortBy("recent")}>Recently updated</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy("title")}>Alphabetical</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy("files")}>Most files</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+            <Button
+              size="sm"
+              className="gap-1.5 h-9 rounded-[1px] ml-auto"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New folio
+            </Button>
           </div>
         )}
 
@@ -96,8 +118,17 @@ export default function LibraryPage() {
             <FolderOpen className="h-12 w-12 opacity-30" />
             <p className="font-serif-display text-[20px] tracking-tight text-ink">No folios yet</p>
             <p className="font-serif text-[14px] text-center max-w-sm text-ink-soft">
-              Create research folios from the private Research portal — they will appear here.
+              Create a research folio to start collecting files.
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 rounded-[1px] mt-1"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New folio
+            </Button>
           </div>
         ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-ink-mute gap-3">
@@ -126,6 +157,13 @@ export default function LibraryPage() {
           </div>
         )}
       </div>
+
+      {showCreate && (
+        <CreateLibraryNotebookModal
+          existingTags={existingTags}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
     </div>
   );
 }

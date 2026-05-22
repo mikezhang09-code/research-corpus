@@ -11,9 +11,16 @@
   "observability": {
     "enabled": true
   },
-  // SUPABASE_URL is a plain var (it is not secret). The service-role key is
-  // a secret — set it with: wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+  // SUPABASE_URL and R2_PUBLIC_URL are plain vars (not secret). The
+  // service-role key is a secret — set it with:
+  //   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
   "vars": {
-    "SUPABASE_URL": "https://llusronucprogsrgzxrw.supabase.co"
-  }
+    "SUPABASE_URL": "https://llusronucprogsrgzxrw.supabase.co",
+    "R2_PUBLIC_URL": "https://pub-7476dba8b5e64618bdb1c80b8df63baa.r2.dev"
+  },
+  // R2 bucket binding — used to write/delete folio file objects. File reads
+  // still go through the public URL (see streamR2 in src/lib/supabase.ts).
+  "r2_buckets": [
+    { "binding": "R2_BUCKET", "bucket_name": "research-portal" }
+  ]
 }
