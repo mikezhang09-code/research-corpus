@@ -413,6 +413,10 @@ class LibraryFileUpdate(BaseModel):
     file_category: str | None = None
 
 
+class LibraryFileContentUpdate(BaseModel):
+    content: str
+
+
 class LibraryNotebookListResponse(BaseModel):
     items: list[LibraryNotebookRead]
     total: int

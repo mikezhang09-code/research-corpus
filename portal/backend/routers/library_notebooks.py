@@ -19,6 +19,7 @@ from ..models import (
     GenerateDescriptionRequest,
     GenerateDescriptionResponse,
     LibraryChatRequest,
+    LibraryFileContentUpdate,
     LibraryFileRead,
     LibraryFileUpdate,
     LibraryNotebookCreate,
@@ -455,6 +456,31 @@ async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Quer
             )
         },
     )
+
+
+@router.put("/{nb_id}/files/{file_id}/content", response_model=LibraryFileRead)
+async def update_notebook_file_content(nb_id: UUID, file_id: UUID, body: LibraryFileContentUpdate):
+    """Overwrite a stored text file's contents (used by the note editor).
+
+    The item keeps its `r2_key`/`r2_url` — only the bytes and `file_size_bytes`
+    change, so the file card and viewers keep working unchanged.
+    """
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+    f = repo.get_file(db, nb_id, file_id)
+    if not f:
+        raise HTTPException(404, "File not found")
+    r2_key = f.get("r2_key")
+    if not r2_key:
+        raise HTTPException(400, "This item has no stored file to update")
+
+    data = body.content.encode("utf-8")
+    mime = f.get("mime_type") or "text/markdown"
+    upload_file(r2_key, data, mime)
+    row = repo.update_file(db, nb_id, file_id, {"file_size_bytes": len(data)})
+    if not row:
+        raise HTTPException(404, "File not found")
+    return row
 
 
 # ---------------------------------------------------------------------------

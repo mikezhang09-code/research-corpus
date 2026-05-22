@@ -3,7 +3,13 @@ import { env } from "./supabase";
 
 // Minimal shape of the Workers R2 API we use — avoids depending on
 // @cloudflare/workers-types being present in the build.
+interface R2ObjectBodyLike {
+  body: ReadableStream;
+  httpMetadata?: { contentType?: string };
+}
+
 interface R2BucketLike {
+  get(key: string): Promise<R2ObjectBodyLike | null>;
   put(
     key: string,
     value: ArrayBuffer | ReadableStream | string,

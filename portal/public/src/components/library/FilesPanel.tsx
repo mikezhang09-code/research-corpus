@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, NotebookPen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLibraryNotebookFiles, type LibraryFile } from "@/lib/api";
 import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
+import { NoteEditorModal } from "./NoteEditorModal";
 
 const CATEGORIES = [
   { value: "",            label: "All"          },
@@ -25,6 +26,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showNote, setShowNote] = useState(false);
 
   const loadFiles = useCallback(async (category: string) => {
     setLoading(true);
@@ -69,14 +71,25 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             {cat.label}
           </button>
         ))}
-        <Button
-          size="sm"
-          className="gap-1.5 h-7 rounded-[1px] ml-auto"
-          onClick={() => setShowAdd(true)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add file
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-7 rounded-[1px]"
+            onClick={() => setShowNote(true)}
+          >
+            <NotebookPen className="h-3.5 w-3.5" />
+            New note
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1.5 h-7 rounded-[1px]"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add file
+          </Button>
+        </div>
       </div>
 
       {/* File grid */}
@@ -124,6 +137,17 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             // Stream each completed upload into the list; modal closes itself
             // when the whole batch finishes.
             setFiles((prev) => [newFile, ...prev]);
+          }}
+        />
+      )}
+
+      {showNote && (
+        <NoteEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowNote(false)}
+          onSaved={(newNote) => {
+            setFiles((prev) => [newNote, ...prev]);
+            setShowNote(false);
           }}
         />
       )}

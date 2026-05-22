@@ -106,6 +106,17 @@ export const updateLibraryNotebookFile = (
     body: JSON.stringify(patch),
   });
 
+/** Overwrite a stored text file's contents — used by the note editor. */
+export const saveLibraryNoteContent = (
+  notebookId: string,
+  fileId: string,
+  content: string,
+) =>
+  request<LibraryFile>(
+    `/api/library-notebooks/${notebookId}/files/${fileId}/content`,
+    { method: "PUT", body: JSON.stringify({ content }) },
+  );
+
 export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
   request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, {
     method: "DELETE",

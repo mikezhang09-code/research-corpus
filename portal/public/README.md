@@ -2,7 +2,8 @@
 
 A public-facing **Cloudflare Worker** companion to `portal/frontend`. The
 **"My Research"** folios are **fully editable** here — create folios, upload
-files, rename, retag, delete. The saved **"NotebookLM Corpus"** artifacts stay
+files, write Markdown notes, rename, retag, delete. The saved
+**"NotebookLM Corpus"** artifacts stay
 **view-only**. Both surfaces have the inline viewers (DOCX, Excel, PDF, images,
 audio/video, slides, mind maps, flashcards). There is **no chat** and **no
 NotebookLM access** — those stay on the private `portal/frontend` (Tailscale).
@@ -93,7 +94,8 @@ change any of these there, re-copy them here:
 - `src/components/library/` viewer modals — `DocxModal`, `ExcelModal`,
   `ImageModal`, `AudioModal`, `VideoModal`, `MindMapModal`
 - `src/components/library/` writable folio components — `FileCard`,
-  `FilesPanel`, `AddFileModal`, `TagInput`, `file-categories.ts`
+  `FilesPanel`, `AddFileModal`, `NoteEditorModal`, `TagInput`,
+  `file-categories.ts`
 - `src/hooks/*`, `src/lib/utils.ts`, `tsconfig.json`, `postcss.config.mjs`,
   `eslint.config.mjs`
 

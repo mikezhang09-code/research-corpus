@@ -26,6 +26,7 @@ import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
+import { NoteEditorModal } from "./NoteEditorModal";
 
 // ---- category config ----
 
@@ -131,6 +132,7 @@ export function FileCard({
 
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
@@ -139,6 +141,7 @@ export function FileCard({
   const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
   const isPresentation = ext === ".ppt" || ext === ".pptx";
   const isMindMap = file.file_category === "mindmap";
+  const isNote = file.file_category === "note";
   const isImage = file.file_category === "image";
   const isAudio = file.file_category === "audio";
   const isVideo = file.file_category === "video";
@@ -163,6 +166,7 @@ export function FileCard({
   }
 
   function openViewer() {
+    if (isNote) { setNoteOpen(true); return; }
     if (isDocx) setViewer("docx");
     else if (isExcel) setViewer("excel");
     else if (isMarkdown) setViewer("markdown");
@@ -241,7 +245,7 @@ export function FileCard({
                 className="flex-1 gap-1.5 h-8 rounded-[1px]"
                 onClick={openViewer}
               >
-                {isAudio || isVideo ? "Play" : "View"}
+                {isNote ? "Open" : isAudio || isVideo ? "Play" : "View"}
               </Button>
             ) : file.r2_url ? (
               <a href={file.r2_url} target="_blank" rel="noopener noreferrer" className="flex-1">
@@ -288,6 +292,18 @@ export function FileCard({
           onSaved={(updated) => {
             onUpdated?.(updated);
             setEditing(false);
+          }}
+        />
+      )}
+
+      {noteOpen && (
+        <NoteEditorModal
+          notebookId={file.notebook_id}
+          file={file}
+          onClose={() => setNoteOpen(false)}
+          onSaved={(updated) => {
+            onUpdated?.(updated);
+            setNoteOpen(false);
           }}
         />
       )}
