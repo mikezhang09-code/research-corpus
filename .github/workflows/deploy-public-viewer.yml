@@ -1,0 +1,38 @@
+name: Deploy public viewer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'portal/public/**'
+      - '.github/workflows/deploy-public-viewer.yml'
+  workflow_dispatch:        # lets you trigger a deploy manually too
+
+concurrency:
+  group: deploy-public-viewer
+  cancel-in-progress: false  # never interrupt an in-flight deploy
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portal/public/package-lock.json
+
+      - name: Install dependencies
+        working-directory: portal/public
+        run: npm ci
+
+      - name: Build and deploy
+        working-directory: portal/public
+        run: npm run deploy   # opennextjs-cloudflare build && deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
