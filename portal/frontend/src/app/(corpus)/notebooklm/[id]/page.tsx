@@ -647,8 +647,9 @@ function ArtifactCard({
   const isMindMap = artifact.artifact_type === "mind_map";
   const isFlashcards = artifact.artifact_type === "flashcards";
   const isPresentation = artifact.file_format === "pptx" || artifact.file_format === "ppt";
+  const isSlideDeck = artifact.artifact_type === "slide_deck";
 
-  async function handleSave() {
+  async function handleSave(fmt?: string) {
     setSaving(true);
     try {
       await saveArtifact({
@@ -656,7 +657,7 @@ function ArtifactCard({
         notebook_id: notebookId,
         notebook_title: notebookTitle,
         artifact_type: artifact.artifact_type,
-        file_format: artifact.file_format,
+        file_format: fmt ?? artifact.file_format,
         title: artifact.title,
         nlm_created_at: artifact.created_at,
       });
@@ -802,11 +803,24 @@ function ArtifactCard({
           {/* Action area */}
           <div className="mt-1">
             {!isSaved && artifact.is_completed && (
-              <Button onClick={handleSave} disabled={saving} size="sm" className="w-full gap-2">
-                {saving
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
-                  : "Save to database"}
-              </Button>
+              isSlideDeck ? (
+                <div className="flex gap-1.5">
+                  <Button onClick={() => handleSave("pdf")} disabled={saving} size="sm" className="flex-1 gap-1.5 text-xs">
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    PDF
+                  </Button>
+                  <Button onClick={() => handleSave("pptx")} disabled={saving} size="sm" variant="outline" className="flex-1 gap-1.5 text-xs">
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    PPTX
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={() => handleSave()} disabled={saving} size="sm" className="w-full gap-2">
+                  {saving
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                    : "Save to database"}
+                </Button>
+              )
             )}
 
             {isGenerating && (
@@ -900,7 +914,7 @@ function ArtifactCard({
                   variant="outline"
                   size="sm"
                   className="gap-1.5 h-8 text-xs shrink-0"
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={saving}
                 >
                   <RefreshCw className="h-3 w-3" /> Retry

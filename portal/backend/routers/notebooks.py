@@ -353,8 +353,9 @@ async def list_live_artifacts(notebook_id: str, background: BackgroundTasks):
         kind = a.kind.value
         if kind == "unknown":
             continue
-        fmt = _FORMAT_MAP.get(kind, "bin")
         saved = saved_map.get(a.id)
+        # Use the saved row's format when available (e.g. user chose pptx for a slide_deck).
+        fmt = saved["file_format"] if saved else _FORMAT_MAP.get(kind, "bin")
         seen_ids.add(a.id)
         artifacts.append(
             LiveArtifact(

@@ -76,7 +76,7 @@ async def _download_by_type(
         case "infographic":
             await a.download_infographic(notebook_id, out_path)
         case "slide_deck":
-            await a.download_slide_deck(notebook_id, out_path)
+            await a.download_slide_deck(notebook_id, out_path, output_format=fmt)
         case "data_table":
             await a.download_data_table(notebook_id, out_path)
         case "mind_map":

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, FolderOpen, ArrowUpDown, Plus } from "lucide-react";
+import { Search, FolderOpen, ArrowUpDown, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +25,7 @@ export default function LibraryPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -40,21 +41,62 @@ export default function LibraryPage() {
     return [...set].sort();
   }, [folios]);
 
+  // Tag totals and display order (stable — ordered by frequency then alpha).
+  const tagTotals = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const nb of folios ?? []) {
+      for (const t of nb.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return counts;
+  }, [folios]);
+
+  const tagOrder = useMemo(
+    () =>
+      [...tagTotals.keys()].sort(
+        (a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b),
+      ),
+    [tagTotals],
+  );
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  }
+
   const visible = useMemo(() => {
     if (!folios) return [];
+    let list = [...folios];
+    if (selectedTags.size > 0) {
+      list = list.filter((f) => {
+        for (const t of selectedTags) if (!f.tags.includes(t)) return false;
+        return true;
+      });
+    }
     const q = search.trim().toLowerCase();
-    const arr = q
-      ? folios.filter(
-          (f) =>
-            f.title.toLowerCase().includes(q) ||
-            f.tags.some((t) => t.toLowerCase().includes(q)),
-        )
-      : [...folios];
-    if (sortBy === "title") arr.sort((a, b) => a.title.localeCompare(b.title));
-    else if (sortBy === "files") arr.sort((a, b) => b.file_count - a.file_count);
-    else arr.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
-    return arr;
-  }, [folios, search, sortBy]);
+    if (q) {
+      list = list.filter(
+        (f) =>
+          f.title.toLowerCase().includes(q) ||
+          f.tags.some((t) => t.toLowerCase().includes(q)),
+      );
+    }
+    if (sortBy === "title") list.sort((a, b) => a.title.localeCompare(b.title));
+    else if (sortBy === "files") list.sort((a, b) => b.file_count - a.file_count);
+    else list.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
+    return list;
+  }, [folios, search, sortBy, selectedTags]);
+
+  // Dynamic counts: how many visible folios carry each tag.
+  const visibleCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const nb of visible) {
+      for (const t of nb.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return counts;
+  }, [visible]);
 
   const loading = folios === null;
 
@@ -103,6 +145,48 @@ export default function LibraryPage() {
               <Plus className="h-3.5 w-3.5" />
               New folio
             </Button>
+          </div>
+        )}
+
+        {/* Tag filter pills */}
+        {tagOrder.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+              Tags
+            </span>
+            {tagOrder.map((tag) => {
+              const active = selectedTags.has(tag);
+              const count = visibleCounts.get(tag) ?? 0;
+              const dim = !active && count === 0;
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  className={
+                    "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase px-2 py-1 rounded-[1px] border transition-colors " +
+                    (active
+                      ? "border-ink bg-ink text-paper"
+                      : dim
+                        ? "border-rule/60 bg-vellum text-ink-mute opacity-50 hover:opacity-100 hover:border-ink hover:text-ink"
+                        : "border-rule bg-vellum text-ink-fade hover:border-ink hover:text-ink")
+                  }
+                >
+                  {tag}
+                  <span className={active ? "text-paper/70" : "text-ink-mute"}>{count}</span>
+                </button>
+              );
+            })}
+            {selectedTags.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedTags(new Set())}
+                className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink underline-offset-2 hover:underline ml-1"
+              >
+                <X className="h-3 w-3" />
+                Clear
+              </button>
+            )}
           </div>
         )}
 
