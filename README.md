@@ -246,7 +246,7 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
   - **Mind maps** (horizontal collapsible tree, ink + terracotta nodes)
   - **Flashcards** — interactive study mode with flip / prev / next / ✓ / ✗ counters and keyboard navigation
   - **Presentation decks** (`.ppt` / `.pptx`) — slide-deck artifacts rendered inline via the Microsoft Office Online embed
-- Per-artifact **Save to portal** (preserves the file in R2 + Supabase even if you delete it in NotebookLM) and **Delete from portal**
+- Per-artifact **Save to portal** (preserves the file in R2 + Supabase even if you delete it in NotebookLM) and **Delete from portal**; slide decks offer a **PDF / PPTX format choice** at save time
 
 **Sources panel**
 - Add by URL / pasted text / file upload
@@ -255,7 +255,7 @@ A web GUI on top of this library — a NotebookLM-style notebook manager plus a 
 **Library notebooks** (`/library` → "My Research")
 - Folio-card grid (`FolioCard`) with five paper-cover variants (stitch / manila / index / pinned / photo), each chosen deterministically per folio id
 - Create named notebooks (e.g. "Research for AI Development"), each with cover emoji, editable description, and per-notebook chat
-- **Tags & faceted filter** — free-form `text[]` tags per folio with cross-folio autocomplete; the My Research page renders a chip row above the grid (counts recompute dynamically against the current selection so each chip shows "matches if you add this filter"), AND-combined when multiple chips are active, and the search box matches tag text in addition to titles. Edit tags inline on the detail page (auto-saves) or in the grid's edit dialog. Backend filter is a single Postgres `tags @> ARRAY[…]` GIN-indexed lookup.
+- **Tags & faceted filter** — free-form `text[]` tags per folio with cross-folio autocomplete; the My Research page renders a chip row above the grid (counts recompute dynamically against the current selection so each chip shows "matches if you add this filter"), AND-combined when multiple chips are active, and the search box matches tag text in addition to titles. Edit tags inline on the detail page (auto-saves) or in the grid's edit dialog. Backend filter is a single Postgres `tags @> ARRAY[…]` GIN-indexed lookup. Tag filter pills are also present in the public Cloudflare viewer.
 - **Generate description with AI** — drafts a 2–3 sentence summary from the folio's title + file list (no file-content access), language-aware, fills the textarea so you can edit before saving
 - Upload files — auto-categorised as **Slides / Notes / Reports / Spreadsheets / Audio / Video / Mindmap / Images** by extension, overridable on upload
 - Inline viewers, all maximize/restore-able:
@@ -366,7 +366,8 @@ Browser ──Access login──▶ Cloudflare Worker (portal/public, OpenNext)
                                └─ streams files    (R2, via public URLs)
 ```
 
-- Read-only by construction — there are no write endpoints
+- **My Research** folios are fully writable (create, upload, edit, delete, chat); the **NotebookLM Corpus** tab is read-only
+- Tag filter pills on the My Research page — same faceted filtering as the private portal
 - Same visual design + inline viewers (DOCX, Excel, slides, audio, video, mind maps) as
   the private portal
 - Auth is handled entirely by Cloudflare Access (email allow-list); no auth code in the app
