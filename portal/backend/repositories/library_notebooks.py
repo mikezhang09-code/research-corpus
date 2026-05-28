@@ -126,6 +126,15 @@ def update_file(db: Client, nb_id: UUID, file_id: UUID, patch: dict) -> dict | N
     return rows[0] if rows else None
 
 
+def move_files(db: Client, nb_id: UUID, file_ids: list[UUID], target_nb_id: UUID) -> list[dict]:
+    rows: list[dict] = []
+    for file_id in file_ids:
+        row = update_file(db, nb_id, file_id, {"notebook_id": str(target_nb_id)})
+        if row:
+            rows.append(row)
+    return rows
+
+
 def get_chat_history(db: Client, nb_id: UUID, limit: int = 40) -> list[dict]:
     return (
         db.table(CHAT_TABLE)

@@ -430,6 +430,26 @@ export async function uploadLibraryNotebookFile(
 export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
   request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, { method: "DELETE" });
 
+export const deleteLibraryNotebookFiles = (notebookId: string, fileIds: string[]) =>
+  request<void>(`/api/library-notebooks/${notebookId}/files/bulk-delete`, {
+    method: "POST",
+    body: JSON.stringify({ file_ids: fileIds }),
+  });
+
+export const createLibraryNotebookFromFiles = (
+  notebookId: string,
+  data: {
+    title: string;
+    cover_emoji?: string | null;
+    tags?: string[];
+    file_ids: string[];
+  },
+) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${notebookId}/files/move-to-new-notebook`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 export const updateLibraryNotebookFile = (
   notebookId: string,
   fileId: string,

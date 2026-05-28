@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Layers, FileText, BookOpen, Music, Video, Network, ImageIcon, File, Table,
-  ExternalLink, Trash2, Pencil, Loader2, AlertCircle,
+  ExternalLink, Trash2, Pencil, Loader2, AlertCircle, CheckSquare, Square,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -122,10 +122,14 @@ export function FileCard({
   file,
   onDeleted,
   onUpdated,
+  selected = false,
+  onSelectedChange,
 }: {
   file: LibraryFile;
   onDeleted: () => void;
   onUpdated?: (file: LibraryFile) => void;
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
 }) {
   const cfg = FILE_CATEGORY_CONFIG[file.file_category as CatKey] ?? DEFAULT_CAT;
   const Icon = cfg.icon;
@@ -208,7 +212,23 @@ export function FileCard({
         <PresentationModal src={file.r2_url} title={file.title} onClose={() => setViewer(null)} />
       )}
 
-      <div className="rounded-[2px] overflow-hidden border border-ink bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all">
+      <div className={`relative rounded-[2px] overflow-hidden border bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all ${
+        selected ? "border-terracotta ring-2 ring-terracotta/25" : "border-ink"
+      }`}>
+        {onSelectedChange && (
+          <button
+            type="button"
+            aria-label={selected ? "Deselect artifact" : "Select artifact"}
+            onClick={(e) => { e.stopPropagation(); onSelectedChange(!selected); }}
+            className={`absolute top-2 left-2 z-10 h-7 w-7 rounded-[1px] border flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink ${
+              selected
+                ? "bg-ink text-paper border-ink"
+                : "bg-paper/90 text-ink-fade border-ink/40 hover:text-ink hover:border-ink"
+            }`}
+          >
+            {selected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+          </button>
+        )}
         {/* Category header */}
         <div
           className="flex flex-col items-center justify-center gap-2 py-7 border-b border-ink"

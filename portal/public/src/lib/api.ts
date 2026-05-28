@@ -106,6 +106,26 @@ export const updateLibraryNotebookFile = (
     body: JSON.stringify(patch),
   });
 
+export const deleteLibraryNotebookFiles = (notebookId: string, fileIds: string[]) =>
+  request<void>(`/api/library-notebooks/${notebookId}/files/bulk-delete`, {
+    method: "POST",
+    body: JSON.stringify({ file_ids: fileIds }),
+  });
+
+export const createLibraryNotebookFromFiles = (
+  notebookId: string,
+  data: {
+    title: string;
+    cover_emoji?: string | null;
+    tags?: string[];
+    file_ids: string[];
+  },
+) =>
+  request<LibraryNotebook>(`/api/library-notebooks/${notebookId}/files/move-to-new-notebook`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 /** Overwrite a stored text file's contents — used by the note editor. */
 export const saveLibraryNoteContent = (
   notebookId: string,

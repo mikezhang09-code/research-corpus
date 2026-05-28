@@ -413,6 +413,17 @@ class LibraryFileUpdate(BaseModel):
     file_category: str | None = None
 
 
+class LibraryFileBulkRequest(BaseModel):
+    file_ids: list[UUID]
+
+
+class LibraryFilesNewNotebookRequest(BaseModel):
+    title: str
+    cover_emoji: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    file_ids: list[UUID]
+
+
 class LibraryFileContentUpdate(BaseModel):
     content: str
 

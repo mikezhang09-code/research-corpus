@@ -19,8 +19,10 @@ from ..models import (
     GenerateDescriptionRequest,
     GenerateDescriptionResponse,
     LibraryChatRequest,
+    LibraryFileBulkRequest,
     LibraryFileContentUpdate,
     LibraryFileRead,
+    LibraryFilesNewNotebookRequest,
     LibraryFileUpdate,
     LibraryNotebookCreate,
     LibraryNotebookListResponse,
@@ -282,10 +284,7 @@ async def update_notebook(nb_id: UUID, body: LibraryNotebookUpdate):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     patch = body.model_dump(exclude_none=True)
-    if not patch:
-        nb = repo.get(db, nb_id)
-    else:
-        nb = repo.update(db, nb_id, patch)
+    nb = repo.get(db, nb_id) if not patch else repo.update(db, nb_id, patch)
     count = repo.get_file_count(db, nb_id)
     return _enrich(nb, count)
 
@@ -373,6 +372,47 @@ async def upload_notebook_file(
     }
     result = db.table("library_items").insert(row).execute().data[0]
     return result
+
+
+@router.post("/{nb_id}/files/bulk-delete", status_code=204)
+async def bulk_delete_notebook_files(nb_id: UUID, body: LibraryFileBulkRequest):
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+    if not body.file_ids:
+        return
+
+    wanted = {str(fid) for fid in body.file_ids}
+    files = [f for f in repo.list_files(db, nb_id) if str(f.get("id")) in wanted]
+    if len(files) != len(wanted):
+        raise HTTPException(404, "One or more files were not found")
+
+    for f in files:
+        if f.get("r2_key"):
+            try:
+                delete_file(f["r2_key"])
+            except Exception:
+                pass
+        repo.delete_file(db, nb_id, UUID(str(f["id"])))
+
+
+@router.post("/{nb_id}/files/move-to-new-notebook", response_model=LibraryNotebookRead, status_code=201)
+async def move_files_to_new_notebook(nb_id: UUID, body: LibraryFilesNewNotebookRequest):
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(400, "title is required")
+    if not body.file_ids:
+        raise HTTPException(400, "file_ids is required")
+
+    wanted = {str(fid) for fid in body.file_ids}
+    files = [f for f in repo.list_files(db, nb_id) if str(f.get("id")) in wanted]
+    if len(files) != len(wanted):
+        raise HTTPException(404, "One or more files were not found")
+
+    nb = repo.create(db, title=title, cover_emoji=body.cover_emoji, tags=body.tags or None)
+    moved = repo.move_files(db, nb_id, body.file_ids, UUID(str(nb["id"])))
+    return _enrich(nb, len(moved))
 
 
 @router.patch("/{nb_id}/files/{file_id}", response_model=LibraryFileRead)
