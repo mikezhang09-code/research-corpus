@@ -96,6 +96,7 @@ force-include = {"SKILL.md" = "notebooklm/data/SKILL.md", "AGENTS.md" = "noteboo
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--ignore=tests/e2e"

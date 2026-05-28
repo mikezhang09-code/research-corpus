@@ -563,9 +563,6 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
     nb = _notebook_or_404(db, nb_id)
     s = get_settings()
 
-    if not s.anthropic_api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY is not configured")
-
     # Build system prompt from notebook context — including extracted text
     # from attached files so the model can actually answer from them. Heavy
     # files are truncated per-file and overall to fit the model's context
@@ -607,19 +604,12 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
     messages = [{"role": h["role"], "content": h["content"]} for h in history]
     messages.append({"role": "user", "content": body.message})
 
-    import anthropic  # lazy import
+    from ..ai import ai_chat
 
-    client = anthropic.AsyncAnthropic(
-        api_key=s.anthropic_api_key,
-        base_url=s.anthropic_base_url,
-    )
-    response = await client.messages.create(
-        model=s.anthropic_model,
-        max_tokens=s.anthropic_max_tokens,
-        system=system_prompt,
-        messages=messages,
-    )
-    answer = _extract_answer(response.content)
+    try:
+        answer = await ai_chat(system_prompt, messages, s)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
 
     # Persist both turns
     repo.append_chat(db, nb_id, "user", body.message)
@@ -645,8 +635,6 @@ async def generate_description(nb_id: UUID, body: GenerateDescriptionRequest):
     db = get_supabase()
     nb = _notebook_or_404(db, nb_id)
     s = get_settings()
-    if not s.anthropic_api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY is not configured")
 
     files = repo.list_files(db, nb_id)
     file_lines = (
@@ -675,21 +663,15 @@ async def generate_description(nb_id: UUID, body: GenerateDescriptionRequest):
         "markdown headers, no bullet points. Do not start with phrases like "
         '"This folio…", "Here is…", or "The notebook…".'
     )
-    user_prompt = f"Folio title: {nb['title']}\n" f"Files:\n{file_lines}"
+    user_prompt = f"Folio title: {nb['title']}\nFiles:\n{file_lines}"
 
-    import anthropic
+    from ..ai import ai_chat
 
-    client = anthropic.AsyncAnthropic(
-        api_key=s.anthropic_api_key,
-        base_url=s.anthropic_base_url,
-    )
-    response = await client.messages.create(
-        model=s.anthropic_model,
-        max_tokens=s.anthropic_max_tokens,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    description = _extract_answer(response.content)
+    try:
+        description = await ai_chat(system_prompt, [{"role": "user", "content": user_prompt}], s)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
     # Strip any stray surrounding quotes the model might still add despite
     # the instruction.
     description = description.strip().strip('"').strip("'").strip()

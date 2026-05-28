@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # so anything under ~6k routinely truncates the actual answer.
     anthropic_max_tokens: int = 8192
 
+    # Google Gemini fallback (used when MiMo is unavailable)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",
         env_file_encoding="utf-8",

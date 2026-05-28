@@ -8,3 +8,4 @@ pydantic-settings>=2.0
 httpx>=0.27
 mammoth>=1.6
 anthropic>=0.28
+google-genai>=1.0
