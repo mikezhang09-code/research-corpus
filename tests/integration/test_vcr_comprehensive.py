@@ -27,15 +27,30 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 from conftest import get_vcr_auth, skip_no_cassettes
 from notebooklm import NotebookLMClient, ReportFormat
+from notebooklm.types import Artifact, ArtifactType
 from vcr_config import notebooklm_vcr
 
 # Skip all tests in this module if cassettes are not available
 pytestmark = [pytest.mark.vcr, skip_no_cassettes]
 
-# Use same env vars as e2e tests for consistency
-# These only matter during recording - replay uses recorded responses
-READONLY_NOTEBOOK_ID = os.environ.get("NOTEBOOKLM_READ_ONLY_NOTEBOOK_ID", "")
-MUTABLE_NOTEBOOK_ID = os.environ.get("NOTEBOOKLM_GENERATION_NOTEBOOK_ID", "")
+# Use same env vars as e2e tests for consistency.
+#
+# These only matter during recording for endpoints whose matcher ignores the
+# request body (most batchexecute calls). For body-aware matchers
+# — notably ``freq`` on the streaming-chat endpoint — replay also
+# needs to send the SAME notebook_id that was recorded, because the matcher
+# compares slot 7 of the decoded ``f.req`` envelope. We therefore default
+# ``MUTABLE_NOTEBOOK_ID`` to the canonical recording notebook UUID
+# used to record the chat cassettes; recording-time runs override
+# this with the real env var.
+READONLY_NOTEBOOK_ID = os.environ.get(
+    "NOTEBOOKLM_READ_ONLY_NOTEBOOK_ID",
+    "c3f6285f-1709-44c4-9cd6-e95cf0ea4f5e",
+)
+MUTABLE_NOTEBOOK_ID = os.environ.get(
+    "NOTEBOOKLM_GENERATION_NOTEBOOK_ID",
+    "bb00c9e3-656c-4fd2-b890-2b71e1cf3814",
+)
 
 
 # =============================================================================
@@ -86,7 +101,7 @@ class TestNotebooksAPI:
         """Get notebook summary."""
         async with vcr_client() as client:
             summary = await client.notebooks.get_summary(READONLY_NOTEBOOK_ID)
-        assert summary is not None
+        assert isinstance(summary, str)
 
     @pytest.mark.vcr
     @pytest.mark.asyncio
@@ -314,6 +329,67 @@ class TestArtifactsListAPI:
                 else:
                     result = await method(READONLY_NOTEBOOK_ID)
                 assert isinstance(result, list)
+                # Every element the decoder hands back must be a fully-formed
+                # Artifact with a non-empty id/title and a known status. This
+                # rejects "the call replays but the parser silently returned
+                # garbage" — the failure mode the original ``isinstance(list)``
+                # check would not catch.
+                for art in result:
+                    assert isinstance(art, Artifact)
+                    assert isinstance(art.id, str) and art.id
+                    assert isinstance(art.title, str)
+                    assert isinstance(art.status, int)
+
+    @pytest.mark.vcr
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method_name", "cassette", "expected_kind", "expected_type_code"),
+        [
+            (
+                "list_infographics",
+                "artifacts_list_infographics.yaml",
+                ArtifactType.INFOGRAPHIC,
+                7,
+            ),
+            (
+                "list_data_tables",
+                "artifacts_list_data_tables.yaml",
+                ArtifactType.DATA_TABLE,
+                9,
+            ),
+        ],
+    )
+    async def test_list_artifacts_kind_parsing(
+        self, method_name, cassette, expected_kind, expected_type_code
+    ):
+        """Parser turns INFOGRAPHIC (7) and DATA_TABLE (9) rows into the right kind.
+
+        The two cassettes were already wired
+        into :data:`ARTIFACT_LIST_METHODS`, but the surrounding assertion only
+        proved the call replayed — not that the decoder mapped the integer
+        type code to the user-facing :class:`ArtifactType` enum. This test
+        asserts the full parser contract: at least one artifact is returned,
+        every artifact carries the expected ``_artifact_type`` integer, and
+        every artifact's ``.kind`` property resolves to the expected enum.
+        """
+        with notebooklm_vcr.use_cassette(cassette):
+            async with vcr_client() as client:
+                method = getattr(client.artifacts, method_name)
+                result = await method(READONLY_NOTEBOOK_ID)
+
+        assert isinstance(result, list)
+        assert len(result) >= 1, f"{cassette} should contain at least one artifact"
+        for art in result:
+            assert isinstance(art, Artifact)
+            assert art._artifact_type == expected_type_code, (
+                f"Expected raw type code {expected_type_code}, "
+                f"got {art._artifact_type} for artifact {art.id!r}"
+            )
+            assert art.kind == expected_kind, (
+                f"Expected .kind == {expected_kind!r}, got {art.kind!r} for artifact {art.id!r}"
+            )
+            # The .kind property is a str-enum so equality holds both ways.
+            assert art.kind == expected_kind.value
 
     @pytest.mark.vcr
     @pytest.mark.asyncio
@@ -531,7 +607,15 @@ class TestChatAPI:
 
     @pytest.mark.vcr
     @pytest.mark.asyncio
-    @notebooklm_vcr.use_cassette("chat_ask.yaml")
+    @notebooklm_vcr.use_cassette(
+        "chat_ask.yaml",
+        # Opt this streaming-chat test in to the ``freq`` body matcher.
+        # The matcher decodes the form-encoded ``f.req`` payload so two
+        # otherwise-identical POSTs (same method/scheme/host/port/path) can be
+        # disambiguated by their param shape. ``freq`` is opt-in per-cassette
+        # because most endpoints do not send ``f.req``.
+        match_on=["method", "scheme", "host", "port", "path", "freq"],
+    )
     async def test_ask(self):
         """Ask a question."""
         async with vcr_client() as client:
@@ -545,7 +629,13 @@ class TestChatAPI:
 
     @pytest.mark.vcr
     @pytest.mark.asyncio
-    @notebooklm_vcr.use_cassette("chat_ask_with_references.yaml")
+    @notebooklm_vcr.use_cassette(
+        "chat_ask_with_references.yaml",
+        # Opt-in to the ``freq`` body matcher so the streaming-chat
+        # POST is disambiguated by its decoded ``f.req`` payload rather than
+        # by replay-order. See ``test_ask`` above for the full rationale.
+        match_on=["method", "scheme", "host", "port", "path", "freq"],
+    )
     async def test_ask_with_references(self):
         """Ask a question that generates references."""
         async with vcr_client() as client:
@@ -917,14 +1007,20 @@ class TestResearchAPI:
         """Poll research status."""
         async with vcr_client() as client:
             # Start research first
-            await client.research.start(
+            start_result = await client.research.start(
                 MUTABLE_NOTEBOOK_ID,
                 query="Machine learning fundamentals",
                 source="web",
                 mode="fast",
             )
+            if not start_result or not start_result.get("task_id"):
+                pytest.skip("Could not start research")
+
             # Poll for results
-            result = await client.research.poll(MUTABLE_NOTEBOOK_ID)
+            result = await client.research.poll(
+                MUTABLE_NOTEBOOK_ID,
+                task_id=start_result["task_id"],
+            )
         assert result is not None
         assert "status" in result
 
@@ -941,11 +1037,14 @@ class TestResearchAPI:
                 source="web",
                 mode="fast",
             )
-            if not start_result:
+            if not start_result or not start_result.get("task_id"):
                 pytest.skip("Could not start research")
 
             # Poll until we have sources (with timeout via cassette)
-            poll_result = await client.research.poll(MUTABLE_NOTEBOOK_ID)
+            poll_result = await client.research.poll(
+                MUTABLE_NOTEBOOK_ID,
+                task_id=start_result["task_id"],
+            )
             if not poll_result.get("sources"):
                 pytest.skip("No research sources found")
 

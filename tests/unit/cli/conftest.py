@@ -1,9 +1,40 @@
 """Shared fixtures for CLI unit tests."""
 
+import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
+
+
+@pytest.fixture(autouse=True)
+def _disable_chromium_profile_fanout():
+    """Default: Chromium multi-user-profile discovery returns nothing in tests.
+
+    The session multi-account paths (``auth inspect``, ``login --account``,
+    ``login --all-accounts``, ``auth refresh``) auto-fan-out across every
+    populated Chromium user-data profile (issue #571). On a developer machine
+    with multiple real Chrome profiles, that discovery would otherwise leak
+    into tests that mock ``rookiepy.chrome`` (and ignore the new
+    ``rookiepy.any_browser`` fan-out path), making them flaky depending on
+    whoever runs the suite.
+
+    Tests that exercise the fan-out path itself override this fixture by
+    patching ``discover_chromium_profiles`` explicitly with their own list of
+    synthetic profiles — the autouse here just guarantees deterministic
+    legacy-path behavior everywhere else.
+
+    D1 PR-3 migration: previously used
+    ``monkeypatch.setattr("notebooklm.cli._chromium_profiles...", ...)``
+    — the string-target form ADR-007 forbids because it silently no-ops
+    if the target relocates. Now uses ``patch(...)`` which raises
+    ``AttributeError`` on missing targets.
+    """
+    with patch(
+        "notebooklm.cli._chromium_profiles.discover_chromium_profiles",
+        lambda *a, **kw: [],
+    ):
+        yield
 
 
 @pytest.fixture
@@ -22,6 +53,13 @@ def mock_auth():
     with patch("notebooklm.cli.helpers.load_auth_from_storage") as mock:
         mock.return_value = {
             "SID": "test",
+            # ``__Secure-1PSIDTS`` is required by ``MINIMUM_REQUIRED_COOKIES``
+            # in ``_auth.cookie_policy``. Tests that route through
+            # ``_validate_required_cookies`` (e.g. anything calling
+            # ``fetch_tokens_with_domains``) need both cookies present —
+            # without this, the validator raises ``ValueError`` before the
+            # CLI command body runs.
+            "__Secure-1PSIDTS": "test_1psidts",
             "HSID": "test",
             "SSID": "test",
             "APISID": "test",
@@ -32,12 +70,21 @@ def mock_auth():
 
 @pytest.fixture
 def mock_fetch_tokens():
-    """Mock fetch_tokens for CLI commands.
+    """Mock fetch_tokens_with_domains for CLI commands.
 
-    After CLI refactoring, fetch_tokens is called via cli.helpers module.
-    Uses AsyncMock since fetch_tokens is an async function.
+    After cookie-jar refactoring, the CLI path uses fetch_tokens_with_domains
+    from auth module (via helpers.get_client). We also mock build_cookie_jar
+    to avoid reading storage files.
     """
-    with patch("notebooklm.cli.helpers.fetch_tokens", new_callable=AsyncMock) as mock:
+    import httpx
+
+    mock_jar = httpx.Cookies()
+    mock_jar.set("SID", "test", domain=".google.com")
+
+    with (
+        patch("notebooklm.auth.fetch_tokens_with_domains", new_callable=AsyncMock) as mock,
+        patch("notebooklm.cli.helpers.build_cookie_jar", return_value=mock_jar),
+    ):
         mock.return_value = ("csrf_token", "session_id")
         yield mock
 
@@ -108,6 +155,37 @@ def create_mock_client():
     mock_client.notes = MagicMock()
     mock_client.sharing = MagicMock()
 
+    mock_client.research.poll = AsyncMock(return_value={"status": "no_research"})
+
+    async def wait_for_research_completion(
+        notebook_id,
+        task_id=None,
+        *,
+        timeout=1800,
+        interval=5,
+    ):
+        if timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        if interval <= 0:
+            raise ValueError("interval must be positive")
+        pinned_task_id = task_id
+        attempts = max(1, math.ceil(timeout / interval) + 1)
+        status = {"status": "no_research"}
+        for _ in range(attempts):
+            status = await mock_client.research.poll(notebook_id, task_id=pinned_task_id)
+            if pinned_task_id is None:
+                discovered_task_id = status.get("task_id")
+                if isinstance(discovered_task_id, str) and discovered_task_id:
+                    pinned_task_id = discovered_task_id
+            status_val = status.get("status")
+            if status_val in ("completed", "failed"):
+                return status
+            if status_val == "no_research" and pinned_task_id is None:
+                return status
+        raise TimeoutError(f"Research task {pinned_task_id or 'unknown'} timed out")
+
+    mock_client.research.wait_for_completion = AsyncMock(side_effect=wait_for_research_completion)
+
     # Default mocks for partial ID resolution
     # These return mock objects that match common test ID patterns (nb_*, src_*, etc.)
     # The pattern ensures that any ID starting with "nb_" will match a notebook,
@@ -120,8 +198,9 @@ def create_mock_client():
             MockNotebook("notebook_test", "Notebook Test"),
         ]
 
-    def make_source_list(notebook_id):
+    def make_source_list(notebook_id, *, strict=False):
         """Return source list that matches common test IDs."""
+        del strict
         return [
             MockSource("src_1", "Source One"),
             MockSource("src_2", "Source Two"),
@@ -155,50 +234,6 @@ def create_mock_client():
     return mock_client
 
 
-def get_cli_module(module_path: str):
-    """Get the actual CLI module by path, bypassing shadowed names.
-
-    In cli/__init__.py, module names are shadowed by click groups with the same name
-    (e.g., `from .source import source`). This function uses importlib to get the
-    actual module for Python 3.10 compatibility.
-
-    Args:
-        module_path: The module name within notebooklm.cli (e.g., "source", "skill")
-
-    Returns:
-        The actual module object
-    """
-    import importlib
-
-    return importlib.import_module(f"notebooklm.cli.{module_path}")
-
-
-def patch_client_for_module(module_path: str):
-    """Create a context manager that patches NotebookLMClient in the given module.
-
-    Args:
-        module_path: The module name within notebooklm.cli (e.g., "source", "artifact")
-
-    Returns:
-        A patch context manager for NotebookLMClient
-
-    Example:
-        with patch_client_for_module("source") as mock_cls:
-            mock_client = create_mock_client()
-            mock_cls.return_value = mock_client
-            # ... run test
-
-    Note:
-        Uses importlib to get the actual module, not the click group that shadows
-        the module name in cli/__init__.py. This is required for Python 3.10
-        compatibility where mock.patch's string path resolution gets the wrong object.
-    """
-    import importlib
-
-    module = importlib.import_module(f"notebooklm.cli.{module_path}")
-    return patch.object(module, "NotebookLMClient")
-
-
 class MultiMockProxy:
     """Proxy that forwards attribute access to all underlying mocks.
 
@@ -223,30 +258,21 @@ class MultiMockProxy:
 
 
 class MultiPatcher:
-    """Context manager that patches NotebookLMClient in multiple CLI modules.
+    """Context manager that patches ``NotebookLMClient`` in multiple CLI modules.
 
-    After refactoring, commands are spread across multiple modules, so we need
-    to patch NotebookLMClient in all of them.
-
-    Uses importlib to get the actual module objects, bypassing shadowed names
-    in cli/__init__.py where click groups share names with modules.
+    Top-level commands are spread across ``notebook_cmd`` / ``chat_cmd`` /
+    ``session_cmd`` / ``share_cmd`` so a single ``patch()`` cannot cover them.
+    Since P3.T0 broke the click-group shadow on the package attributes
+    (modules are now ``*_cmd``), direct string-form ``patch(...)`` works on
+    each module name without needing ``importlib`` indirection.
     """
 
     def __init__(self):
-        import importlib
-
-        # Get actual module objects to avoid Python 3.10 shadowing issues
-        # where cli/__init__.py exports click groups with same names as modules
-        notebook_mod = importlib.import_module("notebooklm.cli.notebook")
-        chat_mod = importlib.import_module("notebooklm.cli.chat")
-        session_mod = importlib.import_module("notebooklm.cli.session")
-        share_mod = importlib.import_module("notebooklm.cli.share")
-
         self.patches = [
-            patch.object(notebook_mod, "NotebookLMClient"),
-            patch.object(chat_mod, "NotebookLMClient"),
-            patch.object(session_mod, "NotebookLMClient"),
-            patch.object(share_mod, "NotebookLMClient"),
+            patch("notebooklm.cli.notebook_cmd.NotebookLMClient"),
+            patch("notebooklm.cli.chat_cmd.NotebookLMClient"),
+            patch("notebooklm.cli.session_cmd.NotebookLMClient"),
+            patch("notebooklm.cli.share_cmd.NotebookLMClient"),
         ]
         self.mocks = []
 
@@ -284,7 +310,29 @@ def patch_main_cli_client():
 
 @pytest.fixture
 def mock_context_file(tmp_path):
-    """Provide a temporary context file for testing context commands."""
+    """Provide a temporary context file for testing context commands.
+
+    Patches every current context-path seam:
+
+    * ``cli.helpers`` — passes the resolver explicitly.
+    * ``cli.context`` + ``cli.resolve`` — call-time lookups after the helper split.
+    * ``cli.session_cmd`` — legacy direct binding (preserved patch surface for
+      pre-existing tests).
+    * ``cli.services.session_context`` — the P3.T3 service-layer call site that
+      reads the context file in ``read_status``. Without this patch, the
+      service-layer ``read_status`` would fall through to the real
+      ``~/.notebooklm/context.json`` even when every other binding is patched
+      (rev-1 CodeRabbit feedback on #962).
+    """
     context_file = tmp_path / "context.json"
-    with patch("notebooklm.cli.helpers.get_context_path", return_value=context_file):
+    with (
+        patch("notebooklm.cli.helpers.get_context_path", return_value=context_file),
+        patch("notebooklm.cli.context.get_context_path", return_value=context_file),
+        patch("notebooklm.cli.resolve.get_context_path", return_value=context_file),
+        patch("notebooklm.cli.session_cmd.get_context_path", return_value=context_file),
+        patch(
+            "notebooklm.cli.services.session_context.get_context_path",
+            return_value=context_file,
+        ),
+    ):
         yield context_file

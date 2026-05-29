@@ -13,11 +13,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ```bash
-# Install (uv recommended)
-uv sync --extra dev --extra browser
-playwright install chromium
+# Canonical contributor install (respects uv.lock; full guide: docs/installation.md)
+uv sync --frozen --extra browser --extra dev --extra markdown
+uv run playwright install chromium
 
-# Run all tests (e2e excluded by default)
+# Run all tests (excluding e2e by default)
 uv run pytest
 
 # Run a single test file or test
@@ -27,21 +27,25 @@ uv run pytest -k "test_list_notebooks"
 # Run with coverage (must stay at or above 90%)
 uv run pytest --cov
 
-# Run e2e tests (requires authentication and env vars)
+# Run e2e tests (requires authentication)
 uv run pytest tests/e2e -m e2e
 uv run pytest tests/e2e -m readonly  # read-only subset
 
 # Record VCR cassettes for integration tests
 NOTEBOOKLM_VCR_RECORD=1 uv run pytest tests/integration/test_vcr_*.py -v
 
-# CLI
+# CLI testing
+uv run notebooklm --help
 uv run notebooklm --help
 ```
 
 ## Pre-Commit Checks (REQUIRED before committing)
 
+The pre-commit hook (`.pre-commit-config.yaml`) runs ruff formatting + linting automatically on staged files.
+
+Before pushing, also run formatting, check, mypy, and pytest:
 ```bash
-uv run ruff format src/ tests/ && uv run ruff check src/ tests/ && uv run mypy src/notebooklm && uv run pytest
+uv run ruff format src/ tests/ && uv run ruff check src/ tests/ && uv run mypy src/notebooklm --ignore-missing-imports && uv run pytest
 ```
 
 ## Architecture
@@ -51,33 +55,277 @@ uv run ruff format src/ tests/ && uv run ruff check src/ tests/ && uv run mypy s
 ```
 CLI Layer (cli/)
     ↓
-Client Layer (client.py, _*.py APIs)
-    ↓
-Core Layer (_core.py)
+Client Runtime Layer (client.py + _*.py APIs/collaborators)
     ↓
 RPC Layer (rpc/)
 ```
 
 1. **RPC Layer** (`src/notebooklm/rpc/`): `types.py` holds all obfuscated RPC method IDs (source of truth). `encoder.py` builds the `batchexecute` request bodies. `decoder.py` parses the nested-list responses.
 
-2. **Core Layer** (`src/notebooklm/_core.py`): Manages the `httpx` async client, executes RPC calls, handles retries and auth refresh, and maintains a per-session request counter required by the protocol.
+2. **Client Runtime Layer** (`src/notebooklm/client.py` + runtime collaborators):
+   - `client.py`: `NotebookLMClient` composition root plus public surface
+   - `_client_composed.py`, `_client_seams.py`, `_session_init.py`: composition holder, injectable seams, and collaborator construction
+   - `_env.py`, `_session_config.py`, `_logging.py`, `_callbacks.py`: environment/config defaults, compatibility logger name, redaction/correlation logging, and callback invocation helpers
+   - `_request_types.py`, `_transport_errors.py`, `_streaming_post.py`, `_session_transport.py`, `_rpc_executor.py`: request construction, transport errors, streaming HTTP, session transport wrapper, and RPC dispatch
+   - `_session_auth.py`, `_cookie_persistence.py`: Auth refresh + cookie storage
+   - `_client_metrics.py`, `_transport_drain.py`, `_deadline.py`, `_backoff.py`, `_reqid_counter.py`: Telemetry, drain coordination, aggregate deadlines, retry backoff, request-counter handling
+   - `_conversation_cache.py`, `_polling_registry.py`: Conversation cache + artifact polling helpers
+   - `_session_helpers.py`, `_error_injection.py`: Auth-error helpers and synthetic-error transport
+   - `_session_lifecycle.py`: Open/close lifecycle (loop-affinity guard + keepalive task)
+   - `_session_contracts.py`: Shared session Protocols consumed by feature APIs
+   - `_middleware.py`, `_middleware_context.py`, `_middleware_chain.py`, `_middleware_chain_host.py`, `_middleware_*.py`: HTTP-shaped middleware envelope, context vocabulary, canonical chain builder/host, and chain links
+   - `_idempotency.py`, `_mutating_operations.py`: Mutating-RPC retry taxonomy and legacy probe-then-create recovery metadata
+   - `_atomic_io.py`: Crash-safe JSON writes and locked read-modify-write helpers shared by auth and CLI
 
-3. **Client Layer** (`src/notebooklm/client.py`, `_*.py`): `NotebookLMClient` exposes namespaced APIs (`client.notebooks`, `client.sources`, `client.artifacts`, `client.chat`, `client.research`, `client.notes`). Each namespace is a separate `_*.py` module.
+3. **Client Layer** (`src/notebooklm/client.py`, `_*.py`):
+   - `NotebookLMClient`: Main async client with namespaced APIs
+   - `_notebooks.py`, `_sources.py`, `_artifacts.py`, etc.: Domain APIs
+   - `_source_*.py`, `_artifact_*.py`: Feature-specific service logic
+   - `_types/`, `_row_adapters*.py`: Dataclass implementations and typed views over positional RPC rows
+   - `_research_task_parser.py`, `research.py`: Research task parsing plus public citation/report utilities
 
-4. **CLI Layer** (`src/notebooklm/cli/`): Modular Click commands grouped by domain. `notebooklm_cli.py` is the entry point.
+4. **CLI Layer** (`src/notebooklm/cli/`):
+   - Modular Click commands
+   - `cli/services/`: CLI-specific service layer
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `client.py` | `NotebookLMClient` — main entry point |
-| `_core.py` | HTTP client, RPC dispatch, auth refresh |
-| `rpc/types.py` | RPC method IDs and enums (update here when Google changes IDs) |
-| `exceptions.py` | Full exception hierarchy (`NotebookLMError` base) |
-| `auth.py` | Cookie-based and Playwright auth flows |
-| `types.py` | Public dataclasses for notebooks, sources, artifacts |
-| `paths.py` | `NOTEBOOKLM_HOME`-aware storage paths |
-| `migration.py` | Storage format migrations between versions |
+| `client.py` | Main `NotebookLMClient` class |
+| `_client_composed.py` | Client-owned composition holder for transport, executor, chain host, middleware metadata, and session collaborator bundle. |
+| `_client_seams.py` | Constructor-only injectable seams used by tests and collaborator construction. |
+| `_session_init.py` | Constructor helpers that validate client runtime kwargs, build collaborators, wire middleware, and bind `ClientComposed`. |
+| `_kernel.py` | Concrete `Kernel` transport core (owns `httpx.AsyncClient` + cookie jar) |
+| `_session_config.py` | `DEFAULT_*` knobs and module-level constants. `CORE_LOGGER_NAME = "notebooklm._core"` is intentionally preserved as a compatibility logging contract even though the `_core` module was deleted; renaming it silently breaks downstream `caplog`/logger filters. |
+| `_env.py`, `config.py` | Runtime environment defaults and the public config re-export surface |
+| `_logging.py`, `log.py` | Redaction/correlation logging internals and the public logging helper surface |
+| `_callbacks.py` | Sync-or-async callback invocation helper used by telemetry/retry hooks |
+| `_session_helpers.py` | `is_auth_error`, `AUTH_ERROR_PATTERNS`, `_resolve_keepalive_interval` |
+| `_error_injection.py` | Synthetic-error env-var resolver + startup guard |
+| `_client_metrics.py` | `ClientMetrics` — `ClientMetricsSnapshot` counters + `on_rpc_event` callback |
+| `_transport_drain.py` | `TransportDrainTracker` — in-flight transport counters + `_TransportOperationToken` |
+| `_deadline.py` | `RuntimeDeadline` helper shared by retry and polling loops so aggregate timeouts clamp sleep consistently |
+| `_backoff.py` | Shared capped exponential-backoff calculation with deterministic test injection |
+| `_reqid_counter.py` | `ReqidCounter` — monotonic `_reqid` for the chat backend |
+| `_session_auth.py` | `AuthRefreshCoordinator` — refresh task + auth-snapshot lock |
+| `_session_lifecycle.py` | `ClientLifecycle` — loop-affinity guard + keepalive task |
+| `_session_transport.py` | Session transport wrapper that drives the middleware chain and typed transport response handling |
+| `_rpc_executor.py` | RPC dispatch executor. Takes its `Kernel`, `SessionTransport`, `AuthRefreshCoordinator`, and `ClientMetrics` collaborators directly via keyword-only constructor parameters (ADR-014 Rule 5). The `RpcOwner` Protocol that previously re-declared Session's private attribute surface was deleted in Wave 4 of session-decoupling (#1068); only the local `DecodeResponse` Protocol remains. |
+| `_request_types.py` | Shared authed POST request construction types: `AuthSnapshot`, `BuildRequest`, `PostBody`, and materialization helpers. |
+| `_transport_errors.py` | Transport exceptions, `Retry-After` parsing, and terminal `Kernel.post` error mapping for retry/auth middleware. |
+| `_streaming_post.py` | Size-capped streaming POST helper used by `Kernel.post`. |
+| `_middleware.py` | HTTP-shaped middleware request/response envelope, chain composition, and middleware Protocol |
+| `_middleware_context.py` | Canonical per-request context-key vocabulary for middleware |
+| `_middleware_chain_host.py` | Mutable owner for the live middleware chain slots and retry-budget tunables |
+| `_conversation_cache.py` | Per-instance LRU conversation cache for `ChatAPI` |
+| `_polling_registry.py` | Pending-poll registry for long-running artifact generations |
+| `_cookie_persistence.py` | Cookie-jar persistence + `__Secure-1PSIDTS` rotation |
+| `_session_contracts.py` | Shared session Protocols consumed by sub-clients |
+| `_idempotency.py` | Mutating-RPC idempotency policy registry and probe-then-retry wrapper; ADR-005 is the taxonomy source |
+| `_mutating_operations.py` | Compatibility view over probe-then-create recovery metadata derived from `_idempotency.py` |
+| `_atomic_io.py`, `io.py` | Atomic JSON write/update internals and public I/O re-export surface for CLI boundary compliance |
+| `exceptions.py` | Public exception hierarchy plus safe diagnostic preview/redaction helpers |
+| `paths.py`, `migration.py` | Profile-aware path resolution and locked migration from the legacy flat layout |
+| `_types/`, `types.py` | Dataclass implementation package and public type/re-export facade |
+| `_row_adapters.py` | Compatibility re-export shim for row adapters |
+| `_row_adapters_artifacts.py` | `ArtifactRow` typed view over raw positional artifact RPC rows |
+| `_row_adapters_notes.py` | `NoteRow` typed view over raw positional note and mind-map RPC rows |
+| `_row_adapters_sources.py` | `SourceRow` / `SourceRowShape` typed views over raw positional source RPC rows |
+| `artifacts.py`, `research.py`, `utils.py` | Public helper modules for artifact retry, research citation/report utilities, and common async helpers |
+| `_research_task_parser.py` | Internal parser for research task result-type selection |
+| `_notebooks.py` | `client.notebooks` API + source-id resolver |
+| `_sources.py` | `client.sources` API |
+| `_artifacts.py` | `client.artifacts` API |
+| `_chat.py` | `client.chat` API |
+| `_research.py` | `client.research` API |
+| `_notes.py` | `client.notes` API |
+| `_sharing.py` | `client.sharing` API |
+| `_settings.py` | `client.settings` API |
+| `_note_service.py` | Service layer managing note CRUD, note-backed content generation, and sync |
+| `_mind_map.py` | Specific adapter service representing mind-maps, backed by standard notes |
+| `_artifact_downloads.py` | Asynchronous download coordinator for finished artifacts |
+| `_artifact_formatters.py` | Markdown, HTML, and plain text formatters for artifacts |
+| `_artifact_generation.py` | Artifact generation orchestration/service |
+| `_artifact_payloads.py` | Stable CREATE_ARTIFACT / GENERATE_MIND_MAP request payload builders |
+| `_artifact_listing.py` | Listing and filtering operations for notebook artifacts |
+| `_artifact_polling.py` | Poll coordination service for artifact generation tasks |
+| `_source_add.py` | Core service layer for adding text, URL, or Google Drive sources |
+| `_source_content.py` | Core service layer for fetching source HTML/markdown content |
+| `_source_listing.py` | Core service layer for listing notebook sources |
+| `_source_polling.py` | Poll coordination service for active source conversions |
+| `_source_upload.py` | Concurrency-gated upload pipeline for source files |
+| `_source_upload_payloads.py` | Stable source upload registration, rename, and resumable-upload request builders |
+| `_notebook_metadata.py` | Metadata protocol schemas for sub-clients |
+| `_url_utils.py`, `urls.py` | URL parsing/validation internals and the public URL helper facade |
+| `_sharing_manager.py` | Direct sharing management logic |
+| `_version_check.py` | Dynamic client-side version deprecation guard |
+| `_chat_notes.py` | Chat-adjacent note saving workflow adapter |
+| `_chat_protocol.py` | Internal types and interfaces for the chat client |
+| `_chat_transport.py` | Chat-specific error mapping over the shared transport pipeline |
+| `_middleware_chain.py` | Constructs the middleware chain in the canonical ADR-009 order |
+| `_middleware*.py` | Modular middleware implementations (drain, metrics, semaphore, retry, auth, error injection, tracing) |
+| `rpc/types.py` | RPC method IDs (source of truth) |
+| `auth.py` | Authentication facade — **almost pure re-exports** (the only remaining function body is `async def enumerate_accounts`, which binds `_poke_session` as a default dependency; ADR-003 records the optional-`async` audit command). Every other top-level name forwards from the relevant `_auth/*` module. The previous write-through (`_validate_required_cookies` copy-forwarding `MINIMUM_REQUIRED_COOKIES` / `_EXTRACTION_HINT` / `_has_valid_secondary_binding` into `_cookie_policy` and mirroring `_SECONDARY_BINDING_WARNED` back) was inverted in Wave 4 T2.2 (#1070); `auth._validate_required_cookies` is now identity-equal to `_auth.cookie_policy._validate_required_cookies`. `load_auth_from_storage` body was moved to `_auth/tokens.py` in Wave 3a (#1066). `AuthTokens` was moved to `_auth/tokens.py` in #1055. **ADR-003 flat-re-export goal closed by ADR-014** (session-decoupling Waves 3a + 4 T2.2 + 5). Tests that need to rebind policy names patch `_auth.cookie_policy.X` directly. |
+| `_auth/paths.py` | Storage paths and filesystem helpers |
+| `_auth/extraction.py` | Cookie/token extraction from browser sessions |
+| `_auth/headers.py` | HTTP header construction |
+| `_auth/cookies.py` | Cookie map manipulation + `_update_cookie_input` |
+| `_auth/cookie_policy.py` | Cookie-domain allowlist and policy decisions |
+
+### Repository Structure
+
+```text
+src/notebooklm/
+├── __init__.py                  # Public exports
+├── __main__.py                  # `python -m notebooklm` entry point
+├── client.py                    # NotebookLMClient
+├── auth.py                      # Authentication facade — almost pure re-exports (`enumerate_accounts` exception; ADR-003 flat-re-export goal closed by ADR-014; see file table above)
+├── types.py                     # Dataclasses
+├── artifacts.py                 # Public artifact-generation retry helpers
+├── config.py                    # Public config facade over _env
+├── exceptions.py                # Public exception hierarchy
+├── io.py                        # Public atomic-I/O facade for CLI boundary compliance
+├── log.py                       # Public logging helper facade
+├── migration.py                 # Legacy flat-layout to profile migration
+├── paths.py                     # Profile-aware path resolution
+├── research.py                  # Public research citation/report helpers
+├── urls.py                      # Public URL helper facade
+├── utils.py                     # Public async utility helpers
+├── _atomic_io.py                # Atomic JSON write/update helpers
+├── _backoff.py                  # Shared retry backoff calculation
+├── _callbacks.py                # Sync/async callback invocation helper
+├── _client_composed.py          # Client-owned composition holder
+├── _client_seams.py             # Constructor-only injectable seams
+├── _deadline.py                 # RuntimeDeadline helper for aggregate timeouts
+├── _env.py                      # Runtime environment/default endpoint helpers
+├── _idempotency.py              # Mutating-RPC idempotency registry + wrappers
+├── _kernel.py                   # Concrete Kernel transport core
+├── _logging.py                  # Redaction + correlation logging internals
+├── _loop_affinity.py            # Event-loop affinity guard helper
+├── _mutating_operations.py      # Legacy recovery metadata view over _idempotency
+├── _row_adapters.py             # Compatibility re-export shim for row adapters
+├── _row_adapters_artifacts.py   # Artifact row adapter
+├── _row_adapters_notes.py       # Note and mind-map row adapter
+├── _row_adapters_sources.py     # Source row adapter
+├── _session_config.py           # DEFAULT_* knobs + module-level constants
+├── _session_helpers.py          # is_auth_error / AUTH_ERROR_PATTERNS / keepalive helpers
+├── _session_init.py             # Runtime collaborator construction + validation
+├── _session_transport.py        # Middleware-chain transport wrapper
+├── _error_injection.py          # Synthetic-error env-var resolver + startup guard
+├── _request_types.py            # AuthSnapshot, BuildRequest, PostBody, request materialization helpers
+├── _transport_errors.py         # Transport exceptions, Retry-After parsing, Kernel.post error mapping
+├── _streaming_post.py           # Size-capped streaming POST helper
+├── _rpc_executor.py             # RPC dispatch executor
+├── _session_auth.py             # AuthRefreshCoordinator (refresh task + auth-snapshot lock)
+├── _client_metrics.py           # Telemetry / metrics seam
+├── _transport_drain.py          # In-flight transport drain coordinator
+├── _reqid_counter.py            # Request-counter / request-id helpers
+├── _conversation_cache.py       # Per-instance LRU conversation cache
+├── _polling_registry.py         # Artifact polling helpers
+├── _cookie_persistence.py       # Cookie-jar persistence + __Secure-1PSIDTS rotation
+├── _session_lifecycle.py        # Open/close lifecycle seam (loop affinity + keepalive task)
+├── _session_contracts.py        # Shared session Protocols consumed by feature APIs
+├── _note_service.py             # NoteService
+├── _mind_map.py                 # NoteBackedMindMapService
+├── _artifact_downloads.py       # Artifact download coordinator
+├── _artifact_formatters.py      # Artifact formatting helpers
+├── _artifact_generation.py      # Artifact generation orchestration/service
+├── _artifact_payloads.py        # Stable artifact request payload builders
+├── _artifact_listing.py         # Artifact listing helper
+├── _artifact_polling.py         # Artifact polling coordinator
+├── _source_add.py               # Source addition coordinator
+├── _source_content.py           # Source content fetcher
+├── _source_listing.py           # Source listing helper
+├── _source_polling.py           # Source polling coordinator
+├── _source_upload.py            # Gated source upload service
+├── _source_upload_payloads.py   # Source upload request payload builders
+├── _notebook_metadata.py        # Metadata protocols
+├── _url_utils.py                # URL validation helpers
+├── _sharing_manager.py          # Sharing management logic
+├── _version_check.py            # Deprecation version guard
+├── _chat_notes.py               # Note saving workflow adapter
+├── _chat_protocol.py            # Internal chat types
+├── _chat_transport.py           # Chat error mapping
+├── _research_task_parser.py     # Research task result-type parser
+├── _middleware.py               # Middleware envelope + Protocol + chain composition primitive
+├── _middleware_context.py       # Middleware context-key vocabulary
+├── _middleware_chain.py         # Middleware chain builder
+├── _middleware_chain_host.py    # Live middleware chain slots and retry tunables
+├── _middleware_tracing.py       # Tracing middleware
+├── _middleware_metrics.py       # Metrics middleware
+├── _middleware_drain.py         # Drain middleware
+├── _middleware_error_injection.py # Error injection middleware
+├── _middleware_retry.py         # Retry middleware
+├── _middleware_auth_refresh.py  # Auth refresh middleware
+├── _middleware_semaphore.py     # Concurrency semaphore middleware
+├── _auth/                       # Auth subpackage (forwarded through auth.py facade)
+│   ├── __init__.py
+│   ├── paths.py                 # Storage paths and filesystem helpers
+│   ├── extraction.py            # Cookie/token extraction from browser sessions
+│   ├── headers.py               # HTTP header construction
+│   ├── cookies.py               # Cookie maps + _update_cookie_input
+│   ├── cookie_policy.py         # Domain allowlist and cookie policy
+│   ├── account.py               # Account profile + multi-account switching
+│   ├── session.py               # Auth-session refresh implementation via `refresh_auth_session()` and explicit collaborators
+│   ├── storage.py               # Profile/state persistence on disk
+│   ├── keepalive.py             # Cookie keepalive + __Secure-1PSIDTS rotation
+│   ├── psidts_recovery.py       # Inline PSIDTS recovery for cold-start (issue #865)
+│   └── refresh.py               # Token refresh driver (external login cmd, coalesced runs, redaction)
+├── _types/                      # Dataclass implementation package re-exported by types.py
+│   ├── __init__.py
+│   ├── artifacts.py
+│   ├── chat.py
+│   ├── common.py
+│   ├── notebooks.py
+│   ├── notes.py
+│   ├── sharing.py
+│   └── sources.py
+├── _notebooks.py                # NotebooksAPI
+├── _sources.py                  # SourcesAPI
+├── _artifacts.py                # ArtifactsAPI
+├── _chat.py                     # ChatAPI
+├── _research.py                 # ResearchAPI
+├── _notes.py                    # NotesAPI
+├── _sharing.py                  # SharingAPI
+├── _settings.py                 # SettingsAPI
+├── notebooklm_cli.py            # Entry-point assembler — imports + registers cli/ groups
+├── rpc/                         # RPC protocol layer
+│   ├── types.py                 # Method IDs and enums
+│   ├── encoder.py               # Request encoding
+│   └── decoder.py               # Response parsing
+└── cli/                         # CLI implementation
+    ├── __init__.py              # Re-exports click groups under historical names from *_cmd modules
+    ├── helpers.py               # Shared Click utilities
+    ├── session_cmd.py           # login, use, status, clear (renamed in P3.T0)
+    ├── notebook_cmd.py          # list, create, delete, rename (renamed in P3.T0)
+    ├── source_cmd.py            # source add, list, delete (renamed in P3.T0)
+    ├── artifact_cmd.py          # artifact commands (renamed in P3.T0)
+    ├── generate_cmd.py          # generate audio, video, etc. (renamed in P3.T0)
+    ├── download_cmd.py          # download commands (renamed in P3.T0)
+    ├── chat_cmd.py              # ask, configure, history (renamed in P3.T0)
+    ├── note_cmd.py              # note commands (renamed in P3.T0)
+    ├── agent_cmd.py             # agent show commands (renamed in P3.T0)
+    ├── agent_templates.py       # agent prompts and configurations
+    ├── doctor_cmd.py            # diagnostic/repair tool (renamed in P3.T0)
+    └── services/                # CLI-specific service layer (ADR-008 Click-to-service extraction)
+        ├── __init__.py
+        ├── artifact_generation.py
+        ├── login/                # split into a package in P3.T4 (leaf-ward DAG)
+        │   ├── __init__.py       # re-export-only patch surface
+        │   ├── browser_accounts.py
+        │   ├── chromium_accounts.py
+        │   ├── cookie_domains.py
+        │   ├── cookie_jar.py
+        │   ├── cookie_writes.py
+        │   ├── firefox_accounts.py
+        │   ├── profile_targets.py
+        │   ├── refresh.py
+        │   └── rookiepy_errors.py
+        ├── source_add.py
+        └── source_clean.py
+```
+>>>>>>> upstream/main
 
 ## API Patterns
 
@@ -132,6 +380,10 @@ Pass explicit notebook IDs with `--notebook-id` rather than relying on `notebook
 3. **Source ID nesting**: Different methods need `[id]`, `[[id]]`, `[[[id]]]`, or `[[[[id]]]]`
 4. **CSRF tokens expire**: Use `client.refresh_auth()` or re-run `notebooklm login`
 5. **Rate limiting**: Add delays between bulk operations
+6. **Concurrency**: One `NotebookLMClient` instance is bound to its open()-time event loop. See [Concurrency contract](docs/python-api.md#concurrency-contract). Common bugs:
+   - Re-using a client across threads → not supported; create one per thread.
+   - Re-using a client across event loops → raises `RuntimeError` on first authed POST.
+   - Sharing across `AuthTokens` tenants → never (`ChatAPI._cache` is per-instance).
 
 ## Documentation Rules for Agents
 
@@ -146,14 +398,15 @@ From [CONTRIBUTING.md](CONTRIBUTING.md):
 ## Documentation
 
 All docs use lowercase-kebab naming in `docs/`:
-- `docs/cli-reference.md` — CLI commands
-- `docs/python-api.md` — Python API reference
-- `docs/configuration.md` — Storage and settings
-- `docs/troubleshooting.md` — Known issues
+- `docs/installation.md` - Installation, extras matrix, platform notes (canonical install guide)
+- `docs/cli-reference.md` - CLI commands
+- `docs/python-api.md` - Python API reference
+- `docs/configuration.md` - Storage and settings
+- `docs/troubleshooting.md` - Known issues
 - `docs/stability.md` — API versioning policy
-- `docs/development.md` — Architecture, testing, releasing
-- `docs/rpc-development.md` — RPC capture and debugging
-- `docs/rpc-reference.md` — RPC payload structures
+- `docs/development.md` - Architecture, testing, releasing
+- `docs/rpc-development.md` - RPC capture and debugging
+- `docs/rpc-reference.md` - RPC payload structures
 - `docs/releasing.md` — Release checklist
 - `docs/scratch/` — Temporary investigation logs (agent scratchpad)
 
@@ -200,3 +453,7 @@ gh pr view <PR_NUMBER> --json state,mergeStateStatus,mergeable
 - All CI checks pass
 - All review comments are addressed
 - `mergeStateStatus` is `CLEAN`
+
+### Requesting a Claude review on a PR
+
+Automatic Claude review on every PR is disabled. To request a review, comment `@claude review` on the PR — the `.github/workflows/claude.yml` workflow will pick it up.

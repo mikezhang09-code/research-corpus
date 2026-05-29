@@ -9,9 +9,9 @@ This script demonstrates a complete workflow:
 5. Download the result
 
 Prerequisites:
-    pip install "notebooklm-py[browser]"
-    playwright install chromium
+    pip install "notebooklm-py[browser]" && playwright install chromium
     notebooklm login  # Authenticate first
+    # Full install guide: https://github.com/teng-lin/notebooklm-py/blob/main/docs/installation.md
 
 Usage:
     python quickstart.py
@@ -51,7 +51,7 @@ async def main():
 
         # Wait for completion
         final = await client.artifacts.wait_for_completion(
-            nb.id, status.task_id, timeout=300, poll_interval=10
+            nb.id, status.task_id, timeout=300, initial_interval=10
         )
 
         if final.is_complete:

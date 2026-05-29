@@ -17,9 +17,12 @@ from unittest.mock import patch
 
 import pytest
 
-from notebooklm.cli.session import _windows_playwright_event_loop
+from notebooklm.cli.services.playwright_login import (
+    windows_playwright_event_loop as _windows_playwright_event_loop,
+)
 
 
+@pytest.mark.requires_playwright
 class TestPlaywrightSmokeTest:
     """Smoke tests that actually invoke Playwright to catch real integration issues.
 
@@ -74,8 +77,10 @@ class TestPlaywrightEventLoopFix:
 
     def test_context_manager_is_noop_on_non_windows(self):
         """Verify context manager is a no-op on non-Windows platforms."""
-        # Mock sys.platform to non-Windows
-        with patch("notebooklm.cli.session.sys.platform", "linux"):
+        # Mock sys.platform to non-Windows. ``windows_playwright_event_loop``
+        # now lives in :mod:`cli.services.playwright_login`, so the patch
+        # target follows the import (rev-1 CodeRabbit feedback on #962).
+        with patch("notebooklm.cli.services.playwright_login.sys.platform", "linux"):
             original_policy = asyncio.get_event_loop_policy()
             with _windows_playwright_event_loop():
                 # Policy should remain unchanged on non-Windows
@@ -91,15 +96,15 @@ class TestPlaywrightEventLoopFix:
         with _windows_playwright_event_loop():
             inside_policy = asyncio.get_event_loop_policy()
             # Inside the context, should be default (ProactorEventLoop) policy
-            assert not isinstance(
-                inside_policy, asyncio.WindowsSelectorEventLoopPolicy
-            ), "Context manager should switch to default policy for Playwright"
+            assert not isinstance(inside_policy, asyncio.WindowsSelectorEventLoopPolicy), (
+                "Context manager should switch to default policy for Playwright"
+            )
 
         # After exit, should restore original policy
         restored_policy = asyncio.get_event_loop_policy()
-        assert isinstance(
-            restored_policy, asyncio.WindowsSelectorEventLoopPolicy
-        ), "Context manager should restore WindowsSelectorEventLoopPolicy after Playwright"
+        assert isinstance(restored_policy, asyncio.WindowsSelectorEventLoopPolicy), (
+            "Context manager should restore WindowsSelectorEventLoopPolicy after Playwright"
+        )
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
     def test_context_manager_restores_on_exception(self):
@@ -112,9 +117,9 @@ class TestPlaywrightEventLoopFix:
 
         # Policy should be restored despite exception
         restored_policy = asyncio.get_event_loop_policy()
-        assert isinstance(
-            restored_policy, asyncio.WindowsSelectorEventLoopPolicy
-        ), "Context manager should restore policy even on exception"
+        assert isinstance(restored_policy, asyncio.WindowsSelectorEventLoopPolicy), (
+            "Context manager should restore policy even on exception"
+        )
 
 
 class TestWindowsEventLoopPolicy:

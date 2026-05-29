@@ -57,10 +57,7 @@ class TestGetConversationTurnsCommand:
       2. khqZz (GET_CONVERSATION_TURNS) → returns Q&A turns for that conversation
     """
 
-    @notebooklm_vcr.use_cassette(
-        "chat_get_conversation_turns.yaml",
-        match_on=["method", "scheme", "host", "port", "path", "rpcids"],
-    )
+    @notebooklm_vcr.use_cassette("chat_get_conversation_turns.yaml")
     def test_history_shows_qa_previews(self, runner, mock_auth_for_vcr, mock_context):
         """history command shows Q&A preview columns populated from khqZz turns API."""
         # Use the full UUID directly so resolve_notebook_id skips LIST_NOTEBOOKS
@@ -68,36 +65,3 @@ class TestGetConversationTurnsCommand:
         assert result.exit_code == 0, result.output
         assert "What question should I" in result.output
         assert "Based on the sources" in result.output
-
-    @pytest.mark.skip(
-        reason=(
-            "Cassette not yet recorded. To record: set NOTEBOOKLM_VCR_RECORD=1 and run "
-            "'notebooklm history --save' against real API. "
-            "Cassette must capture GET_LAST_CONVERSATION_ID + GET_CONVERSATION_TURNS "
-            "+ CREATE_NOTE + UPDATE_NOTE."
-        )
-    )
-    def test_history_save(self, runner, mock_auth_for_vcr, mock_context):
-        """'history --save' saves all conversation history as a note."""
-        with notebooklm_vcr.use_cassette("chat_history_save.yaml"):
-            result = runner.invoke(cli, ["history", "--save"])
-            assert result.exit_code == 0
-            assert "Saved as note" in result.output
-
-
-class TestAskSaveAsNoteCommand:
-    """Test 'notebooklm ask --save-as-note' command."""
-
-    @pytest.mark.skip(
-        reason=(
-            "Cassette not yet recorded. To record: set NOTEBOOKLM_VCR_RECORD=1 and run "
-            "'notebooklm ask \"...\" --save-as-note' against real API. "
-            "Cassette must capture GenerateFreeFormStreamed + CREATE_NOTE + UPDATE_NOTE."
-        )
-    )
-    def test_ask_save_as_note(self, runner, mock_auth_for_vcr, mock_context):
-        """'ask --save-as-note' saves the answer as a note."""
-        with notebooklm_vcr.use_cassette("chat_ask_save_as_note.yaml"):
-            result = runner.invoke(cli, ["ask", "What is this about?", "--save-as-note"])
-            assert result.exit_code == 0
-            assert "Saved as note" in result.output

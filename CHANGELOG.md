@@ -5,7 +5,311 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - Unreleased
+
+### Breaking changes
+
+> **⚠ BREAKING — exception hierarchy symmetry restored.**
+>
+> `SourceNotFoundError` and `ArtifactNotFoundError` now inherit from `RPCError`
+> in addition to their respective domain bases (`SourceError`,
+> `ArtifactError`), restoring symmetry with `NotebookNotFoundError` which has
+> mixed in `RPCError` since the 0.5.x series. Combined with the new
+> `NotFoundError` umbrella (see **Added** below), the class declarations are
+> now:
+>
+> ```python
+> class NotebookNotFoundError(NotFoundError, RPCError, NotebookError): ...
+> class SourceNotFoundError(NotFoundError, RPCError, SourceError): ...        # new RPCError mixin in 0.6.0
+> class ArtifactNotFoundError(NotFoundError, RPCError, ArtifactError): ...    # new RPCError mixin in 0.6.0
+> ```
+>
+> **Migration.** Code that catches the broad `RPCError` *before* a more
+> specific `SourceNotFoundError` / `ArtifactNotFoundError` clause now routes
+> "not found" through the broad branch instead of falling through to the
+> specific one. Reorder your `except` clauses so the more specific exceptions
+> come first.
+>
+> The example below uses `client.sources.get_fulltext(...)`, which raises
+> `SourceNotFoundError` for a missing source. (`client.sources.get(...)`
+> returns `None` and does not raise, so it doesn't demonstrate the change.)
+>
+> ```python
+> # BEFORE — in 0.5.x this layout worked: SourceNotFoundError was NOT an
+> # RPCError, so it fell through the broad `except RPCError` to the specific
+> # handler. In 0.6.0 the broad handler catches it first, leaving the
+> # specific `except SourceNotFoundError` clause unreachable.
+> try:
+>     fulltext = await client.sources.get_fulltext(notebook_id, source_id)
+> except RPCError as e:        # ← in 0.6.0 this also catches SourceNotFoundError
+>     handle_rpc_failure(e)
+> except SourceNotFoundError:  # ← in 0.6.0 this branch becomes unreachable
+>     handle_missing_source()
+>
+> # AFTER — put the specific exception first so the broad branch only sees
+> # other RPC failures.
+> try:
+>     fulltext = await client.sources.get_fulltext(notebook_id, source_id)
+> except SourceNotFoundError:
+>     handle_missing_source()
+> except RPCError as e:
+>     handle_rpc_failure(e)
+> ```
+>
+> Code that catches `SourceNotFoundError` / `ArtifactNotFoundError` directly,
+> or catches via the domain bases (`SourceError`, `ArtifactError`), or via the
+> shared `NotebookLMError` base, continues to behave exactly as before. Only
+> the `RPCError`-before-specific ordering is affected.
+>
+> `SourceNotFoundError.__init__` and `ArtifactNotFoundError.__init__` also
+> now accept keyword-only `method_id` / `raw_response` parameters (forwarded
+> to the `RPCError` parent), matching the `NotebookNotFoundError` signature.
+> All positional call sites remain source-compatible.
+
+### Breaking changes
+
+- **`notebooklm source stale <ID>` now follows the standard CLI exit-code convention by default.** Exit `0` indicates the freshness check succeeded (regardless of whether the source is fresh or stale); exit `1` indicates an error. Previously the command used an inverted predicate (`0` = stale, `1` = fresh) so the shell idiom `if notebooklm source stale ID; then refresh; fi` worked naturally. **Migration:** scripts that depended on the inverted predicate can opt back into the legacy semantics with the new `--exit-on-stale` flag (`if notebooklm source stale --exit-on-stale ID; then refresh; fi`). Scripts written for the new default should branch on the JSON `stale`/`fresh` fields or stdout text. See [`docs/cli-exit-codes.md`](docs/cli-exit-codes.md#notebooklm-source-stale-source_id--opt-in-inverted-predicate) for the full rationale + the new `Exit code semantics` summary.
+- **`NotebookLMClient.rpc_call(...)` no longer accepts `source_path`, `_is_retry`, or `operation_variant`** — the three kwargs deprecated in v0.5.0 (`docs/improvement.md` §7.4, `docs/deprecations.md`) were removed after one MINOR cycle. The public escape hatch's primary contract (`client.rpc_call(method, params)`) is unchanged and the default-shape call keeps working with no migration. Migration:
+  - **Keyword callers**: drop the removed kwarg from the call. The previous default-shape behavior (`source_path="/"`, `_is_retry=False`, `operation_variant=None`) is now what every call gets unconditionally — `source_path` was a leaky internal seam, `_is_retry` was an internal retry-loop flag, and `operation_variant` is part of the mutating-RPC idempotency registry. Calls that genuinely needed a non-`"/"` `source_path` or a specific `operation_variant` were already on the wrong layer; build a typed method on a sub-client instead, or open an issue describing the workflow.
+  - **Positional callers** (rare): the positional order of the remaining parameters is `(method, params, allow_null, *, disable_internal_retries=...)`, so a previously-positional `source_path` / `_is_retry` argument now binds to a different parameter slot. A pre-cut `client.rpc_call(method, params, "/", True)` (which passed `source_path="/"`, `allow_null=True`) becomes `client.rpc_call(method, params, allow_null=True)` after the cut — switch to keyword arguments for `allow_null` to avoid this footgun.
+  - There is no public replacement for the removed internal-only kwargs (`_is_retry`, `operation_variant`); they were never part of the supported surface in the first place.
+
+### Added
+
+- **`notebooklm source stale --exit-on-stale` flag** — opt-in back-compat for the legacy inverted-predicate exit codes (`0` = stale, `1` = fresh). The default behavior is now the standard CLI convention (see **Breaking changes** above); pass `--exit-on-stale` to keep `if notebooklm source stale --exit-on-stale ID; then refresh; fi` shell idioms working.
+- **`Exit code semantics` summary section in [`docs/cli-exit-codes.md`](docs/cli-exit-codes.md#exit-code-semantics).** A normative one-line table — `0` = succeeded as documented, `1` = failed or queried target not found, `2` = Click parser-time error — backing the convention every command obeys outside the documented intentional exceptions. Cross-references the existing tables and [ADR-015](docs/adr/0015-json-envelope-contract-for-post-parse-click-exceptions.md).
+- **`NotFoundError` cross-domain umbrella exception.** Catch `NotFoundError` to handle any "resource not found" case across notebooks, sources, and artifacts in one `except` clause — replacing `except (NotebookNotFoundError, SourceNotFoundError, ArtifactNotFoundError):`. `NotebookNotFoundError`, `SourceNotFoundError`, and `ArtifactNotFoundError` all inherit from `NotFoundError`. The umbrella itself is additive; the asymmetric inheritance noted on its original introduction has been resolved in the same release — all three subclasses also mix in `RPCError` (see **Breaking changes** above for the `except`-ordering migration).
+
+### Fixed
+
+- **HTML file uploads now fail client-side with a clear validation error** ([#1127](https://github.com/teng-lin/notebooklm-py/issues/1127)). `notebooklm source add ./article.html` and `client.sources.add_file(..., "article.html")` previously reached NotebookLM's upload endpoint as `text/html` and surfaced a cryptic upstream `400 Bad Request`. The upload pipeline now rejects `.html` / `.htm` / `.xhtml` / `.xht` / HTML MIME uploads before registering a source, with guidance to convert the page to `.txt`, `.md`, or `.pdf`.
+- **`notebooklm source fulltext -o FILE` no longer silently overwrites existing files** ([#1173](https://github.com/teng-lin/notebooklm-py/issues/1173)). Existing output paths now auto-rename by default (`FILE` -> `FILE (2)`, etc.); pass `--force` to overwrite intentionally or `--no-clobber` to fail when the path already exists.
+
+### Removed
+
+- `NotebookLMClient.rpc_call(source_path=...)`, `NotebookLMClient.rpc_call(_is_retry=...)`, `NotebookLMClient.rpc_call(operation_variant=...)` — see Breaking changes above. The corresponding `DeprecationWarning` emitters in `client.py` and the `tests/unit/test_rpc_call_public_surface.py` warning-surface tests were retired in the same change.
+
+## [0.5.0] - 2026-05-23
+
+The first release after the v0.4.x auth cookie lifecycle series. Headline user-facing work: a top-to-bottom CLI UX overhaul (uniform `--json`, exit-code policy, shell completion, stdin pipes, SIGINT-resume), auth and cookie reliability hardening (inline PSIDTS cold-start recovery, fail-closed `notebooklm use`, concurrent-upload safety), and the v0.3-era deprecation removal cycle. **Read Breaking changes below before upgrading.**
+
+### Breaking changes
+
+Items that need attention when upgrading from 0.4.x. Full migration prose lives in the natural sections below.
+
+- **`NOTEBOOKLM_STRICT_DECODE` now defaults to `1`** — RPC shape drift raises `UnknownRPCMethodError` (subclass of `RPCError`) at the decoder boundary instead of warning and returning `None`. Set `=0` to opt back into the legacy behavior for one release window (the soft-mode fallback itself now emits `DeprecationWarning` and is scheduled for removal in v0.6.0).
+- **`rate_limit_max_retries` default raised from `0` to `3`** with exponential-backoff fallback. Programmatic users now inherit smart-retry behavior matching the CLI. Pass `rate_limit_max_retries=0` to restore the previous immediate-`RateLimitError` behavior. Mutating create RPCs already opt out via `disable_internal_retries=True`.
+- **`server_error_max_retries` default raised from `0` to `3`** with the same exponential-backoff fallback, covering HTTP 5xx + retryable network errors (#629). Pass `server_error_max_retries=0` to restore immediate failure on 5xx.
+- **`max_concurrent_rpcs` semaphore added with default `16`** (#630). High-fan-out callers (e.g. `asyncio.gather` over 100 RPCs) are now throttled by default instead of saturating the connection pool. Pass `max_concurrent_rpcs=None` to restore unbounded fan-out. Must satisfy `max_concurrent_rpcs <= ConnectionLimits.max_connections`.
+- **`notebooklm use <id>` fails closed when the notebook doesn't exist.** `use` now verifies the id with `NotebooksAPI.get(id)` before persisting and exits `1` without writing to `context.json` on a missing notebook / wire failure / auth-expiry. Pass `--force` to bypass verification. `NotebookNotFoundError` now inherits from both `RPCError` and `NotebookError`.
+- **`source get` / `artifact get` / `note get` exit `1` on not-found (was `0`).** Matches the rest of the CLI's user-error convention so scripts can branch on the exit code. `--json` failure body uses the standard `{"error": true, "code": "NOT_FOUND", ...}` envelope.
+- **`generate cinematic-video --format <non-cinematic>` exits `2` with a UsageError** instead of silently overriding the conflict. Drop the conflicting flag, or use `generate video --format <value>` if a non-cinematic format was intended.
+- **`NOTEBOOKLM_REFRESH_CMD` defaults to `shell=False`** (security hardening for the shell-injection footgun when the env var is sourced from CI configs). Now parsed with `shlex.split` and invoked with `subprocess.run(argv, shell=False, ...)`. Set `NOTEBOOKLM_REFRESH_CMD_USE_SHELL=1` (literal `"1"` only) to opt back into the legacy `shell=True`.
+- **`source add` no longer follows symlinks by default.** A workspace symlink like `~/Downloads/foo.pdf → /etc/passwd` previously resolved and uploaded the target with no warning. The path now refuses symlink traversal with a `ClickException` (exit `1`) unless `--follow-symlinks` is explicit. Scripts that point at symlink-resolved paths must add the flag (#476).
+- **YouTube cookies no longer scraped or trusted by default at login / refresh.** The cookie-domain allowlist split into REQUIRED (NotebookLM + Drive + RotateCookies) and OPTIONAL (YouTube / Docs / Mail / myaccount). Pass `--include-domains=youtube` (or `=all`) on `login` / `auth refresh --browser-cookies <browser>` / `auth inspect` to opt YouTube back in; pass `=docs`/`=mail`/`=myaccount` to opt those sibling domains in explicitly (#483).
+- **Artifact generation without `language=` now honors the configured language.** The Python `client.artifacts.generate_*` methods now resolve omitted `language` via `NOTEBOOKLM_HL` / global config / `"en"` instead of hard-coding `"en"` at the signature. Pass `language="en"` for a fixed English payload.
+- **`--storage <path>` no longer shares the default profile's notebook context.** A previously-run `notebooklm use <id>` against the default profile is invisible to a later `notebooklm --storage X.json <cmd>` (and vice versa) because `--storage` now derives a sibling `<path>.context.json`. Set the active notebook explicitly via `notebooklm --storage <path> use <id>`, `-n/--notebook`, or `NOTEBOOKLM_NOTEBOOK` env var (#467).
+- **`login --browser-cookies --account EMAIL` now writes the active/default profile by default** instead of creating a profile from the email local-part. Use `--profile-name NAME` to write a separate named profile, or `--storage PATH` for an exact file. Existing profile auth for a different or unknown account prompts before overwrite (#987).
+- **v0.3-era deprecated APIs removed** — `Source.source_type`, `Artifact.artifact_type`, `Artifact.variant`, `SourceFulltext.source_type`, `StudioContentType`, `DEFAULT_STORAGE_PATH`, `notebooklm.cli.language.save_config`. Migrate to the `.kind` property and `notebooklm.paths.get_storage_path()`. See **Removed** below.
+- **Cookie identity widened to `(name, domain, path)`** per RFC 6265 §5.3. Writes remain backward-compatible (flat dicts / legacy 2-tuples still accepted); reads of `auth.cookies` with the old 2-tuple key now raise `KeyError`. Use `auth.cookies[("SID", ".google.com", "/")]`, `auth.flat_cookies["SID"]`, or `auth.cookie_header`.
+
+### Added
+
+#### Auth and reliability
+- **Inline `__Secure-1PSIDTS` cold-start recovery.** When a storage file has `__Secure-1PSID` but no `__Secure-1PSIDTS`, a preflight POST to `accounts.google.com/RotateCookies` mints a fresh token before any RPC traffic, so cold-start workers no longer fail on the first call. Cross-process flock serializes concurrent cold starts; respects `NOTEBOOKLM_DISABLE_KEEPALIVE_POKE=1` ([#865](https://github.com/teng-lin/notebooklm-py/issues/865), [#872](https://github.com/teng-lin/notebooklm-py/pull/872)).
+- **`NOTEBOOKLM_BASE_URL` env var for enterprise NotebookLM deployments** (#402). Routes RPC + auth traffic through a non-`google.com` base URL; cookie-domain allowlist auto-extends to the enterprise host. Previously enterprise users had to monkey-patch internals.
+- **`NOTEBOOKLM_RPC_OVERRIDES` env-var escape hatch.** When Google rotates a `batchexecute` method ID, set e.g. `NOTEBOOKLM_RPC_OVERRIDES='{"LIST_NOTEBOOKS": "newId123"}'` to keep working until a patch ships. Overrides are gated to `notebooklm.google.com` / `accounts.google.com` base hosts so a redirected base can't pivot them (#486).
+- **`ConnectionLimits` dataclass for httpx pool tuning.** Pass `ConnectionLimits(max_connections=200, ...)` to `NotebookLMClient(...)` for long-running agents and high-fan-out workers — no more monkey-patching internals (#527).
+- **`max_concurrent_rpcs` constructor arg** (default `16`, #630). Bounds simultaneous in-flight RPCs to protect the connection pool under fan-out. `None` opts out — see **Breaking changes** for the default-shift note.
+- **`--include-domains` flag on `login` / `auth refresh --browser-cookies <browser>` / `auth inspect`.** Backs the REQUIRED/OPTIONAL cookie-domain split described in **Breaking changes** — passing `=youtube`/`=docs`/`=mail`/`=myaccount` (or `=all`) opts those OPTIONAL domains back in. Accepts repeated-flag or comma-separated syntax (#483).
+- **In-memory `__Secure-1PSIDTS` recovery during `--browser-cookies` extraction** ([#990](https://github.com/teng-lin/notebooklm-py/pull/990), [#991](https://github.com/teng-lin/notebooklm-py/pull/991)). When `rookiepy` returns a partial cookie set (most often when the browser hasn't rotated `__Secure-1PSIDTS` yet), a single `RotateCookies` POST against the live browser cookies mints the missing token before persistence. Recovery declines surface scenario-specific hints (`No SID → "You are not signed in to Google in <browser>"`, `PSIDTS missing + secondary binding intact → "RotateCookies recovery did not succeed. Open https://notebooklm.google.com in <browser>"`) instead of the previous generic "No valid Google authentication cookies found".
+
+#### Chat
+- **`client.chat.delete_conversation(notebook_id, conversation_id)` + `notebooklm ask --new` is now genuinely destructive** (#824). Captures the web UI's "Delete history" action (`J7Gthc` RPC) so callers can force-end a server-side conversation; the next `ask()` with no `conversation_id` starts a brand-new thread. **⚠ Deleted turns are not recoverable.** CLI prompts for confirmation; `--json` implies `--yes`.
+- **`notebooklm ask --new` flag** (previously promised in the docstring but undeclared) — starts a fresh conversation, mutually exclusive with `--conversation-id`.
+- **`notebooklm ask --timeout`** per-invocation HTTP timeout, mirroring `source add --timeout`.
+- **`ChatReference.answer_range` + `.score`** (#686). Every reference now exposes the answer-text span it grounds (start/end char positions) and the model's relevance score — useful for highlighting cited passages and ranking sources.
+- **`chat save` preserves inline citation hover anchors** (closes #660, [#675](https://github.com/teng-lin/notebooklm-py/pull/675)). Saved notes retain `[citation]`-style anchors so users can hover-preview the source passage that grounded each claim in the NotebookLM web UI.
+
+#### CLI ergonomics
+- **Uniform `--json` envelopes** on every detail and mutating command: `artifact get/rename/delete/poll/export`, eight `source` subcommands (`delete/rename/refresh/clean/get/delete-by-title/add-drive/stale`), `note get/save/create/delete/rename`, `notebooklm configure`, and `notebook use`. Detail commands mirror the underlying dataclasses; mutating commands emit `{"id": ..., "renamed|deleted|exported": true, ...}`.
+- **Standard download flag set on `download quiz` / `download flashcards`** — `--all`, `--latest`, `--earliest`, `--name`, `--dry-run`, `--force`, `--no-clobber`, `--json` — so one wrapper script works across every artifact type.
+- **Uniform `--timeout` / `--interval`** on `generate <kind> --wait`, `artifact wait`, and `source wait`.
+- **`--limit=N` and `--no-truncate` on every `list` command, plus `--no-truncate` on `chat history`.** `chat history --no-truncate` lifts the hardcoded 50-char preview on Question/Answer columns.
+- **Shell completion + ID-aware completers.** `notebooklm completion <bash|zsh|fish>` prints a completion script; once sourced, `-n/--notebook`, `-s/--source`, and `-a/--artifact` TAB-complete live IDs from the active profile.
+- **SIGINT resume hint on long-running `--wait` ops.** Ctrl-C exits 130 with `Cancelled. Resume with: notebooklm artifact poll <task_id>` (or the parallel `source wait <source_id>`) instead of dumping a `KeyboardInterrupt` traceback. Under `--json`: `{"error": true, "code": "CANCELLED", "resume_hint": "..."}`.
+- **Unix `-` stdin convention on `ask`, `note create`, `source add`, and `--prompt-file`.** `echo "what is X?" | notebooklm ask -` and similar pipelines now compose without temp files.
+- **`NOTEBOOKLM_NOTEBOOK` env var + global `--quiet` flag.** `NOTEBOOKLM_NOTEBOOK=<id> notebooklm ask "..."` works without `-n/--notebook` or a prior `notebooklm use`. `--quiet` suppresses status output, raises the package logger floor to ERROR, and remains mutually exclusive with `-v/-vv`.
+- **`source add` warns when a path-shaped argument doesn't exist.** A typo like `./missin.md` previously fell through to inline-text ingestion silently; an advisory stderr warning now fires before the source is added.
+- **`--follow-symlinks` opt-in on `source add`.** See **Breaking changes** above; scripts that point at symlink-resolved paths must add the flag to keep working (#476).
+- **`source clean` command** (#261). Bulk-delete failed/stale sources in a notebook; pairs with `source stale` for inspection. Supports `--all`, `--latest`, `--earliest`, `--dry-run`, and `--json`.
+- **`notebooklm create --use` flag** (#220, #413). `create --use "title"` makes the new notebook the active context in one step. (Plain `create` no longer auto-switches the context — `--use` is the explicit opt-in.)
+- **Chromium-profile selectors on `login --browser-cookies chromium:<profile>`** (#648). Pick a specific Chrome user profile (e.g. `chromium:Profile_1`) instead of always defaulting to the first profile. Useful for users with multiple Google accounts in one browser install.
+- **`auth login --update` on `--all-accounts`** (#594). Replaces the stored state for an already-logged-in account instead of refusing on conflict.
+
+#### Python API
+- **Source fulltext markdown format.** `client.sources.get_fulltext(..., output_format="markdown")` and `source fulltext -f markdown` (closes #222). Requires the optional `markdownify` extra (`pip install "notebooklm-py[markdown]"`).
+- **Public `client.rpc_call(method_id, params)`** (#646). A documented escape hatch for invoking any `batchexecute` RPC method directly when no high-level API wraps it yet. Pairs with `NOTEBOOKLM_RPC_OVERRIDES` for community self-patching while waiting on a fix.
+- **Observability hooks + drain API on `NotebookLMClient`** (#643). New `on_rpc_event` callback (per-call timing + status), `client.metrics` snapshot, and `await client.drain()` for graceful shutdown. Designed for long-running agents needing visibility without monkey-patching.
+- **Correlation IDs + categorized logging** (#430, #431). Every RPC carries an `X-Correlation-ID` (also surfaced on log records); log records are categorized (`rpc.call`, `rpc.retry`, `auth.refresh`, `upload.chunk`, …) for filtering. Credential redaction now covers every log surface by default.
+- **Per-call upload timeouts on `sources.add_file` / `add_drive`** (#618). New `upload_timeout` / `chunk_timeout` keyword args for tuning large-file uploads against slow networks.
+- **`ResearchAPI.wait_for_completion(notebook_id, task_id=None, *, timeout=1800, interval=5)`** ([#970](https://github.com/teng-lin/notebooklm-py/pull/970)). Polls until research reaches a terminal state (`completed` / `failed`) or the timeout fires; passes through `task_id` on subsequent polls once the backend assigns one to prevent a later concurrent task from substituting its sources/report. Surfaces a new terminal `failed` status so wait loops no longer spin until timeout after the backend rejects a task.
+- **`notebooklm.artifacts.with_rate_limit_retry(callable, *, max_retries=3, ...)`** ([#969](https://github.com/teng-lin/notebooklm-py/pull/969)). Shared retry helper for the `client.artifacts.generate_*` family — catches generation-time `RateLimitError`, honors `retry_after`, and falls back to exponential backoff. Replaces the per-caller try/except/sleep boilerplate previously suggested in `docs/python-api.md`.
+- **`__all__` declared on `notebooklm.paths`, `notebooklm.migration`, and `notebooklm.notebooklm_cli`** ([#958](https://github.com/teng-lin/notebooklm-py/pull/958)). ADR-012 marks all three as public modules; `__all__` now pins the exported surface (12 names on `paths`, 3 on `migration`, `cli` + `main` on the CLI entry point) so `from notebooklm.paths import *` is well-defined and the public API compatibility audit can lock it.
+
+### Changed
+- **Custom `--storage` downloads now use the selected auth file** ([#838](https://github.com/teng-lin/notebooklm-py/issues/838), [#888](https://github.com/teng-lin/notebooklm-py/pull/888)). `ArtifactDownloadService` previously snapshotted the session's storage path at construction time, so `--storage` overrides applied after construction were silently ignored on download. CLI `--storage` flag and mid-process profile switches are now inherited reliably.
+- **`--storage <path>` derives a sibling `<path>.context.json` per file** (#467). Two `--storage` invocations against different files no longer leak notebook state through the default profile. Precedence: explicit `--storage` > profile > legacy home-root. (See **Breaking changes** for the script-impact note.)
+- **Conversation IDs are now server-assigned** (#659, #667). `ChatAPI.ask()` returns whatever the server creates instead of minting a local UUID. Previously-saved conversation IDs from a v0.4.x session remain valid against the server.
+- **Cross-event-loop reuse fails fast with `RuntimeError`** (#633). One `NotebookLMClient` instance is bound to its `open()`-time event loop; reusing it from a different loop (common in hot-reload servers, worker pools) now raises on the first authed POST instead of failing with cryptic httpx errors.
+- **`notebook use` surfaces the typed auth-aware error on expired credentials.** Text mode shows the canonical "Not logged in" walkthrough with the `notebooklm login` remediation; `--json` emits the standard `AUTH_REQUIRED` envelope.
+- **`download <type>` exception paths route through the typed error handler.** `--json` is honored on the exception path; `RateLimitError.retry_after` surfaces as both a JSON field and a "Retry after Ns" text line; `AuthError` shows the canonical re-auth hint.
+- **`notebooklm login` and `notebooklm auth refresh` no longer leak Python tracebacks on unexpected failures.** Unexpected exceptions become a single friendly line + bug-report URL with exit code `2`; original traceback remains available at `-vv`.
+- **`--wait` paths show a transient spinner with elapsed timer** and an empirical typical-duration hint where known (e.g. `typically 30-40 min` for cinematic-video). No-op under `--json`.
+- **CLI group docstrings synced with the live registered subcommand set.** `source`, `download`, `artifact`, and `note` group `--help` blocks now enumerate every registered subcommand (previously missed `add-drive`, `add-research`, `clean`, `wait`, `cinematic-video`, `quiz`, `flashcards`, `suggestions`, `rename`).
+- **`notebooklm --help` bins five previously-orphaned top-level commands** into primary sections: `auth` → **Session**; `metadata` → **Notebooks**; `agent` / `skill` / `language` → **Command Groups**.
+- **`artifact poll` vs `artifact wait` `--help` clarified on ID kind.** `poll <task_id>` straight from `generate`; `wait <artifact_id>` resolved against `artifact list`.
+- **First-run profile migration no longer races concurrent invocations** (#478). Previously two `notebooklm` invocations starting under a fresh home (container start-up races, parallel test runs, MCP worker pools) could both run the copy-and-delete migration. Lock waits past 30 s raise a domain-specific `MigrationLockTimeoutError(RuntimeError)`.
+- **`RPCError.raw_response` previews capped at 80 chars; `NOTEBOOKLM_DEBUG=1` opts into full body.** Previously embedded a 500-char preview of the upstream response — noisy in CI and capable of leaking large server payloads (#479).
+- **`RPCError.rpc_id` and `RPCError.code` deprecations revoked.** Both are now permanent aliases for `method_id` / `rpc_code` — removing exception diagnostic aliases can mask the original exception inside `except` handlers.
+- **BREAKING: `note delete --json` without `--yes` and `note rename` lose-the-race now exit `1` (was `0`).** Two parallel surgical fixes to `cli/note.py` matching the broader `--json` exit-code convention (audit P1.T5). `notebooklm note delete <id> --json` without `--yes` now emits `{"error": true, "code": "VALIDATION_ERROR", "message": "Pass --yes to confirm deletion in --json mode", "id": ..., "notebook_id": ...}` + exit `1` (was the same payload as `{deleted: false, error: ...}` + exit `0`). `notebooklm note rename <id> "new"` when the note vanishes between the partial-ID resolve and the underlying `get` (e.g. a concurrent `note delete`) now emits the standard `{"error": true, "code": "NOT_FOUND", "message": "Note not found", "id": ..., "notebook_id": ...}` envelope + exit `1` (was `{renamed: false, error: ...}` + exit `0`). **Migration:** scripts branching on the exit code now correctly catch both misconfigurations; scripts parsing the JSON body must switch from `data["deleted"] == false` / `data["renamed"] == false` checks to `data["error"] == true` (or branch on `data["code"]`).
+
+### Deprecated
+- **`await NotebookLMClient.from_storage(...)` form.** `from_storage` now returns an awaitable async-context-manager wrapper that supports both the legacy `async with await NotebookLMClient.from_storage(...) as client:` pattern (and bare `await NotebookLMClient.from_storage(...)`) and the new canonical `async with NotebookLMClient.from_storage(...) as client:` pattern. Awaiting the call emits `DeprecationWarning`; the await form will be removed in v1.0. Migration: drop the `await` keyword from `async with await NotebookLMClient.from_storage(...) as client:` call sites.
+- **`NotebookLMClient.rpc_call` kwargs `_is_retry`, `source_path`, `operation_variant`.** Emit `DeprecationWarning`; removal targets v0.6.0.
+- **`NotesAPI.create_from_chat`.** Use `ChatAPI.save_answer_as_note`; removal targets v0.6.0.
+- **Positional `wait` / `wait_timeout` on `SourcesAPI.add_url` / `add_text` / `add_file` / `add_drive`.** Calls like `client.sources.add_url(nb_id, url, True)` still work in v0.5.0 but emit `DeprecationWarning`; pass `wait=True` / `wait_timeout=...` as keywords. Removal targets v0.6.0. CLI is unaffected.
+- **`SourcesAPI.add_file` `mime_type` parameter.** Never wired into the resumable-upload RPC — the server derives MIME from the filename extension. Passing a non-`None` value now emits `DeprecationWarning`; removal targets v0.6.0. The separate `add_drive(..., mime_type=...)` parameter is unaffected.
+- **`notebooklm source add --mime-type` on the file-source path.** A no-op when the resolved source type is `file`; using it now emits a stderr deprecation note (suppress via `NOTEBOOKLM_QUIET_DEPRECATIONS=1`). Removal targets v0.6.0. The same flag on `source add-drive` is unaffected.
+- **`ArtifactsAPI.wait_for_completion(poll_interval=...)`.** Use `initial_interval=...`; `poll_interval` remains accepted until v0.6.0.
+- **`NotebooksAPI.share()`.** Use `client.sharing.set_public()`. Scheduled for removal in a future major release.
+- **`NOTEBOOKLM_STRICT_DECODE=0` soft-mode fallback.** Each use emits `DeprecationWarning` naming the decoder source; the soft-mode path is scheduled for removal in v0.6.0.
+- **`ResearchAPI.poll(task_id=None)` default on multi-task notebooks.** When multiple research tasks are in flight, `poll()` with no `task_id` now emits `DeprecationWarning` (single-task notebooks: no warning, current behavior preserved). Scheduled for removal in a future major release.
+
+### Removed
+- **v0.3-era deprecation cycle complete.** Removed `Source.source_type`, `SourceFulltext.source_type`, `Artifact.artifact_type` (use `.kind`); `Artifact.variant` (use `.kind`, `.is_quiz`, `.is_flashcards`); `notebooklm.StudioContentType` (use `ArtifactType`); `notebooklm.DEFAULT_STORAGE_PATH` (use `notebooklm.paths.get_storage_path()`); `notebooklm.cli.language.save_config` (now private).
+- **RPC raw-code `StudioContentType` aliases.** `notebooklm.rpc.types.StudioContentType` and `notebooklm.rpc.StudioContentType` removed; use `ArtifactType` for public code and `ArtifactTypeCode` only for low-level RPC internals.
+- **`RPCMethod.DISCOVER_SOURCES` and `RPCMethod.QUERY_ENDPOINT`.** `DISCOVER_SOURCES` was an unused enum entry never exercised by any `client.*` API. `QUERY_ENDPOINT` was an endpoint URL path, not a batchexecute RPC method; use `notebooklm.rpc.get_query_url()` for the configured streamed-chat endpoint.
+
+### Fixed
+- **Artifact generation language compatibility restored.** Omitting `language` on public `client.artifacts.generate_*` calls again defaults artifact output to `"en"`; pass `language=None` to opt in to `NOTEBOOKLM_HL` default-language resolution.
+- **Source upload auth/MIME routing** ([#984](https://github.com/teng-lin/notebooklm-py/pull/984)). The resumable-upload path skipped a redundant env-auth lookup and now classifies media MIME types case-insensitively; `application/mp4` is included in the media-MIME set so `.mp4` uploads route through the media upload path instead of the generic file path.
+- **Source upload rejection with status `3` now hints at the per-notebook source cap** ([#977](https://github.com/teng-lin/notebooklm-py/pull/977)). Previously surfaced as a bare `RPCError`; the error message now suggests checking the notebook source count when the server returns the cap-rejection code.
+- **Windows atomic-replace races on cookie/profile writes** ([#983](https://github.com/teng-lin/notebooklm-py/pull/983)). `os.replace` on Windows can transiently fail with `ERROR_ACCESS_DENIED` (5) or `ERROR_SHARING_VIOLATION` (32) when the destination is briefly held open by AV scanners or backup software. Bounded retry with backoff handles the transient cases; persistent failures still surface.
+- **IO event-loop blocking and chunked-download throughput** ([#981](https://github.com/teng-lin/notebooklm-py/pull/981)). Sync `Path.resolve()` / `open()` / `os.fstat()` on the upload path are now wrapped in `asyncio.to_thread`, keeping the loop responsive under the upload semaphore on slow filesystems. Chunked downloads use a single dedicated writer thread fed by a bounded `queue.Queue` (≈512 KiB buffered) instead of spawning one `to_thread` call per 64 KiB chunk. A bug where `ArtifactDownloadError` (raised by `download_urls_batch()` for invalid scheme / untrusted host / auth failure / HTML payload) aborted the entire batch instead of landing in `DownloadResult.failed` is also fixed.
+- **`notebooklm login --browser-cookies` hardening** ([#974](https://github.com/teng-lin/notebooklm-py/pull/974)). Tightened Chromium account enumeration, cookie-jar normalization, and refresh writes so partial extractions surface a clear error instead of silently writing an incomplete `storage_state.json`. Pairs with the in-memory `__Secure-1PSIDTS` recovery shipped in [#990](https://github.com/teng-lin/notebooklm-py/pull/990) / [#991](https://github.com/teng-lin/notebooklm-py/pull/991).
+- **`notebooklm login --browser-cookies` Playwright account metadata** ([#989](https://github.com/teng-lin/notebooklm-py/pull/989)). The Playwright login path now writes account metadata to the profile and validates it on subsequent refresh (rejecting bool-shaped corruption from earlier buggy writes), so `notebooklm auth refresh --all-accounts` and `--account EMAIL` can target the right profile without manual cleanup.
+- **Playwright account metadata repair runs after the sync context exits** ([#1000](https://github.com/teng-lin/notebooklm-py/issues/1000), [#1002](https://github.com/teng-lin/notebooklm-py/pull/1002)). `notebooklm login` previously invoked `repair_playwright_account_metadata()` while `sync_playwright()`'s event loop was still active, which raised on `run_async()`. The repair is now deferred until after the Playwright context closes, using the captured page HTML and saved storage path.
+- **`source add-research --wait` timeout path** ([#971](https://github.com/teng-lin/notebooklm-py/pull/971)). The CLI service now wraps the research wait in a typed timeout error and surfaces a resumable hint (`notebooklm research poll <task_id>`) instead of hanging until the global request timeout.
+- **`notebooklm auth refresh --all-accounts` language sync runs once** ([#976](https://github.com/teng-lin/notebooklm-py/pull/976)). Previously re-issued the `notebooklm.SetLanguage` RPC once per account; now coalesces to a single sync at the end of the multi-account loop.
+- **Loop-affinity guard on `sources.add_file` and `client.drain()` admission** ([#952](https://github.com/teng-lin/notebooklm-py/pull/952)). Cross-event-loop reuse already failed fast on authed RPC POSTs (#633); upload admission and drain admission now also raise `RuntimeError` instead of silently mis-binding to the wrong loop.
+- **`NotebookLMClient.close()` no longer leaks the httpx pool if cancelled mid-drain** ([#950](https://github.com/teng-lin/notebooklm-py/pull/950)). A `CancelledError` raised during drain previously skipped `httpx.AsyncClient.aclose()`; close now shields the transport cleanup so the connection pool is released on every cancellation path.
+- **Deep-research source import no longer requires leaving the "Add sources?" modal** ([#315](https://github.com/teng-lin/notebooklm-py/issues/315), [#882](https://github.com/teng-lin/notebooklm-py/pull/882)). The deep-research flow used to discover sources but skip the modal-confirm step, leaving sources pending until a separate UI action committed them. The CLI / `ResearchAPI.import_sources` now commits directly.
+- **`DELETE_NOTE` no longer races shielded `UPDATE_NOTE` at cancel time** ([#876](https://github.com/teng-lin/notebooklm-py/pull/876)). Cancellation during an in-flight `NotesAPI.update(...)` could land a delete before the shielded write completed, then have the update resurrect the note. Cancel-time cleanup is now ordered so `DELETE_NOTE` waits for any shielded `UPDATE_NOTE` to settle.
+- **Client close preserves the original exception** (#526). `NotebookLMClient.__aexit__` previously masked the original body exception when `aclose()` itself raised. Body exceptions are now preserved (chained via `__cause__`) while close-time failures still propagate; an inner shield guarantees the underlying httpx client is closed on every path.
+- **Unique temp file per concurrent artifact download** (#523). Two parallel `download_*` calls against the same artifact used to share `<dest>.tmp` and clobber each other's bytes. Each invocation now allocates a unique temp file (PID + uuid suffix) and atomically renames into place.
+- **`add_file` TOCTOU fix + `max_concurrent_uploads` knob** (#595). `SourcesAPI.add_file` used to open the source file twice — a path swap between the two opens could substitute a different file into a successful upload. The file is now opened once; the FD is held across size check + registration + upload. New `max_concurrent_uploads: int | None = 4` on `NotebookLMClient` caps simultaneous in-flight uploads (doubles as an FD-exhaustion guard for `asyncio.gather` fan-outs).
+- **Research `task_id` cross-wire on concurrent in-flight tasks** (#619). Two research sessions in flight on the same notebook could let `ResearchAPI.poll(notebook_id)` silently return the latest task, mis-attributing source provenance to the caller's task. `poll()` gains an optional `task_id` discriminator; `import_sources()` raises the new `ResearchTaskMismatchError` (subclass of `ValidationError`) when a `research_task_id` on any source disagrees with the caller's `task_id`.
+- **`RPCHealth` surfaces `httpx` exception class name on empty error messages** ([#874](https://github.com/teng-lin/notebooklm-py/pull/874)). Some `httpx` exception classes raise with empty `str(exc)`, which previously surfaced as a blank line. Health output now prefixes the class name (e.g. `ConnectTimeout:`).
+- **`notebooklm login` install hint stripped the `[browser]` extra** (#416). Rich interpreted `[browser]` as a style tag, so the "Playwright not installed" message rendered as `pip install "notebooklm-py"` with no extras. Fixed by `markup=False`; also corrected the package name from `notebooklm` to `notebooklm-py`.
+- **Per-create-RPC idempotency hardening** ([#801](https://github.com/teng-lin/notebooklm-py/pull/801), [#806](https://github.com/teng-lin/notebooklm-py/pull/806), [#808](https://github.com/teng-lin/notebooklm-py/pull/808), [#809](https://github.com/teng-lin/notebooklm-py/pull/809), [#813](https://github.com/teng-lin/notebooklm-py/pull/813)). Six-policy idempotency registry with probe-then-retry semantics for `ADD_SOURCE`, `ADD_SOURCE_FILE`, `CREATE_NOTE`, `CREATE_ARTIFACT`, `GENERATE_MIND_MAP`, and `START_RESEARCH` / `IMPORT_SOURCES`. Resolves duplicate-create on transient retries while still raising clear errors for genuine probe failures.
+
+### Security
+- **Comprehensive secret-leak audit closed across logging, auth, and URL handling** ([#746](https://github.com/teng-lin/notebooklm-py/pull/746), [#803](https://github.com/teng-lin/notebooklm-py/pull/803), [#903](https://github.com/teng-lin/notebooklm-py/pull/903)). A multi-iteration sweep tightening every surface that could leak credentials or grant codes:
+  - `payload_preview`, `final_url`, and share-URL IDs scrubbed in error paths (#746).
+  - `repr()` redaction on auth objects, `NOTEBOOKLM_REFRESH_CMD` stdout/stderr redaction, Playwright cookie-jar domain filter, atomic profile-state writes (#803).
+  - Standalone `__Secure-1PSIDTS` / `__Secure-3PSIDTS` / `__Secure-1PAPISID` / `__Secure-3PAPISID` cookie redaction in `_logging.py` (previously only caught inside `Cookie:` / `Set-Cookie:` header values); `_safe_url` redacts the URL **path** with `/<redacted>` on Google OAuth hosts (`accounts.google.com`, `oauth2.googleapis.com`, `oauth2.googleusercontent.com`) and subdomains, so opaque grant codes in paths like `/o/oauth2/auth/<token>` no longer leak through `ValueError` interpolations or CSRF / session-id drift surfaces (#903).
+
+## [0.4.1] - 2026-05-11
+
+> **Compatibility note.** Despite a few additive items (`notebooklm auth refresh` CLI, `keepalive=` constructor argument on `NotebookLMClient`, `NOTEBOOKLM_REFRESH_CMD` env var, two new dataclass fields), 0.4.1 is shipped as a patch release because the dominant work — and the reason to ship now — is auth/cookie stability remediation. Bumping to v0.5.0 would force the long-deferred removal of v0.3-era deprecated APIs (see [Stability](docs/stability.md)) earlier than scheduled; we'd rather keep that change isolated from the auth cookie lifecycle work. All additive items are backward compatible — existing code keeps working without changes.
+
+### Added
+- **`notebooklm auth refresh` CLI command** - One-shot keepalive that opens a session, triggers the layer-1 SIDTS rotation poke against `accounts.google.com`, persists the rotated cookies to `storage_state.json`, and exits. Designed to be scheduled by the OS (launchd / systemd / cron / Task Scheduler / k8s CronJob) to keep an idle profile from staling out between user-driven calls. Pairs naturally with `--quiet` for log-only-on-error cron output. Requires file/profile-backed authentication — explicitly refuses to run when `NOTEBOOKLM_AUTH_JSON` is set (no writable backing store). See `docs/troubleshooting.md` for per-OS scheduler recipes (#336).
+- **Periodic keepalive task on `NotebookLMClient`** - Long-lived clients (agents, workers, multi-hour `async with` blocks) can opt into a background task that periodically POSTs `RotateCookies` to drive `__Secure-1PSIDTS` rotation, then persists rotated cookies to `storage_state.json` immediately so a crash doesn't lose the freshness. Disabled by default — pass `keepalive=<seconds>` to `NotebookLMClient(...)` or `NotebookLMClient.from_storage(...)` to enable. Values below `keepalive_min_interval` (default 60 s) are clamped up to that floor. The loop swallows transient errors at DEBUG and continues; cancellation on `__aexit__` is clean. Persistence runs off-loop via `asyncio.to_thread` so the loop never blocks on disk I/O. Closes the gap left by the per-call layer-1 poke for clients that never re-call `fetch_tokens` (#297, #312, #341).
+- **Auto-refresh on auth expiry** - `fetch_tokens` now optionally runs a user-provided shell command when a Google session cookie has expired, reloads cookies from the same storage path, and retries once. Opt in by setting the `NOTEBOOKLM_REFRESH_CMD` environment variable to a command that rewrites `storage_state.json` (e.g. a sync script reading from a cookie vault). Refresh commands receive `NOTEBOOKLM_REFRESH_STORAGE_PATH` and `NOTEBOOKLM_REFRESH_PROFILE` so profile-aware scripts can target the active auth file. Covers every CLI entry point without changing the public API. Retry guards prevent refresh loops (#336).
+- **`examples/refresh_browser_cookies.py`** - Sample `NOTEBOOKLM_REFRESH_CMD` script that re-extracts cookies from a live local browser via `notebooklm login --browser-cookies`. Provides a recovery path for unattended automation when the in-process keepalive isn't enough (idle gaps, force-logout, password change).
+- **`Source.created_at` and `GenerationStatus.url` public dataclass fields** - `Source.created_at` is now populated for both nested and deeply-nested response paths. `GenerationStatus.url` is now populated by `poll_status` for media artifact types (audio, video, infographic, slide-deck PDF) so callers can stream the asset as soon as the status flips to ready (#349, #356).
+- **`ALLOWED_COOKIE_DOMAINS` extended for sibling Google products** - The browser-cookie import path now accepts cookies from Google's sibling product domains, restoring `--browser-cookies` flows for users whose active Google session lives on a sibling surface rather than `notebooklm.google.com` directly (#362).
+
+### Fixed
+- **Cookies could silently stale out under sustained use** - `fetch_tokens` now POSTs to `https://accounts.google.com/RotateCookies` (Chrome's dedicated unsigned rotation endpoint) before hitting `notebooklm.google.com` to drive `__Secure-1PSIDTS` / `__Secure-3PSIDTS` rotation. Empirically validated against both DBSC-bound (Playwright-minted) and unbound (Firefox-imported) profiles. RPC traffic against `notebooklm.google.com` alone does not appear to trigger rotation, so a keepalive that hit NotebookLM alone could silently stale out. The rotated `Set-Cookie` lands in the live `httpx` jar and is persisted via `save_cookies_to_storage()` along the `fetch_tokens_with_domains` / `AuthTokens.from_storage` paths. A 60 s mtime guard rate-limits the layer-1 poke — the POST is skipped when storage was recently rotated. Failures log at DEBUG and never abort token fetch. Disable with `NOTEBOOKLM_DISABLE_KEEPALIVE_POKE=1` (e.g. networks that block `accounts.google.com`). Closes #312 (#345, #346).
+- **Concurrent `RotateCookies` poke stampede** - The 60 s mtime guard only debounces *sequential* invocations; under `asyncio.gather` fan-out, parallel CLI loops, or MCP worker pools, all callers see the same stale `storage_state.json` mtime and stampede the POST. Three layered protections inside `_poke_session`: a per-event-loop, per-storage-path async lock registry plus a sync state lock for in-process dedup (an `asyncio.gather` of 10 fires exactly one POST), a non-blocking `LOCK_EX | LOCK_NB` flock on the new `.storage_state.json.rotate.lock` sentinel for cross-process dedup (parallel CLI loops / MCP workers skip silently when another process is rotating), and a failure-stampede protection where the timestamp updates regardless of POST outcome — so a 15 s timeout against a hung `accounts.google.com` doesn't let 10 fanned-out callers each wait the full timeout. The layer-2 keepalive loop now calls the bare `_rotate_cookies` directly (it's already self-paced via `keepalive_min_interval`) and `NOTEBOOKLM_DISABLE_KEEPALIVE_POKE` continues to disable both layers (#347, #348).
+- **`Notebook.sources_count` parsed but never surfaced** - The `sources_count` field on the public `Notebook` dataclass is now populated from `data[1]` on both LIST and GET notebook shapes; previously it always read as `0` regardless of actual source count (#350).
+- **`Artifact.url` unpopulated for media artifacts** - The `url` field on the public `Artifact` dataclass is now populated for media types (audio, video, infographic; slide-deck exposes the PDF URL — use `download_slide_deck(output_format="pptx")` for PPTX) so callers no longer need to drop down to `download_*` to obtain the asset URL (#349, #356).
+- **Cross-process and refresh-path save races** - Close lifecycle and refresh-path saves now serialize correctly with the keepalive writer; concurrent writers no longer overwrite each other's rotated cookies (#344).
+- **Keepalive ↔ close serialization; stop mutating caller `Auth`** - The keepalive task no longer races with `__aexit__`, and no longer mutates the `Auth` instance the caller passed in. Callers that share an `Auth` across multiple clients now get the isolation the API documented (#343).
+- **Snapshot keepalive cookie jar; normalize explicit `storage_path`** - The keepalive task now snapshots the live `httpx` jar before writing (avoiding torn writes when an RPC is mid-flight); an explicit `storage_path=` argument to `NotebookLMClient` is normalized onto the `Auth` instance so the keepalive task writes to the file the caller actually pointed at (#342).
+- **Per-domain cookie scoping on file upload** - File-upload requests now send only cookies whose `Domain` attribute applies to the upload host, instead of the full jar. Prevents upload rejection when the jar mixes cookies for `google.com`, `notebooklm.google.com`, and `googleusercontent.com` (#373, #374).
+- **Two-tier cookie validation pre-flight** - Auth loaders now distinguish "missing-but-recoverable" from "fatal" cookie states before attempting an RPC, surfacing clearer errors and avoiding doomed requests against Google's identity surface (#372).
+- **Preserve cookie attributes on load** - `Domain`, `Path`, `Secure`, `HttpOnly`, and `SameSite` attributes round-trip through storage load, restoring behaviors that depended on cross-host scoping (#365, #368).
+- **Unify flat-cookie selection across loaders** - Legacy flat-cookie and modern Playwright storage shapes now share a single selection contract; subtle mismatches between the two paths are eliminated (#375, #376).
+- **Tolerate non-numeric / out-of-range timestamp values on dataclasses** - `Notebook.created_at`, `Source.created_at`, and `Artifact.created_at` now catch `TypeError`, `ValueError`, `OSError`, and `OverflowError` from `datetime.fromtimestamp` and resolve to `None` instead of raising on edge-case server responses (#357).
+- **`examples/refresh_browser_cookies.py` `--profile` placement** - The example invoked `... login --browser-cookies <b> --profile <p>` but `--profile` is a top-level Click option and was rejected after `login` (`Error: No such option: --profile`). Now invokes `... --profile <p> login --browser-cookies <b>` and works end-to-end against profile-backed storage.
+
+### Infrastructure
+- **Consolidated URL extraction** - `_extract_artifact_url`, per-type extractors (audio/video/infographic/slide-deck), and `_is_valid_artifact_url` moved to `types.py`. Readiness checks, `Artifact.url`, `GenerationStatus.url`, and the download paths now share one URL-selection contract: `mp4` quality-4 > any `mp4` > first valid URL for video. `SourcesAPI.get_fulltext` fixed for YouTube fulltext URLs at `metadata[5][0]` along the way (#349, #356).
+- **Removed redundant `ArtifactsAPI` URL helpers** - Private `_is_valid_media_url` and `_find_infographic_url` shim methods removed; tests now exercise the canonical `types.py` helpers (#358).
+- **E2E `--profile` pytest flag** - `pytest --profile <name>` scopes the E2E notebook ID cache to a named profile, so parallel multi-profile test runs don't collide on the cached notebook fixture (#340).
+
+## [0.4.0] - 2026-05-09
+
+### Added
+- **Multi-account profiles** - Switch between Google accounts without re-authenticating (#227)
+  - `notebooklm profile create/list/switch/rename/delete` commands
+  - Global `--profile` / `-p` flag and `NOTEBOOKLM_PROFILE` environment variable to scope any command to a profile
+  - Per-profile storage paths under `~/.notebooklm/profiles/<name>/`
+  - Implicit default profile preserved for backward compatibility; existing `~/.notebooklm/storage_state.json` is auto-detected as the default profile (no manual migration needed)
+- **`notebooklm doctor` diagnostic command** - `notebooklm doctor [--fix] [--json]` checks profile setup, auth, and migration status; reports actionable issues
+- **Microsoft Edge SSO login** - `notebooklm login --browser msedge` for organizations that require Edge for SSO (#204)
+- **Browser cookie import** - Reuse cookies from your existing browser session without driving Playwright
+  - `notebooklm login --browser-cookies <browser>` (chrome, edge, firefox, safari, etc.)
+  - New `convert_rookiepy_cookies_to_storage_state()` Python helper
+  - Optional `[cookies]` extra installs `rookiepy` (`pip install "notebooklm-py[cookies]"`)
+  - Honors the active profile: `notebooklm --profile <name> login --browser-cookies <browser>` writes to that profile's `storage_state.json`. Note that cookie extraction always pulls the source browser's currently-active Google account for `google.com` / `notebooklm.google.com` — to populate multiple profiles from the same browser, switch the active Google account in the browser between runs (or use a separate browser per profile).
+- **EPUB source type** - Upload `.epub` files as notebook sources (#231)
+- **Agent skill installation** - Install the bundled NotebookLM skill into local AI agents (#206, #207)
+  - `notebooklm skill install` - Install into `~/.claude/skills/notebooklm` and `~/.agents/skills/notebooklm`
+  - `notebooklm skill status` - Check installation state
+  - `notebooklm agent show codex` / `notebooklm agent show claude` - Print bundled agent templates
+- **Mind map customization** - `client.artifacts.generate_mind_map()` now accepts `language` and `instructions` parameters (#252)
+- **`note list --json`** - Machine-readable note listings (#259)
+- **Bare status codes in decoder errors** - Decoder surfaces server status codes on null RPC results for clearer diagnostics (#114, #294)
+
+### Fixed
+- **Cross-domain cookie preservation** - Login storage state retains cookies across `google.com` and `notebooklm.google.com` subdomains, restoring sessions for regional domains
+- **NotebookLM subdomain cookies** - Subdomain cookies are no longer dropped during login (#334)
+- **Video artifact detection** - Correctly detect completed video media URLs in polling responses (#333)
+- **Research import on unavailable snapshots** - CLI gracefully handles missing source snapshots during research import (#335)
+- **Source import retry** - Filtered partial-import retry payloads and tightened verification to avoid false positives (#321, #327)
+- **Server-state verification on timeout** - Prevents duplicate inflation when source imports time out (#319)
+- **Playwright navigation interruption** - Handles updated Playwright behavior on already-authenticated sessions (#214, #322)
+- **Login subprocess on Windows** - Use `sys.executable` for Playwright subprocess calls (#279)
+- **Legacy Windows Unicode output** - Sanitized output streams for legacy Windows consoles (#324)
+- **Settings quota errors** - Use account limits when reporting create-quota failures (#328)
+- **Chat references** - Emit references only from the winning chunk to avoid >600-element duplication (#300, #310)
+- **Login retry mechanism** - Resolved race conditions and improved error handling on retry (#243)
+- **Quota detection during polling** - Detect quota / daily-limit failures during artifact polling (#240)
+- **Google account switching** - Fixed switching between Google accounts at login time (#246)
+- **YouTube URL extraction** - Extract YouTube URLs at deeply-nested response positions (#265)
+- **Bare-HTTP URL fallback** - Disabled brittle bare-HTTP fallback in `sources.list()` (#294)
+- **Logout context cleanup** - Clear the active notebook context on `notebooklm logout`
+- **Infographic URL extraction** - Aligned with download-path logic; added regression test (#229)
+- **Custom storage path for downloads** - Artifact downloads now respect custom auth storage paths (#235)
+- **Windows file permissions** - Skip Unix-only `0o600` calls on Windows and rely on Python 3.13+ ACL behavior (#225)
+- **TOCTOU protection** - Hardened directory creation in `session.py` (#225)
+
+### Changed
+- **`rookiepy` is an optional `[cookies]` extra** - Excluded from `[all]` to avoid Python 3.13+ install issues; install with `pip install "notebooklm-py[cookies]"`
+- **Login error detection** - Improved detection of missing browser binaries (e.g., `msedge` not installed)
+- **Skill installation paths** - Hardened to handle alternative `~/.claude` and `~/.agents` layouts
+- **Deprecation removal deferred to v0.5.0** - The deprecated APIs originally scheduled for removal in v0.4.0 — `StudioContentType`, `Source.source_type`, `SourceFulltext.source_type`, `Artifact.artifact_type`, `Artifact.variant`, and `DEFAULT_STORAGE_PATH` — continue to work and emit `DeprecationWarning`. Removal is now planned for v0.5.0 to give downstream users an extra release to migrate.
+
+### Infrastructure
+- Pinned `ruff==0.8.6` in dev deps to match pre-commit configuration
+- Bumped `python-dotenv` (#299)
+- Bumped `pytest` in the `uv` group
+- Added contribution templates and PR quality guidelines for issues and PRs
 
 ## [0.3.4] - 2026-03-12
 
@@ -155,8 +459,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ARTIFACT_TYPE_DISPLAY`** - Unused constant replaced by `get_artifact_type_display()`
 
 ### Deprecated
-The following emit `DeprecationWarning` when accessed and will be removed in **v0.4.0**.
+The following emit `DeprecationWarning` when accessed and were originally scheduled for removal in v0.4.0.
 See [Migration Guide](docs/stability.md#migrating-from-v02x-to-v030) for upgrade instructions.
+
+> **Note:** Removal was subsequently deferred one release; see the [0.4.0] entry above. These names will now be removed in v0.5.0.
 
 - **`Source.source_type`** - Use `.kind` property instead (returns `SourceType` str enum)
 - **`Artifact.artifact_type`** - Use `.kind` property instead (returns `ArtifactType` str enum)
@@ -344,7 +650,10 @@ This is the initial public release of `notebooklm-py`. While core functionality 
 - **Authentication expiry**: CSRF tokens expire after some time. Re-run `notebooklm login` if you encounter auth errors.
 - **Large file uploads**: Files over 50MB may fail or timeout. Split large documents if needed.
 
-[Unreleased]: https://github.com/teng-lin/notebooklm-py/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/teng-lin/notebooklm-py/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/teng-lin/notebooklm-py/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/teng-lin/notebooklm-py/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/teng-lin/notebooklm-py/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/teng-lin/notebooklm-py/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/teng-lin/notebooklm-py/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/teng-lin/notebooklm-py/compare/v0.3.1...v0.3.2

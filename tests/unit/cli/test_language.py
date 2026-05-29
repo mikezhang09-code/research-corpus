@@ -1,7 +1,9 @@
 """Tests for language CLI commands (list, get, set)."""
 
+import gc
 import importlib
 import json
+import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,7 +13,13 @@ from notebooklm.notebooklm_cli import cli
 
 # Import the module explicitly to avoid confusion with the Click group
 # (notebooklm.cli exports 'language' as a Click Group, which shadows the module)
-language_module = importlib.import_module("notebooklm.cli.language")
+language_module = importlib.import_module("notebooklm.cli.language_cmd")
+
+
+def test_save_config_alias_removed() -> None:
+    """The deprecated public ``save_config`` alias is removed in v0.5.0."""
+    assert not hasattr(language_module, "save_config")
+    assert hasattr(language_module, "_save_config")
 
 
 @pytest.fixture
@@ -29,6 +37,15 @@ def mock_config_file(tmp_path):
         patch.object(language_module, "get_home_dir", return_value=home_dir),
     ):
         yield config_file
+
+
+def unawaited_coroutine_warnings(caught_warnings):
+    return [
+        warning
+        for warning in caught_warnings
+        if issubclass(warning.category, RuntimeWarning)
+        and "was never awaited" in str(warning.message)
+    ]
 
 
 # =============================================================================
@@ -156,12 +173,21 @@ class TestLanguageSetCommand:
         assert data["name"] == "Français"
 
     def test_language_set_invalid_json_output(self, runner, mock_config_file):
-        """Test 'language set --json' with invalid code outputs JSON error."""
+        """``language set --json`` with invalid code emits the shared JSON error schema.
+
+        The error payload must match ``json_error_response`` in ``cli/rendering.py``
+        so machine-readable error handling is uniform across CLI commands:
+        ``{"error": true, "code": "INVALID_LANGUAGE", "message": ..., "hint": ...}``.
+        """
         result = runner.invoke(cli, ["language", "set", "xyz", "--json"])
 
         assert result.exit_code == 1
         data = json.loads(result.output)
-        assert data["error"] == "INVALID_LANGUAGE"
+        assert data["error"] is True
+        assert data["code"] == "INVALID_LANGUAGE"
+        assert "xyz" in data["message"]
+        assert "hint" in data
+        assert "language list" in data["hint"].lower()
 
 
 # =============================================================================
@@ -258,6 +284,24 @@ class TestSyncLanguageToServer:
 
         assert result is None
 
+    def test_sync_language_to_server_closes_coroutine_when_run_async_raises(self):
+        """Test run_async failures do not leak an unawaited coroutine warning."""
+        mock_ctx = MagicMock()
+        mock_ctx.obj = {}
+
+        with (
+            patch.object(language_module, "get_auth_tokens", return_value={"SID": "test"}),
+            patch.object(language_module, "run_async", side_effect=Exception("connection error")),
+            warnings.catch_warnings(record=True) as caught_warnings,
+        ):
+            warnings.simplefilter("always", RuntimeWarning)
+
+            result = language_module._sync_language_to_server("en", mock_ctx)
+            gc.collect()
+
+        assert result is None
+        assert unawaited_coroutine_warnings(caught_warnings) == []
+
 
 class TestGetLanguageFromServer:
     def test_get_language_from_server_success(self):
@@ -296,6 +340,24 @@ class TestGetLanguageFromServer:
             result = language_module._get_language_from_server(mock_ctx)
 
         assert result is None
+
+    def test_get_language_from_server_closes_coroutine_when_run_async_raises(self):
+        """Test run_async failures do not leak an unawaited coroutine warning."""
+        mock_ctx = MagicMock()
+        mock_ctx.obj = {}
+
+        with (
+            patch.object(language_module, "get_auth_tokens", return_value={"SID": "test"}),
+            patch.object(language_module, "run_async", side_effect=Exception("rpc error")),
+            warnings.catch_warnings(record=True) as caught_warnings,
+        ):
+            warnings.simplefilter("always", RuntimeWarning)
+
+            result = language_module._get_language_from_server(mock_ctx)
+            gc.collect()
+
+        assert result is None
+        assert unawaited_coroutine_warnings(caught_warnings) == []
 
 
 # =============================================================================

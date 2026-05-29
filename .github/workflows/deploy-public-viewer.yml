@@ -12,10 +12,14 @@ concurrency:
   group: deploy-public-viewer
   cancel-in-progress: false  # never interrupt an in-flight deploy
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy to Cloudflare
     runs-on: ubuntu-latest
+    environment: protected-readonly
     steps:
       - uses: actions/checkout@v6
 

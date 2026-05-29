@@ -3,17 +3,49 @@
 Provides operations for creating, updating, listing, and deleting
 user-created notes in notebooks. Notes are distinct from artifacts -
 they are user-created content, not AI-generated.
+
+Note-row primitives live in :mod:`_note_service` and the
+mind-map-only facade lives in :mod:`_mind_map` as
+:class:`NoteBackedMindMapService`. Saved-from-chat note creation lives
+in :mod:`_chat` (``ChatAPI.save_answer_as_note``); ``NotesAPI`` calls
+into it via a constructor-injected :class:`SaveChatAnswerCallback`
+callback so this module does not import ``_chat`` (refactor-history.md Step 8,
+ADR-013).
 """
+
+from __future__ import annotations
 
 import builtins
 import logging
-from typing import Any
+import warnings
+from typing import Any, Protocol
 
-from ._core import ClientCore
-from .rpc import RPCMethod
-from .types import Note
+from ._mind_map import NoteBackedMindMapService
+from ._note_service import NoteRowKind, NoteService
+from ._row_adapters_notes import NoteRow
+from .types import AskResult, Note
 
 logger = logging.getLogger(__name__)
+
+
+class SaveChatAnswerCallback(Protocol):
+    """Async callback that persists a chat answer as a citation-rich note.
+
+    Defined as a ``Protocol`` (not a ``Callable`` alias) so mypy catches
+    keyword-only ``title=`` mismatches at the forwarder call site.
+    ``ChatAPI.save_answer_as_note`` structurally satisfies this
+    Protocol; ``NotesAPI`` receives the bound method via constructor
+    injection so it does not have to import ``ChatAPI``
+    (refactor-history.md §Saved Chat Answer As Note, ADR-013).
+    """
+
+    async def __call__(
+        self,
+        notebook_id: str,
+        ask_result: AskResult,
+        *,
+        title: str | None = None,
+    ) -> Note: ...
 
 
 class NotesAPI:
@@ -33,13 +65,31 @@ class NotesAPI:
             await client.notes.delete(notebook_id, note.id)
     """
 
-    def __init__(self, core: ClientCore):
+    def __init__(
+        self,
+        *,
+        notes: NoteService,
+        mind_maps: NoteBackedMindMapService,
+        save_chat_answer: SaveChatAnswerCallback,
+    ):
         """Initialize the notes API.
 
         Args:
-            core: The core client infrastructure.
+            notes: Backend note-row primitives. Owns
+                ``fetch_note_rows`` / ``classify_row`` / ``create_note``
+                / ``update_note`` / ``delete_note``.
+            mind_maps: Mind-map-only facade backed by ``notes``. Owns
+                the ``list_mind_maps`` / ``delete_mind_map`` paths the
+                public ``NotesAPI`` surface forwards through.
+            save_chat_answer: Required async callback that persists a
+                chat answer as a citation-rich note. Inject
+                ``ChatAPI.save_answer_as_note`` from the composition
+                root. No default — without it, ``create_from_chat``
+                cannot delegate.
         """
-        self._core = core
+        self._notes = notes
+        self._mind_maps = mind_maps
+        self._save_chat_answer = save_chat_answer
 
     async def list(self, notebook_id: str) -> list[Note]:
         """List all text notes in the notebook.
@@ -56,17 +106,13 @@ class NotesAPI:
         """
         logger.debug("Listing notes in notebook: %s", notebook_id)
         all_items = await self._get_all_notes_and_mind_maps(notebook_id)
-        notes = []
+        notes: list[Note] = []
 
         for item in all_items:
-            # Skip deleted items (status=2): ['id', None, 2]
-            if self._is_deleted(item):
+            kind = self._notes.classify_row(item)
+            if kind in (NoteRowKind.DELETED, NoteRowKind.MIND_MAP):
                 continue
-
-            content = self._extract_content(item)
-            is_mind_map = content and ('"children":' in content or '"nodes":' in content)
-            if not is_mind_map:
-                notes.append(self._parse_note(item, notebook_id))
+            notes.append(self._parse_note(item, notebook_id))
 
         return notes
 
@@ -102,31 +148,38 @@ class NotesAPI:
         Returns:
             The created Note object.
         """
-        logger.debug("Creating note in notebook %s: %s", notebook_id, title)
-        params = [notebook_id, "", [1], None, "New Note"]
-        result = await self._core.rpc_call(
-            RPCMethod.CREATE_NOTE,
-            params,
-            source_path=f"/notebook/{notebook_id}",
-        )
-
-        note_id = None
-        if result and isinstance(result, list) and len(result) > 0:
-            if isinstance(result[0], list) and len(result[0]) > 0:
-                note_id = result[0][0]
-            elif isinstance(result[0], str):
-                note_id = result[0]
-
-        if note_id:
-            # Google ignores title param in CREATE_NOTE, so always update
-            await self.update(notebook_id, note_id, content, title)
-
-        return Note(
-            id=note_id or "",
-            notebook_id=notebook_id,
+        return await self._notes.create_note(
+            notebook_id,
             title=title,
             content=content,
         )
+
+    async def create_from_chat(
+        self,
+        notebook_id: str,
+        ask_result: AskResult,
+        *,
+        title: str | None = None,
+    ) -> Note:
+        """Deprecated forwarder — use ``client.chat.save_answer_as_note``.
+
+        Preserves the v0.4.1 signature exactly so existing callers do
+        not break, but emits a :class:`DeprecationWarning` and is a
+        pure delegate to the injected callback (which is
+        :meth:`ChatAPI.save_answer_as_note` when wired from the
+        composition root).
+
+        Empty-references handling and default-title derivation live on
+        ``ChatAPI.save_answer_as_note``; this method does no
+        preprocessing of its own to keep the deprecation contract
+        as a thin shim.
+        """
+        warnings.warn(
+            "NotesAPI.create_from_chat is deprecated; use ChatAPI.save_answer_as_note.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return await self._save_chat_answer(notebook_id, ask_result, title=title)
 
     async def update(
         self,
@@ -143,18 +196,7 @@ class NotesAPI:
             content: The new content.
             title: The new title.
         """
-        logger.debug("Updating note %s in notebook %s", note_id, notebook_id)
-        params = [
-            notebook_id,
-            note_id,
-            [[[content, title, [], 0]]],
-        ]
-        await self._core.rpc_call(
-            RPCMethod.UPDATE_NOTE,
-            params,
-            source_path=f"/notebook/{notebook_id}",
-            allow_null=True,
-        )
+        await self._notes.update_note(notebook_id, note_id, content, title)
 
     async def delete(self, notebook_id: str, note_id: str) -> bool:
         """Delete a note from the notebook.
@@ -170,14 +212,7 @@ class NotesAPI:
             True if deletion succeeded.
         """
         logger.debug("Deleting note %s from notebook %s", note_id, notebook_id)
-        params = [notebook_id, None, [note_id]]
-        await self._core.rpc_call(
-            RPCMethod.DELETE_NOTE,
-            params,
-            source_path=f"/notebook/{notebook_id}",
-            allow_null=True,
-        )
-        return True
+        return await self._notes.delete_note(notebook_id, note_id)
 
     async def list_mind_maps(self, notebook_id: str) -> builtins.list[Any]:
         """List all mind maps in the notebook.
@@ -196,19 +231,7 @@ class NotesAPI:
         Returns:
             List of raw mind map data.
         """
-        all_items = await self._get_all_notes_and_mind_maps(notebook_id)
-        mind_maps = []
-
-        for item in all_items:
-            # Skip deleted items (status=2): ['id', None, 2]
-            if self._is_deleted(item):
-                continue
-
-            content = self._extract_content(item)
-            if content and ('"children":' in content or '"nodes":' in content):
-                mind_maps.append(item)
-
-        return mind_maps
+        return await self._mind_maps.list_mind_maps(notebook_id)
 
     async def delete_mind_map(self, notebook_id: str, mind_map_id: str) -> bool:
         """Delete a mind map from the notebook.
@@ -220,14 +243,7 @@ class NotesAPI:
         Returns:
             True if deletion succeeded.
         """
-        params = [notebook_id, None, [mind_map_id]]
-        await self._core.rpc_call(
-            RPCMethod.DELETE_NOTE,
-            params,
-            source_path=f"/notebook/{notebook_id}",
-            allow_null=True,
-        )
-        return True
+        return await self._mind_maps.delete_mind_map(notebook_id, mind_map_id)
 
     # =========================================================================
     # Private Helpers
@@ -235,27 +251,17 @@ class NotesAPI:
 
     async def _get_all_notes_and_mind_maps(self, notebook_id: str) -> builtins.list[Any]:
         """Fetch all notes and mind maps from the API."""
-        params = [notebook_id]
-        result = await self._core.rpc_call(
-            RPCMethod.GET_NOTES_AND_MIND_MAPS,
-            params,
-            source_path=f"/notebook/{notebook_id}",
-            allow_null=True,
-        )
-        if result and isinstance(result, list) and len(result) > 0 and isinstance(result[0], list):
-            notes_list = result[0]
-            valid_notes = []
-            for item in notes_list:
-                if isinstance(item, list) and len(item) > 0 and isinstance(item[0], str):
-                    valid_notes.append(item)
-            return valid_notes
-        return []
+        return await self._notes.fetch_note_rows(notebook_id)
 
     def _is_deleted(self, item: builtins.list[Any]) -> bool:
         """Check if a note/mind map item is deleted (status=2).
 
-        Deleted items have structure: ['id', None, 2]
-        The content at position [1] is None and status at [2] is 2.
+        Delegates to :meth:`NoteService.classify_row`, which reads the
+        deletion sentinel via :attr:`NoteRow.is_deleted`. The wire
+        shape (``[id, None, 2]`` — content slot ``None`` plus the
+        soft-delete sentinel at position 2) is documented on
+        :class:`NoteRow`; this method exists only as the historical
+        ``NotesAPI`` private surface.
 
         Args:
             item: Raw note/mind map data.
@@ -263,43 +269,27 @@ class NotesAPI:
         Returns:
             True if the item is deleted (soft-deleted with status=2).
         """
-        if not isinstance(item, list) or len(item) < 3:
-            return False
-        return item[1] is None and item[2] == 2
+        return self._notes.classify_row(item) == NoteRowKind.DELETED
 
     def _extract_content(self, item: builtins.list[Any]) -> str | None:
         """Extract content string from note/mind map item."""
-        if len(item) <= 1:
-            return None
-
-        if isinstance(item[1], str):
-            return item[1]
-        elif isinstance(item[1], list) and len(item[1]) > 1 and isinstance(item[1][1], str):
-            return item[1][1]
-        return None
+        return self._notes.extract_content(item)
 
     def _parse_note(self, item: builtins.list[Any], notebook_id: str) -> Note:
-        """Parse a raw note item into a Note object."""
-        note_id = item[0] if len(item) > 0 else ""
+        """Parse a raw note item into a Note object.
 
-        content = ""
-        title = ""
-
-        if len(item) > 1:
-            if isinstance(item[1], str):
-                # Old format: [note_id, content]
-                content = item[1]
-            elif isinstance(item[1], list):
-                # New format: [note_id, [note_id, content, metadata, None, title]]
-                inner = item[1]
-                if len(inner) > 1 and isinstance(inner[1], str):
-                    content = inner[1]
-                if len(inner) > 4 and isinstance(inner[4], str):
-                    title = inner[4]
-
+        Position knowledge (legacy ``[id, content]`` vs current
+        ``[id, [id, content, metadata, None, title]]`` dispatch, and
+        the title slot at ``raw[1][4]``) lives in
+        :class:`notebooklm._row_adapters_notes.NoteRow` — this method just
+        reads the named properties. ``content`` defaults to ``""``
+        (not ``None``) here to preserve the v0.4.1 :class:`Note`
+        contract.
+        """
+        row = NoteRow(item)
         return Note(
-            id=str(note_id),
+            id=row.id,
             notebook_id=notebook_id,
-            title=title,
-            content=content,
+            title=row.title,
+            content=row.content or "",
         )

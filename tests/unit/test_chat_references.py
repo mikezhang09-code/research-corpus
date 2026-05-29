@@ -8,16 +8,6 @@ import json
 import pytest
 
 from notebooklm import AskResult, ChatReference, NotebookLMClient
-from notebooklm.auth import AuthTokens
-
-
-@pytest.fixture
-def auth_tokens():
-    return AuthTokens(
-        cookies={"SID": "test"},
-        csrf_token="test_csrf",
-        session_id="test_session",
-    )
 
 
 @pytest.fixture
@@ -475,7 +465,7 @@ class TestAskWithReferences:
     """Integration-style unit tests for ask() with references."""
 
     @pytest.mark.asyncio
-    async def test_ask_returns_references(self, auth_tokens, httpx_mock):
+    async def test_ask_returns_references(self, auth_tokens, httpx_mock, mock_get_conversation_id):
         """Test that ask() returns properly parsed references."""
         import re
 
@@ -517,6 +507,7 @@ class TestAskWithReferences:
             content=response_body.encode(),
             method="POST",
         )
+        mock_get_conversation_id()
 
         async with NotebookLMClient(auth_tokens) as client:
             result = await client.chat.ask(
@@ -533,7 +524,7 @@ class TestAskWithReferences:
         assert result.references[0].citation_number == 1
 
     @pytest.mark.asyncio
-    async def test_ask_no_references(self, auth_tokens, httpx_mock):
+    async def test_ask_no_references(self, auth_tokens, httpx_mock, mock_get_conversation_id):
         """Test that ask() works when there are no references."""
         import re
 
@@ -541,7 +532,7 @@ class TestAskWithReferences:
             [
                 "This is an answer without any citations.",
                 None,
-                [12345],
+                ["server-no-refs-conv", 12345],
                 None,
                 [[], None, None, [], 1],
             ]
@@ -555,6 +546,7 @@ class TestAskWithReferences:
             content=response_body.encode(),
             method="POST",
         )
+        mock_get_conversation_id()
 
         async with NotebookLMClient(auth_tokens) as client:
             result = await client.chat.ask(
@@ -567,7 +559,9 @@ class TestAskWithReferences:
         assert len(result.references) == 0
 
     @pytest.mark.asyncio
-    async def test_ask_deduplicates_references(self, auth_tokens, httpx_mock):
+    async def test_ask_deduplicates_references(
+        self, auth_tokens, httpx_mock, mock_get_conversation_id
+    ):
         """Test that duplicate source IDs are deduplicated."""
         import re
 
@@ -623,6 +617,7 @@ class TestAskWithReferences:
             content=response_body.encode(),
             method="POST",
         )
+        mock_get_conversation_id()
 
         async with NotebookLMClient(auth_tokens) as client:
             result = await client.chat.ask(

@@ -1,0 +1,374 @@
+"""Language configuration CLI commands.
+
+Commands:
+    list    List all supported language codes
+    get     Get current language setting
+    set     Set default language for artifact generation
+"""
+
+import json
+import logging
+
+import click
+from rich.table import Table
+
+from ..client import NotebookLMClient
+from ..io import atomic_update_json
+from ..paths import get_config_path, get_home_dir
+from .auth_runtime import get_auth_tokens
+from .error_handler import exit_with_code
+from .options import json_option
+from .rendering import console, json_error_response, json_output_response
+from .runtime import run_async
+
+logger = logging.getLogger(__name__)
+
+# Language codes with native names
+# Based on BCP 47 / IETF language tags from WIZ_global_data
+SUPPORTED_LANGUAGES: dict[str, str] = {
+    # Major languages (sorted by usage)
+    "en": "English",
+    "zh_Hans": "中文（简体）",
+    "zh_Hant": "中文（繁體）",
+    "es": "Español",
+    "es_419": "Español (Latinoamérica)",
+    "es_MX": "Español (México)",
+    "hi": "हिन्दी",
+    "ar_001": "العربية",
+    "ar_eg": "العربية (مصر)",
+    "pt_BR": "Português (Brasil)",
+    "pt_PT": "Português (Portugal)",
+    "bn": "বাংলা",
+    "ru": "Русский",
+    "ja": "日本語",
+    "pa": "ਪੰਜਾਬੀ",
+    "de": "Deutsch",
+    "jv": "Basa Jawa",
+    "ko": "한국어",
+    "fr": "Français",
+    "fr_CA": "Français (Canada)",
+    "te": "తెలుగు",
+    "vi": "Tiếng Việt",
+    "mr": "मराठी",
+    "ta": "தமிழ்",
+    "tr": "Türkçe",
+    "ur": "اردو",
+    "it": "Italiano",
+    "th": "ไทย",
+    "gu": "ગુજરાતી",
+    "fa": "فارسی",
+    "pl": "Polski",
+    "uk": "Українська",
+    "ml": "മലയാളം",
+    "kn": "ಕನ್ನಡ",
+    "or": "ଓଡ଼ିଆ",
+    "my": "မြန်မာဘာသာ",
+    "sw": "Kiswahili",
+    "nl_NL": "Nederlands",
+    "ro": "Română",
+    "hu": "Magyar",
+    "el": "Ελληνικά",
+    "cs": "Čeština",
+    "sv": "Svenska",
+    "be": "Беларуская",
+    "bg": "Български",
+    "hr": "Hrvatski",
+    "sk": "Slovenčina",
+    "da": "Dansk",
+    "fi": "Suomi",
+    "nb_NO": "Norsk Bokmål",
+    "nn_NO": "Norsk Nynorsk",
+    "he": "עברית",
+    "iw": "עברית",  # Legacy code
+    "id": "Bahasa Indonesia",
+    "ms": "Bahasa Melayu",
+    "fil": "Filipino",
+    "ceb": "Cebuano",
+    "sr": "Српски",
+    "sl": "Slovenščina",
+    "sq": "Shqip",
+    "mk": "Македонски",
+    "lt": "Lietuvių",
+    "lv": "Latviešu",
+    "et": "Eesti",
+    "hy": "Հայերեն",
+    "ka": "ქართული",
+    "az": "Azərbaycanca",
+    "af": "Afrikaans",
+    "am": "አማርኛ",
+    "eu": "Euskara",
+    "ca": "Català",
+    "gl": "Galego",
+    "is": "Íslenska",
+    "la": "Latina",
+    "ne": "नेपाली",
+    "ps": "پښتو",
+    "sd": "سنڌي",
+    "si": "සිංහල",
+    "ht": "Kreyòl Ayisyen",
+    "kok": "कोंकणी",
+    "mai": "मैथिली",
+}
+
+
+def get_config() -> dict:
+    """Read config from config.json."""
+    config_path = get_config_path()
+    if config_path.exists():
+        try:
+            return json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            logger.warning("Config file corrupted, using defaults: %s", e)
+            return {}
+        except OSError as e:
+            logger.warning("Could not read config file: %s", e)
+            return {}
+    return {}
+
+
+def _save_config(config: dict) -> None:
+    """Internal: write ``config.json`` via a single non-locked overwrite.
+
+    .. deprecated::
+        Prefer :func:`set_language` (or any other lock-protected helper built
+        on :func:`notebooklm.io.atomic_update_json`) for read-modify-write
+        flows. This raw overwrite has no cross-process locking and is kept
+        only as the low-level write primitive for callers that already hold
+        no shared state to merge.
+    """
+    config_path = get_config_path()
+    get_home_dir(create=True)  # Ensure directory exists
+    # ``json.dump`` streams directly to the file handle and avoids
+    # materializing the full serialized string in memory.
+    with config_path.open("w", encoding="utf-8") as fh:
+        json.dump(config, fh, indent=2, ensure_ascii=False)
+
+
+def get_language() -> str | None:
+    """Get the configured language, or None if not set."""
+    return get_config().get("language")
+
+
+def set_language(code: str) -> None:
+    """Set the language in config.
+
+    Uses ``atomic_update_json`` so concurrent CLI invocations cannot lose
+    other keys (e.g., ``default_profile``) via interleaved read-modify-write.
+    ``recover_from_corrupt=True`` keeps the empty-dict fallback **inside**
+    the file lock so a peer's valid concurrent write is never clobbered by
+    an out-of-lock unlink-and-retry.
+    """
+    config_path = get_config_path()
+    get_home_dir(create=True)  # Ensure directory exists
+
+    def _set_lang(current: dict) -> dict:
+        current["language"] = code
+        return current
+
+    atomic_update_json(config_path, _set_lang, recover_from_corrupt=True)
+
+
+def _run_language_rpc(coro):
+    """Run a language RPC coroutine and close it if the sync runner does not."""
+    try:
+        return run_async(coro)
+    finally:
+        coro.close()
+
+
+def _sync_language_to_server(code: str, ctx: click.Context) -> str | None:
+    """Sync language setting to server via RPC.
+
+    Args:
+        code: Language code to set.
+        ctx: Click context for auth.
+
+    Returns:
+        Server's response language, or None on failure.
+    """
+    try:
+        auth = get_auth_tokens(ctx)
+
+        async def _set():
+            async with NotebookLMClient(auth) as client:
+                return await client.settings.set_output_language(code)
+
+        return _run_language_rpc(_set())
+    except Exception as e:
+        logger.debug("Failed to sync language to server: %s", e)
+        return None
+
+
+def _get_language_from_server(ctx: click.Context) -> str | None:
+    """Get current language from server via RPC.
+
+    Args:
+        ctx: Click context for auth.
+
+    Returns:
+        Server's language setting, or None on failure.
+    """
+    try:
+        auth = get_auth_tokens(ctx)
+
+        async def _get():
+            async with NotebookLMClient(auth) as client:
+                return await client.settings.get_output_language()
+
+        return _run_language_rpc(_get())
+    except Exception as e:
+        logger.debug("Failed to get language from server: %s", e)
+        return None
+
+
+@click.group()
+def language():
+    """Manage output language for artifact generation.
+
+    \b
+    ⚠️  Language is a GLOBAL setting that affects all notebooks in your account.
+
+    \b
+    Examples:
+      notebooklm language list           # Show all supported languages
+      notebooklm language get            # Show current language
+      notebooklm language set zh_Hans    # Set to Simplified Chinese
+    """
+    pass
+
+
+@language.command("list")
+@json_option
+def language_list(json_output):
+    """List all supported language codes.
+
+    Shows language codes with their native names for easy identification.
+    """
+    if json_output:
+        json_output_response({"languages": SUPPORTED_LANGUAGES})
+        return
+
+    table = Table(title="Supported Languages")
+    table.add_column("Code", style="cyan", no_wrap=True)
+    table.add_column("Language", style="green")
+
+    for code, name in SUPPORTED_LANGUAGES.items():
+        table.add_row(code, name)
+
+    console.print(table)
+    console.print(f"\n[dim]Total: {len(SUPPORTED_LANGUAGES)} languages[/dim]")
+
+
+@language.command("get")
+@click.option("--local", is_flag=True, help="Show local config only (skip server sync)")
+@json_option
+@click.pass_context
+def language_get(ctx, local, json_output):
+    """Get current language setting.
+
+    Shows the currently configured output language for artifact generation.
+    By default, fetches from server and updates local config if different.
+    Use --local to skip server sync.
+    """
+    local_lang = get_language()
+    server_lang = None
+    synced = False
+
+    # Try to get from server unless --local is set
+    if not local:
+        server_lang = _get_language_from_server(ctx)
+        if server_lang is not None:
+            # Update local config if server has different value
+            if server_lang != local_lang:
+                set_language(server_lang)
+                synced = True
+            local_lang = server_lang
+
+    current = local_lang
+
+    if json_output:
+        json_output_response(
+            {
+                "language": current,
+                "name": SUPPORTED_LANGUAGES.get(current) if current else None,
+                "is_default": current is None,
+                "synced_from_server": synced,
+            }
+        )
+        return
+
+    if current:
+        name = SUPPORTED_LANGUAGES.get(current, "Unknown")
+        console.print(f"Language: [cyan]{current}[/cyan] ({name})")
+        console.print("[dim]This is a global setting that applies to all notebooks.[/dim]")
+        if synced:
+            console.print("[dim](synced from server)[/dim]")
+    else:
+        console.print("Language: [dim]not set[/dim] (defaults to 'en')")
+        console.print("\n[dim]Use 'notebooklm language set <code>' to set a default.[/dim]")
+
+
+@language.command("set")
+@click.argument("code")
+@click.option("--local", is_flag=True, help="Set local config only (skip server sync)")
+@json_option
+@click.pass_context
+def language_set(ctx, code, local, json_output):
+    """Set default language for artifact generation.
+
+    \b
+    ⚠️  This is a GLOBAL setting that affects all notebooks in your account.
+
+    Saves to local config and syncs to server (use --local to skip server sync).
+
+    \b
+    Example:
+      notebooklm language set zh_Hans    # Simplified Chinese
+      notebooklm language set ja         # Japanese
+      notebooklm language set en         # English
+    """
+    # Validate the language code
+    if code not in SUPPORTED_LANGUAGES:
+        if json_output:
+            # Match the shared JSON error schema from ``cli/rendering.py``:
+            # ``{"error": True, "code": ..., "message": ..., **extra}``.
+            # ``json_error_response`` is ``NoReturn``; execution never reaches
+            # the text-mode ``console.print`` lines below when this branch fires.
+            json_error_response(
+                "INVALID_LANGUAGE",
+                f"Unknown language code: {code}",
+                extra={"hint": "Run 'notebooklm language list' to see supported codes"},
+            )
+        console.print(f"[red]Unknown language code: {code}[/red]")
+        console.print("\nRun [cyan]notebooklm language list[/cyan] to see supported codes.")
+        exit_with_code(1)
+
+    # Save locally first
+    set_language(code)
+    name = SUPPORTED_LANGUAGES[code]
+
+    # Sync to server unless --local is set
+    synced = False
+    if not local:
+        server_result = _sync_language_to_server(code, ctx)
+        synced = server_result is not None
+
+    if json_output:
+        json_output_response(
+            {
+                "language": code,
+                "name": name,
+                "message": "Language set successfully",
+                "synced_to_server": synced,
+            }
+        )
+        return
+
+    console.print("\n[yellow]⚠️  This is a GLOBAL setting that affects all notebooks.[/yellow]")
+    console.print(f"\nLanguage set to: [cyan]{code}[/cyan] ({name})")
+    if synced:
+        console.print("[dim](synced to server)[/dim]")
+    elif not local:
+        console.print(
+            "[dim](saved locally, server sync failed - server may still use previous value)[/dim]"
+        )
