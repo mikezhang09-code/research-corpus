@@ -34,7 +34,7 @@ export function SectionSwitch() {
             </span>
             <span
               className={[
-                "font-mono text-[8.5px] tracking-[0.16em] uppercase",
+                "hidden sm:inline font-mono text-[8.5px] tracking-[0.16em] uppercase",
                 active ? "text-paper/70" : "text-ink-mute",
               ].join(" ")}
             >

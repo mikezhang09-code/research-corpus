@@ -16,16 +16,16 @@ import { getLibraryNotebooks, getNotebooks } from "@/lib/api";
 
 export function Masthead() {
   return (
-    <header className="px-14 pt-8 pb-5 border-b border-rule relative">
-      <div className="flex items-end justify-between gap-6">
-        <div className="flex items-baseline gap-5 shrink-0">
+    <header className="px-5 sm:px-8 lg:px-14 pt-6 sm:pt-8 pb-4 sm:pb-5 border-b border-rule relative">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 min-w-0">
           <RomanDate />
-          <h1 className="font-serif-display text-[44px] leading-[0.95] tracking-tight">
+          <h1 className="font-serif-display text-[32px] sm:text-[38px] lg:text-[44px] leading-[0.95] tracking-tight">
             Research <span className="italic">Corpus</span>
           </h1>
           <ArchiveCount />
         </div>
-        <div className="flex items-end justify-end gap-3 pb-1 flex-1 min-w-0">
+        <div className="flex flex-wrap items-center sm:items-end justify-start sm:justify-end gap-2 sm:gap-3 pb-1">
           <SectionSwitch />
           <LanguagePill />
           <button
