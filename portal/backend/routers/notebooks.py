@@ -48,6 +48,26 @@ _FORMAT_MAP: dict[str, str] = {
     "mind_map": "json",
 }
 
+# Portal language codes (from the frontend's global toggle + per-artifact picker)
+# → NotebookLM's canonical locale codes. NotebookLM silently ignores codes it
+# doesn't recognise and falls back to its account default, so anything sent to
+# the client library must be mapped to a code it actually accepts. Unmapped
+# codes pass through unchanged (they already match, e.g. "ja", "fr").
+_NLM_LANGUAGE: dict[str, str] = {
+    "en": "en",
+    "zh": "zh_Hans",  # global toggle "Chinese" → Simplified
+    "zh-TW": "zh_Hant",
+    "pt": "pt_BR",
+    "ar": "ar_001",
+}
+
+
+def _nlm_lang(code: str | None) -> str:
+    """Resolve a portal language code to a NotebookLM-accepted locale code."""
+    if not code:
+        return "en"
+    return _NLM_LANGUAGE.get(code, code)
+
 
 @router.get("", response_model=list[NotebookRead])
 async def list_notebooks(include_hidden: bool = False):
@@ -458,7 +478,7 @@ async def generate_artifact(
         return enum_cls[mapping[value]]
 
     instructions = req.description or None
-    language = req.language or "en"
+    language = _nlm_lang(req.language)
 
     async with await NotebookLMClient.from_storage() as client:
         try:
@@ -581,6 +601,10 @@ async def generate_artifact(
                     ),
                 )
             elif t == "quiz":
+                # Quiz has no per-artifact language slot in NotebookLM's RPC, so
+                # the only lever is the account-wide output language. Set it to
+                # the requested language right before generating.
+                await client.settings.set_output_language(language)
                 status = await client.artifacts.generate_quiz(
                     notebook_id,
                     instructions=instructions,
@@ -604,6 +628,9 @@ async def generate_artifact(
                     ),
                 )
             elif t == "flashcards":
+                # Same as quiz: no per-artifact language slot, so steer the
+                # account-wide output language before generating.
+                await client.settings.set_output_language(language)
                 status = await client.artifacts.generate_flashcards(
                     notebook_id,
                     instructions=instructions,

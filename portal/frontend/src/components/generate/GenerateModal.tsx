@@ -54,6 +54,12 @@ export function GenerateModal({
       description: description.trim() || undefined,
       ...values,
     };
+    // Types without a per-artifact language picker (quiz, flashcards) still need
+    // to follow the global output language — the backend applies it as the
+    // account-wide default since NotebookLM has no per-call language for them.
+    if (!req.language) {
+      req.language = preferredLang === "zh" ? "zh" : "en";
+    }
     try {
       const artifact = await generateArtifact(notebookId, req);
       onGenerated(artifact);
