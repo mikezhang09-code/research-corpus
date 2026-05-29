@@ -55,9 +55,7 @@ from pathlib import Path
 # list synced with the workflows that declare an ``environment:`` gate or
 # reference ``${{ secrets.* }}`` — see ``check_workflow_secret_gates.py``
 # for the runtime companion to this static check.
-PRIVILEGED_WORKFLOWS: tuple[str, ...] = (
-    "deploy-public-viewer.yml",
-)
+PRIVILEGED_WORKFLOWS: tuple[str, ...] = ("deploy-public-viewer.yml",)
 
 # ``uses:`` lines we'll inspect. The ref (everything after ``@``) is the
 # focus of the check; we only need owner/repo to decide whether the

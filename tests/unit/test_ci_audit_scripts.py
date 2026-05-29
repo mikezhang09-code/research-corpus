@@ -5,7 +5,6 @@ Covers `scripts/check_workflow_permissions.py` and `scripts/check_coverage_thres
 
 from __future__ import annotations
 
-import shlex
 import subprocess
 import sys
 import textwrap
