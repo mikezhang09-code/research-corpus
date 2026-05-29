@@ -14,16 +14,18 @@ import {
   CsvTableModal,
   MindMapModal,
   FlashcardsModal,
+  QuizModal,
 } from "@/components/notebook/artifact-viewers";
 import { getArtifacts, type NLMArtifact } from "@/lib/api";
 
-type ViewerKind = "markdown" | "csv" | "mindmap" | "flashcards" | "presentation";
+type ViewerKind = "markdown" | "csv" | "mindmap" | "flashcards" | "quiz" | "presentation";
 
 // Pick the inline viewer for a saved artifact, or null if it can only be
 // downloaded. Mirrors the routing in portal/frontend's artifact cards.
 function viewerFor(a: NLMArtifact): ViewerKind | null {
   if (a.artifact_type === "mind_map") return "mindmap";
   if (a.artifact_type === "flashcards") return "flashcards";
+  if (a.artifact_type === "quiz") return "quiz";
   if (a.file_format === "md") return "markdown";
   if (a.file_format === "csv") return "csv";
   if (a.file_format === "pptx" || a.file_format === "ppt") return "presentation";
@@ -51,9 +53,9 @@ function ArtifactCard({ artifact }: { artifact: NLMArtifact }) {
 
   const canPresent = kind === "presentation" && !!artifact.r2_url;
   const hasModalViewer =
-    kind === "markdown" || kind === "csv" || kind === "mindmap" || kind === "flashcards" || canPresent;
+    kind === "markdown" || kind === "csv" || kind === "mindmap" || kind === "flashcards" || kind === "quiz" || canPresent;
   const actionLabel =
-    kind === "markdown" ? "Read" : kind === "flashcards" ? "Study" : "View";
+    kind === "markdown" ? "Read" : kind === "flashcards" ? "Study" : kind === "quiz" ? "Take quiz" : "View";
 
   return (
     <>
@@ -68,6 +70,9 @@ function ArtifactCard({ artifact }: { artifact: NLMArtifact }) {
       )}
       {viewer === "flashcards" && (
         <FlashcardsModal portalId={artifact.id} title={artifact.title} onClose={() => setViewer(null)} />
+      )}
+      {viewer === "quiz" && (
+        <QuizModal portalId={artifact.id} title={artifact.title} onClose={() => setViewer(null)} />
       )}
       {viewer === "presentation" && artifact.r2_url && (
         <PresentationModal src={artifact.r2_url} title={artifact.title} onClose={() => setViewer(null)} />
