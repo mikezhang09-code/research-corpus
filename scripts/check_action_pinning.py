@@ -56,12 +56,7 @@ from pathlib import Path
 # reference ``${{ secrets.* }}`` — see ``check_workflow_secret_gates.py``
 # for the runtime companion to this static check.
 PRIVILEGED_WORKFLOWS: tuple[str, ...] = (
-    "publish.yml",
-    "testpypi-publish.yml",
-    "claude.yml",
-    "rpc-health.yml",
-    "nightly.yml",
-    "verify-package.yml",
+    "deploy-public-viewer.yml",
 )
 
 # ``uses:`` lines we'll inspect. The ref (everything after ``@``) is the

@@ -34,17 +34,40 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "check_action_pinning.py"
 
 
+_cached_module = None
+
+
 def _load_module():
-    spec = importlib.util.spec_from_file_location("check_action_pinning", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    global _cached_module
+    if _cached_module is None:
+        spec = importlib.util.spec_from_file_location("check_action_pinning", SCRIPT_PATH)
+        assert spec is not None and spec.loader is not None
+        _cached_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_cached_module)
+    return _cached_module
 
 
 @pytest.fixture()
 def script():
     return _load_module()
+
+
+@pytest.fixture(autouse=True)
+def mock_privileged_workflows(request, monkeypatch, script):
+    if "real_repo" in request.node.name:
+        return
+    monkeypatch.setattr(
+        script,
+        "PRIVILEGED_WORKFLOWS",
+        (
+            "publish.yml",
+            "testpypi-publish.yml",
+            "claude.yml",
+            "rpc-health.yml",
+            "nightly.yml",
+            "verify-package.yml",
+        ),
+    )
 
 
 # Tiny skeleton workflow body that compiles to valid YAML and contains

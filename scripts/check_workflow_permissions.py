@@ -24,8 +24,6 @@ from pathlib import Path
 # publish.yml / testpypi-publish.yml: write to PyPI; permissions live at job level.
 ALLOWLIST = {
     "codeql.yml",
-    "publish.yml",
-    "testpypi-publish.yml",
 }
 
 
