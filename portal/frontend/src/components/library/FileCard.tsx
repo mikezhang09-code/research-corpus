@@ -68,6 +68,10 @@ function MarkdownModal({
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [fontSize, setFontSize] = useState(14);
+
+  const decFont = () => setFontSize((s) => Math.max(12, s - 1));
+  const incFont = () => setFontSize((s) => Math.min(24, s + 1));
 
   useEffect(() => {
     getLibraryFileContent(notebookId, fileId)
@@ -84,6 +88,28 @@ function MarkdownModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
           <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center rounded-[1px] border border-rule mr-1">
+              <button
+                type="button"
+                onClick={decFont}
+                disabled={fontSize <= 12}
+                title="Smaller text"
+                aria-label="Decrease font size"
+                className="flex items-center h-8 px-2 font-serif text-[12px] leading-none text-ink-fade hover:text-ink hover:bg-paper-deep disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-fade"
+              >
+                A<span className="text-[9px]">−</span>
+              </button>
+              <button
+                type="button"
+                onClick={incFont}
+                disabled={fontSize >= 24}
+                title="Larger text"
+                aria-label="Increase font size"
+                className="flex items-center h-8 px-2 font-serif text-[16px] leading-none text-ink-fade hover:text-ink hover:bg-paper-deep border-l border-rule disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-fade"
+              >
+                A<span className="text-[11px]">+</span>
+              </button>
+            </div>
             <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
               ✕
@@ -100,11 +126,13 @@ function MarkdownModal({
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none font-serif
+            <div
+              style={{ fontSize: `${fontSize}px` }}
+              className="prose prose-sm max-w-none font-serif
               prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
               prose-p:leading-relaxed prose-p:text-ink-soft
               prose-strong:text-ink prose-strong:font-semibold
-              prose-code:bg-paper-deep prose-code:px-1 prose-code:rounded-[1px] prose-code:text-[13px] prose-code:font-mono prose-code:text-ink
+              prose-code:bg-paper-deep prose-code:px-1 prose-code:rounded-[1px] prose-code:text-[0.9em] prose-code:font-mono prose-code:text-ink
               prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2
               prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-4 prose-blockquote:text-ink-fade prose-blockquote:italic">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
