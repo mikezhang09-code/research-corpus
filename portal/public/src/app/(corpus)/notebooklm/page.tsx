@@ -78,7 +78,7 @@ export default function NotebookLMCorpusPage() {
     <div className="pb-16">
       <SectionHead eyebrow="Section I" title="NotebookLM Corpus" count={corpora?.length ?? 0} />
 
-      <div className="px-14 space-y-6">
+      <div className="px-5 sm:px-8 lg:px-14 space-y-6">
         <p className="font-serif text-[14px] text-ink-soft max-w-2xl">
           Saved artifacts from NotebookLM, grouped by notebook. This is a read-only
           archive — generate new artifacts from the private Research portal.

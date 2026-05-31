@@ -428,3 +428,27 @@
     vertical-align: top;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE ADDITIONS (mobile-handoff steps 1–4)
+   Additive only — nothing here overrides the desktop tokens above.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Hide scrollbars on horizontal strips / tab bars */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Optional: subtle paper grain on mobile full-screen views.
+   Apply class `paper-grain` to a full-bleed container. */
+@layer components {
+  .paper-grain { position: relative; }
+  .paper-grain::before {
+    content: "";
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    opacity: 0.35; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2' seed='5'/><feColorMatrix values='0 0 0 0 0.16  0 0 0 0 0.14  0 0 0 0 0.09  0 0 0 0.04 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  }
+}

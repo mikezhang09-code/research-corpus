@@ -371,7 +371,7 @@ export default function NotebookLMPage() {
     <div className="pb-16">
       <SectionHead eyebrow="Section I" title="My Corpus" count={notebooks.length} />
 
-      <div className="px-14 space-y-6">
+      <div className="px-5 sm:px-8 lg:px-14 space-y-6">
         {/* Action row: sync + create */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">

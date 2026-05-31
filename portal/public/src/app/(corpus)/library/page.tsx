@@ -104,7 +104,7 @@ export default function LibraryPage() {
     <div className="pb-16">
       <SectionHead eyebrow="Section II" title="My Research" count={folios?.length ?? 0} />
 
-      <div className="px-14 space-y-6">
+      <div className="px-5 sm:px-8 lg:px-14 space-y-6">
         <p className="font-serif text-[14px] text-ink-soft max-w-2xl">
           Research folios and their files. Create folios, upload files, and
           organise — open any file to view it inline.
@@ -150,8 +150,8 @@ export default function LibraryPage() {
 
         {/* Tag filter pills */}
         {tagOrder.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute shrink-0">
               Tags
             </span>
             {tagOrder.map((tag) => {
@@ -164,7 +164,7 @@ export default function LibraryPage() {
                   type="button"
                   onClick={() => toggleTag(tag)}
                   className={
-                    "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase px-2 py-1 rounded-[1px] border transition-colors " +
+                    "inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase px-2 py-1 rounded-[1px] border transition-colors " +
                     (active
                       ? "border-ink bg-ink text-paper"
                       : dim

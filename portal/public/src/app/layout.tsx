@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Cormorant_Garamond,
   Source_Serif_4,
@@ -36,6 +36,13 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Research Corpus",
   description: "Review My Research and the saved NotebookLM corpus",
+};
+
+// viewport-fit=cover lets env(safe-area-inset-*) resolve on notched phones.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
