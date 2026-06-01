@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from uuid import uuid4
+from unittest.mock import MagicMock
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -44,6 +45,13 @@ def _dummy_settings(monkeypatch):
     }
     for k, v in env.items():
         monkeypatch.setenv(k, v)
+
+    # Hermetic guard: any path that builds an S3/R2 client (get_r2(), or the
+    # save-to-library endpoint's inline boto3.client) gets a mock instead of a
+    # real client pointed at the dummy endpoint.
+    import boto3
+
+    monkeypatch.setattr(boto3, "client", MagicMock())
 
     from portal.backend import config, database, storage
 
@@ -125,8 +133,16 @@ class _Query:
     # execution -----------------------------------------------------------
     def _match(self, row) -> bool:
         for kind, field, value in self._filters:
-            if kind == "eq" and row.get(field) != value:
-                return False
+            if kind == "eq":
+                left = row.get(field)
+                # Postgres treats a UUID column and its string form as equal;
+                # mirror that so a repo passing a UUID to .eq() still matches a
+                # seeded string id (and vice versa).
+                if isinstance(left, UUID) or isinstance(value, UUID):
+                    if str(left) != str(value):
+                        return False
+                elif left != value:
+                    return False
             if kind == "contains":
                 col = row.get(field) or []
                 if not all(v in col for v in value):

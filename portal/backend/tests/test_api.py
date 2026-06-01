@@ -8,7 +8,6 @@ never runs.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -45,8 +44,7 @@ def _full_artifact_row(**over):
         "nlm_artifact_id": "nlm-1",
         "artifact_type": "report",
         "file_format": "md",
-        "portal_added_at": datetime.now(timezone.utc).isoformat(),
-        **_ARTIFACT_DEFAULTS,
+        **_ARTIFACT_DEFAULTS,  # supplies portal_added_at + the nullable columns
     }
     row.update(over)
     return row
@@ -111,7 +109,7 @@ def test_get_artifact_found_and_missing(client, fake_db):
     assert missing.status_code == 404
 
 
-def test_register_artifact_schedules_download(client, fake_db, make_nlm, monkeypatch):
+def test_register_artifact_schedules_download(client, fake_db, monkeypatch):
     # Background task runs after the response; stub it so no real work happens.
     called = {}
 
@@ -161,6 +159,24 @@ def test_artifact_content_not_downloaded(client, fake_db):
     fake_db.seed("nlm_artifacts", [row])
     resp = client.get(f"/api/artifacts/{row['id']}/content")
     assert resp.status_code == 404
+
+
+def test_artifact_content_streams_from_r2(client, fake_db, monkeypatch):
+    from unittest.mock import MagicMock
+
+    row = _full_artifact_row(r2_key="notebooklm/nb/report/x.md", file_format="md")
+    fake_db.seed("nlm_artifacts", [row])
+
+    mock_r2 = MagicMock()
+    mock_r2.get_object.return_value = {"Body": MagicMock(read=lambda: b"hello content")}
+    # The endpoint does `from ..storage import get_r2` at call time, so patch
+    # the name on the storage module (not the router module).
+    monkeypatch.setattr("portal.backend.storage.get_r2", lambda: mock_r2)
+
+    resp = client.get(f"/api/artifacts/{row['id']}/content")
+    assert resp.status_code == 200
+    assert resp.content == b"hello content"
+    assert resp.headers["content-type"] == "text/plain; charset=utf-8"
 
 
 # ---------------------------------------------------------------------------
