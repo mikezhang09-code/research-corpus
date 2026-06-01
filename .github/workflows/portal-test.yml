@@ -1,0 +1,49 @@
+name: Portal backend tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'portal/backend/**'
+      - '.github/workflows/portal-test.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'portal/backend/**'
+      - '.github/workflows/portal-test.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  portal-test:
+    name: Portal backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        # `--extra dev` brings in pytest + pytest-asyncio and the notebooklm
+        # package itself; the portal requirements add FastAPI/httpx/etc.
+        run: |
+          uv sync --frozen --extra dev
+          uv pip install -r portal/backend/requirements.txt
+
+      - name: Run portal backend tests
+        # Isolated from the library suite (root testpaths/coverage gate is
+        # scoped to src/notebooklm); run this path explicitly.
+        run: uv run pytest portal/backend/tests
