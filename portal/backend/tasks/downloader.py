@@ -35,7 +35,9 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
             out_path = Path(tmp) / f"{nlm_artifact_id}.{fmt}"
 
             async with await NotebookLMClient.from_storage() as client:
-                await _download_by_type(client, notebook_id, artifact_type, fmt, str(out_path))
+                await _download_by_type(
+                    client, notebook_id, artifact_type, fmt, str(out_path), nlm_artifact_id
+                )
 
             data = out_path.read_bytes()
 
@@ -59,28 +61,35 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
 
 
 async def _download_by_type(
-    client, notebook_id: str, artifact_type: str, fmt: str, out_path: str
+    client, notebook_id: str, artifact_type: str, fmt: str, out_path: str, artifact_id: str
 ) -> None:
+    # Pin every download to the specific NotebookLM artifact id. Without it the
+    # client falls back to "latest completed of this type", which can grab a
+    # different artifact when several finish close together.
     a = client.artifacts
     match artifact_type:
         case "audio":
-            await a.download_audio(notebook_id, out_path)
+            await a.download_audio(notebook_id, out_path, artifact_id=artifact_id)
         case "video":
-            await a.download_video(notebook_id, out_path)
+            await a.download_video(notebook_id, out_path, artifact_id=artifact_id)
         case "report":
-            await a.download_report(notebook_id, out_path)
+            await a.download_report(notebook_id, out_path, artifact_id=artifact_id)
         case "quiz":
-            await a.download_quiz(notebook_id, out_path, output_format=fmt)
+            await a.download_quiz(notebook_id, out_path, artifact_id=artifact_id, output_format=fmt)
         case "flashcards":
-            await a.download_flashcards(notebook_id, out_path, output_format=fmt)
+            await a.download_flashcards(
+                notebook_id, out_path, artifact_id=artifact_id, output_format=fmt
+            )
         case "infographic":
-            await a.download_infographic(notebook_id, out_path)
+            await a.download_infographic(notebook_id, out_path, artifact_id=artifact_id)
         case "slide_deck":
-            await a.download_slide_deck(notebook_id, out_path, output_format=fmt)
+            await a.download_slide_deck(
+                notebook_id, out_path, artifact_id=artifact_id, output_format=fmt
+            )
         case "data_table":
-            await a.download_data_table(notebook_id, out_path)
+            await a.download_data_table(notebook_id, out_path, artifact_id=artifact_id)
         case "mind_map":
-            await a.download_mind_map(notebook_id, out_path)
+            await a.download_mind_map(notebook_id, out_path, artifact_id=artifact_id)
         case _:
             raise ValueError(f"Unknown artifact type: {artifact_type}")
 
