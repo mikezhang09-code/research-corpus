@@ -40,7 +40,7 @@ _CATEGORY_MAP: dict[str, str] = {
     ".key": "slide",
     ".odp": "slide",
     ".txt": "note",
-    ".md": "note",
+    ".md": "report",
     ".docx": "report",
     ".doc": "report",
     ".pdf": "report",

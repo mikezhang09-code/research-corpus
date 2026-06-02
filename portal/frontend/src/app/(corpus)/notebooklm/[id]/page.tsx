@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type HTMLAttributes, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -8,7 +8,7 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2, XCircle,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronLeft, ChevronRight, ChevronDown, Lightbulb, Trash2,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronLeft, ChevronRight, ChevronDown, Lightbulb, Trash2, Search,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,165 @@ function useModalPortal() {
 
 // ---- Markdown viewer modal ----
 
+type TocItem = { id: string; text: string; depth: number };
+
+type HeadingProps = HTMLAttributes<HTMLHeadingElement> & { children?: ReactNode };
+
+function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{Letter}\p{Number}\s-]/gu, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "section";
+}
+
+function uniqueSlug(text: string, seen: Map<string, number>, prefix: string): string {
+  const base = slugifyHeading(text);
+  const count = seen.get(base) ?? 0;
+  seen.set(base, count + 1);
+  return `${prefix}${count === 0 ? base : `${base}-${count + 1}`}`;
+}
+
+function textFromChildren(children: ReactNode): string {
+  if (typeof children === "string" || typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(textFromChildren).join("");
+  if (children && typeof children === "object" && "props" in children) {
+    return textFromChildren((children as { props?: { children?: ReactNode } }).props?.children);
+  }
+  return "";
+}
+
+function parseMarkdownToc(markdown: string, prefix: string): TocItem[] {
+  const seen = new Map<string, number>();
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => /^(#{1,4})\s+(.+?)\s*#*$/.exec(line.trim()))
+    .filter((match): match is RegExpExecArray => Boolean(match))
+    .map((match) => {
+      const text = match[2].trim();
+      return { id: uniqueSlug(text, seen, prefix), text, depth: match[1].length };
+    });
+}
+
+function MarkdownDirectory({
+  items,
+  onToggleSidebar,
+}: {
+  items: TocItem[];
+  onToggleSidebar?: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.toLowerCase();
+    return items.filter((item) => item.text.toLowerCase().includes(q));
+  }, [items, searchQuery]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <nav className="shrink-0 border-b lg:border-b-0 lg:border-r border-rule bg-paper-deep/40 px-5 py-5 lg:w-64 lg:max-h-full flex flex-col gap-3">
+      <div className="flex items-center justify-between shrink-0 mb-1">
+        <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">Directory</p>
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="hidden lg:flex h-6 w-6 rounded-[1px] border border-rule hover:border-ink bg-paper-light hover:bg-paper-deep text-ink-fade hover:text-ink items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+            title="Collapse directory"
+            aria-label="Collapse directory"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className="relative shrink-0 mb-2">
+        <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-ink-mute/50" />
+        <input
+          type="text"
+          placeholder="Filter headings..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full text-[12px] pl-8 pr-6 py-1.5 bg-vellum border border-rule rounded-[1px] text-ink focus:outline-none focus:border-ink placeholder-ink-mute/40 focus:ring-1 focus:ring-ink"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="absolute right-2 top-2 h-4 w-4 text-ink-mute hover:text-ink flex items-center justify-center text-[10px]"
+            title="Clear filter"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex gap-2 overflow-x-auto lg:block lg:space-y-1">
+          {filteredItems.length === 0 ? (
+            <p className="font-serif text-[12px] text-ink-mute italic px-2 py-1.5">No headings match</p>
+          ) : (
+            filteredItems.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                className="block shrink-0 max-w-[16rem] truncate rounded-[1px] px-2 py-1.5 font-serif text-[13px] leading-tight text-ink-fade hover:bg-vellum hover:text-ink lg:max-w-none"
+                style={{ marginLeft: `${Math.max(0, item.depth - 1) * 12}px` }}
+                title={item.text}
+              >
+                {item.text}
+              </a>
+            ))
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function MarkdownBody({ content, fontSize, idPrefix }: { content: string; fontSize: number; idPrefix: string }) {
+  const seen = new Map<string, number>();
+  const heading = (level: 1 | 2 | 3 | 4) => {
+    return function Heading({ children, ...props }: HeadingProps) {
+      const id = uniqueSlug(textFromChildren(children), seen, idPrefix);
+      if (level === 1) return <h1 id={id} {...props}>{children}</h1>;
+      if (level === 2) return <h2 id={id} {...props}>{children}</h2>;
+      if (level === 3) return <h3 id={id} {...props}>{children}</h3>;
+      return <h4 id={id} {...props}>{children}</h4>;
+    };
+  };
+
+  return (
+    <div
+      style={{ fontSize: `${fontSize}px` }}
+      className="prose prose-sm max-w-none font-serif
+      prose-headings:scroll-mt-6 prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
+      prose-h1:text-[1.7em] prose-h2:text-[1.4em] prose-h3:text-[1.3em]
+      prose-p:leading-relaxed prose-p:text-ink-soft
+      prose-strong:text-ink prose-strong:font-semibold
+      prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:rounded-[1px] prose-code:text-[0.9em] prose-code:font-mono prose-code:text-ink
+      prose-pre:bg-paper-deep prose-pre:rounded-[2px] prose-pre:p-4 prose-pre:border prose-pre:border-rule
+      prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-4 prose-blockquote:text-ink-fade prose-blockquote:italic
+      prose-ul:list-disc prose-ol:list-decimal
+      prose-li:text-ink-soft
+      prose-table:text-[0.9em] prose-th:text-left prose-th:font-mono prose-th:uppercase prose-th:tracking-[0.1em] prose-th:text-ink
+      prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2"
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{ h1: heading(1), h2: heading(2), h3: heading(3), h4: heading(4) }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+
 function MarkdownModal({ portalId, title, onClose }: {
   portalId: string;
   title: string;
@@ -80,7 +239,10 @@ function MarkdownModal({ portalId, title, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [fontSize, setFontSize] = useState(14);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const mounted = useModalPortal();
+  const idPrefix = `artifact-${portalId}-`;
+  const toc = useMemo(() => content ? parseMarkdownToc(content, idPrefix) : [], [content, idPrefix]);
 
   const decFont = () => setFontSize((s) => Math.max(12, s - 1));
   const incFont = () => setFontSize((s) => Math.min(24, s + 1));
@@ -132,36 +294,38 @@ function MarkdownModal({ portalId, title, onClose }: {
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto flex-1 px-8 py-6">
-          {error ? (
-            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              Failed to load: {error}
-            </div>
-          ) : content === null ? (
-            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </div>
-          ) : (
-            <div
-              style={{ fontSize: `${fontSize}px` }}
-              className="prose prose-sm max-w-none font-serif
-              prose-headings:font-serif-display prose-headings:tracking-tight prose-headings:text-ink
-              prose-h1:text-[1.7em] prose-h2:text-[1.4em] prose-h3:text-[1.3em]
-              prose-p:leading-relaxed prose-p:text-ink-soft
-              prose-strong:text-ink prose-strong:font-semibold
-              prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:rounded-[1px] prose-code:text-[0.9em] prose-code:font-mono prose-code:text-ink
-              prose-pre:bg-paper-deep prose-pre:rounded-[2px] prose-pre:p-4 prose-pre:border prose-pre:border-rule
-              prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-4 prose-blockquote:text-ink-fade prose-blockquote:italic
-              prose-ul:list-disc prose-ol:list-decimal
-              prose-li:text-ink-soft
-              prose-table:text-[0.9em] prose-th:text-left prose-th:font-mono prose-th:uppercase prose-th:tracking-[0.1em] prose-th:text-ink
-              prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {content}
-              </ReactMarkdown>
-            </div>
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden relative">
+          {toc.length > 0 && (
+            isSidebarOpen ? (
+              <MarkdownDirectory items={toc} onToggleSidebar={() => setIsSidebarOpen(false)} />
+            ) : (
+              <div className="hidden lg:flex w-11 shrink-0 border-r border-rule bg-paper-deep/40 flex-col items-center pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="h-7 w-7 rounded-[1px] border border-rule hover:border-ink bg-paper-light hover:bg-paper-deep text-ink-fade hover:text-ink flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+                  title="Expand directory"
+                  aria-label="Expand directory"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )
           )}
+          <div className="overflow-y-auto flex-1 px-8 py-6">
+            {error ? (
+              <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                Failed to load: {error}
+              </div>
+            ) : content === null ? (
+              <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            ) : (
+              <MarkdownBody content={content} fontSize={fontSize} idPrefix={idPrefix} />
+            )}
+          </div>
         </div>
       </div>
     </div>,

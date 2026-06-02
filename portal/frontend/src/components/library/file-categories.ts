@@ -17,7 +17,8 @@ export const CATEGORY_OPTIONS = [
 
 const CATEGORY_MAP: Record<string, string> = {
   ".ppt": "slide", ".pptx": "slide", ".key": "slide", ".odp": "slide",
-  ".txt": "note", ".md": "note",
+  ".txt": "note",
+  ".md": "report",
   ".docx": "report", ".doc": "report", ".pdf": "report",
   ".xlsx": "spreadsheet", ".xls": "spreadsheet", ".xlsm": "spreadsheet",
   ".csv": "spreadsheet", ".ods": "spreadsheet",
