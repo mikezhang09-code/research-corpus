@@ -12,6 +12,7 @@ export const CATEGORY_OPTIONS = [
   { value: "video",       label: "Video"       },
   { value: "mindmap",     label: "Mind Map"    },
   { value: "image",       label: "Image"       },
+  { value: "component",   label: "Component"   },
   { value: "other",       label: "Other"       },
 ] as const;
 
@@ -25,6 +26,7 @@ const CATEGORY_MAP: Record<string, string> = {
   ".mp3": "audio", ".m4a": "audio", ".wav": "audio", ".ogg": "audio", ".aac": "audio",
   ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
   ".json": "mindmap",
+  ".jsx": "component", ".tsx": "component",
   ".png": "image", ".jpg": "image", ".jpeg": "image",
   ".gif": "image", ".webp": "image", ".svg": "image",
 };

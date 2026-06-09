@@ -60,6 +60,8 @@ _CATEGORY_MAP: dict[str, str] = {
     ".mkv": "video",
     ".webm": "video",
     ".json": "mindmap",
+    ".jsx": "component",
+    ".tsx": "component",
     ".png": "image",
     ".jpg": "image",
     ".jpeg": "image",

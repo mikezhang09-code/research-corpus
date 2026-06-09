@@ -4,7 +4,7 @@ import { type HTMLAttributes, type ReactNode, useEffect, useMemo, useState } fro
 import {
   Layers, FileText, BookOpen, Music, Video, Network, ImageIcon, File, Table,
   ExternalLink, Trash2, Pencil, Loader2, AlertCircle, CheckSquare, Square,
-  ChevronLeft, ChevronRight, Search,
+  ChevronLeft, ChevronRight, Search, Code2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -28,10 +28,11 @@ import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
 import { NoteEditorModal } from "./NoteEditorModal";
+import { JsxModal } from "./JsxModal";
 
 // ---- category config ----
 
-type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "image" | "other";
+type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "image" | "component" | "other";
 
 const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string; iconColor: string; label: string }> = {
   slide:       { icon: Layers,    bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Slide"       },
@@ -42,6 +43,7 @@ const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string
   video:       { icon: Video,     bg: "#ecd5d6", iconColor: "var(--color-blush)",      label: "Video"       },
   mindmap:     { icon: Network,   bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Mind Map"    },
   image:       { icon: ImageIcon, bg: "#dde2cf", iconColor: "var(--color-mint)",       label: "Image"       },
+  component:   { icon: Code2,     bg: "#d6e0e0", iconColor: "var(--color-sky)",        label: "Component"   },
   other:       { icon: File,      bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "File" },
 };
 
@@ -337,10 +339,11 @@ export function FileCard({
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
+  const isComponent = ext === ".jsx" || ext === ".tsx";
   const isDocx = ext === ".docx" || ext === ".doc";
   const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
   const isPresentation = ext === ".ppt" || ext === ".pptx";
@@ -352,7 +355,7 @@ export function FileCard({
   // The presentation viewer (Office Online embed) needs a public file URL.
   const hasViewer =
     isMarkdown || isDocx || isExcel || isMindMap || isImage || isAudio || isVideo ||
-    (isPresentation && !!file.r2_url);
+    isComponent || (isPresentation && !!file.r2_url);
 
   const added = new Date(file.added_at).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
@@ -378,6 +381,7 @@ export function FileCard({
     else if (isImage) setViewer("image");
     else if (isAudio) setViewer("audio");
     else if (isVideo) setViewer("video");
+    else if (isComponent) setViewer("jsx");
     else if (isPresentation) setViewer("presentation");
   }
 
@@ -410,6 +414,9 @@ export function FileCard({
       )}
       {viewer === "presentation" && file.r2_url && (
         <PresentationModal src={file.r2_url} title={file.title} onClose={() => setViewer(null)} />
+      )}
+      {viewer === "jsx" && (
+        <JsxModal notebookId={file.notebook_id} fileId={file.id} title={file.title} ext={ext} onClose={() => setViewer(null)} />
       )}
 
       <div className={`relative rounded-[2px] overflow-hidden border bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all ${

@@ -33,6 +33,7 @@ const CATEGORIES = [
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
   { value: "image",       label: "Images"       },
+  { value: "component",   label: "Components"   },
 ];
 
 function CreateFolioFromSelectionDialog({
