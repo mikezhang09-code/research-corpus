@@ -511,7 +511,13 @@ export function FreeFormsPanel() {
         <MarkdownModal notebookId={null} fileId={viewer.file.id} title={viewer.file.title} onClose={() => setViewer(null)} />
       )}
       {viewer?.kind === "docx" && (
-        <DocxModal notebookId={null} fileId={viewer.file.id} title={viewer.file.title} onClose={() => setViewer(null)} />
+        <DocxModal
+          notebookId={null}
+          fileId={viewer.file.id}
+          title={viewer.file.title}
+          editable={(viewer.file.file_ext ?? "").toLowerCase() === ".docx"}
+          onClose={() => setViewer(null)}
+        />
       )}
       {viewer?.kind === "excel" && (
         <ExcelModal notebookId={null} fileId={viewer.file.id} title={viewer.file.title} onClose={() => setViewer(null)} />

@@ -392,7 +392,13 @@ export function FileCard({
         <MarkdownModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />
       )}
       {viewer === "docx" && (
-        <DocxModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />
+        <DocxModal
+          notebookId={file.notebook_id}
+          fileId={file.id}
+          title={file.title}
+          editable={ext === ".docx"}
+          onClose={() => setViewer(null)}
+        />
       )}
       {viewer === "excel" && (
         <ExcelModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />

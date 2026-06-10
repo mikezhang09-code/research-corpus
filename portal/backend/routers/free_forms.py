@@ -111,6 +111,28 @@ async def get_free_form_file_content(file_id: UUID, format: str | None = Query(N
     return file_content_response(f, format)
 
 
+@router.put("/{file_id}/file", response_model=FreeFormFileRead)
+async def replace_free_form_file_bytes(file_id: UUID, file: UploadFile = File(...)):
+    """Overwrite a stored file's bytes in place (used by the docx editor).
+
+    The item keeps its `r2_key`/`r2_url` and metadata — only the bytes and
+    `file_size_bytes` change, so the table row and viewers keep working.
+    """
+    db = get_supabase()
+    f = _file_or_404(db, file_id)
+    r2_key = f.get("r2_key")
+    if not r2_key:
+        raise HTTPException(400, "This item has no stored file to update")
+
+    data = await file.read()
+    mime = f.get("mime_type") or file.content_type or "application/octet-stream"
+    upload_file(r2_key, data, mime)
+    row = repo.update_free(db, file_id, {"file_size_bytes": len(data)})
+    if not row:
+        raise HTTPException(404, "File not found")
+    return row
+
+
 @router.put("/{file_id}/content", response_model=FreeFormFileRead)
 async def update_free_form_file_content(file_id: UUID, body: LibraryFileContentUpdate):
     """Overwrite a stored text file's contents (used by the note editor).

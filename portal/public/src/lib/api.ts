@@ -56,6 +56,24 @@ export async function getLibraryFileBlob(notebookId: string | null, fileId: stri
   return res.arrayBuffer();
 }
 
+/** Overwrite a stored file's bytes in place — used by the docx editor.
+ *  Works for folio files and (with notebookId null) free-form files. */
+export async function replaceLibraryFileBytes(
+  notebookId: string | null,
+  fileId: string,
+  data: ArrayBuffer,
+  filename: string,
+  mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+): Promise<void> {
+  const path = notebookId
+    ? `/api/library-notebooks/${notebookId}/files/${fileId}/file`
+    : `/api/free-forms/${fileId}/file`;
+  const form = new FormData();
+  form.append("file", new Blob([data], { type: mime }), filename);
+  const res = await fetch(`${BASE}${path}`, { method: "PUT", body: form });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+}
+
 // ---- Library Notebooks — write ops ----
 
 export const createLibraryNotebook = (data: {

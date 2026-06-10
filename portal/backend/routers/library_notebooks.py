@@ -533,6 +533,33 @@ async def update_notebook_file_content(nb_id: UUID, file_id: UUID, body: Library
     return row
 
 
+@router.put("/{nb_id}/files/{file_id}/file", response_model=LibraryFileRead)
+async def replace_notebook_file_bytes(
+    nb_id: UUID, file_id: UUID, file: UploadFile = File(...)
+):
+    """Overwrite a stored file's bytes in place (used by the docx editor).
+
+    The item keeps its `r2_key`/`r2_url` and metadata — only the bytes and
+    `file_size_bytes` change, so cards and viewers keep working unchanged.
+    """
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+    f = repo.get_file(db, nb_id, file_id)
+    if not f:
+        raise HTTPException(404, "File not found")
+    r2_key = f.get("r2_key")
+    if not r2_key:
+        raise HTTPException(400, "This item has no stored file to update")
+
+    data = await file.read()
+    mime = f.get("mime_type") or file.content_type or "application/octet-stream"
+    upload_file(r2_key, data, mime)
+    row = repo.update_file(db, nb_id, file_id, {"file_size_bytes": len(data)})
+    if not row:
+        raise HTTPException(404, "File not found")
+    return row
+
+
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
