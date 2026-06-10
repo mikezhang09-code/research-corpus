@@ -5,6 +5,7 @@ import { X, Upload, Loader2, AlertCircle, FileText, Plus, CheckCircle2 } from "l
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { uploadLibraryNotebookFile, type LibraryFile } from "@/lib/api";
+import { TagInput } from "./TagInput";
 import {
   CATEGORY_OPTIONS,
   categoryLabel,
@@ -46,16 +47,24 @@ function makeQueued(file: File): Queued {
   };
 }
 
-export function AddFileModal({
+export function AddFileModal<T = LibraryFile>({
   notebookId,
+  uploadFile,
+  tagSuggestions,
   onClose,
   onUploaded,
 }: {
-  notebookId: string;
+  /** Folio to upload into. Not used when `uploadFile` is provided. */
+  notebookId?: string;
+  /** Override the upload destination (e.g. free-forms). Defaults to the folio upload. */
+  uploadFile?: (file: File, category: string, title?: string, tags?: string[]) => Promise<T>;
+  /** When provided, shows a Tags field; the tags apply to every file in the batch. */
+  tagSuggestions?: string[];
   onClose: () => void;
-  onUploaded: (file: LibraryFile) => void;
+  onUploaded: (file: T) => void;
 }) {
   const [queued, setQueued] = useState<Queued[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -90,7 +99,11 @@ export function AddFileModal({
       patchAt(item.key, { status: "uploading", error: undefined });
       try {
         const title = item.title.trim() || stripExt(item.file.name);
-        const result = await uploadLibraryNotebookFile(notebookId, item.file, item.category, title);
+        const doUpload =
+          uploadFile ??
+          ((f: File, c: string, t?: string) =>
+            uploadLibraryNotebookFile(notebookId as string, f, c, t) as Promise<T>);
+        const result = await doUpload(item.file, item.category, title, tags);
         onUploaded(result);
         patchAt(item.key, { status: "done" });
       } catch (e) {
@@ -236,6 +249,16 @@ export function AddFileModal({
                 the file card&apos;s pencil button.
               </p>
             </>
+          )}
+
+          {/* Tags — shown only where files can't inherit context (free forms) */}
+          {tagSuggestions !== undefined && total > 0 && (
+            <div className="space-y-1.5">
+              <label className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+                Tags{total > 1 ? " (applied to all files)" : ""}
+              </label>
+              <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} disabled={uploading} />
+            </div>
           )}
 
           {/* Batch progress */}

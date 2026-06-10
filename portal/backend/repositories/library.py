@@ -64,3 +64,64 @@ def delete(db: Client, item_id: UUID) -> dict | None:
 def list_collections(db: Client) -> list[str]:
     rows = db.table(TABLE).select("collection").not_.is_("collection", "null").execute().data
     return sorted({r["collection"] for r in rows if r.get("collection")})
+
+
+# ---------------------------------------------------------------------------
+# Free-form files: library_items with notebook_id IS NULL.
+# Every query carries the IS NULL guard so these helpers can never read or
+# mutate a folio-owned file.
+# ---------------------------------------------------------------------------
+
+
+def list_free(
+    db: Client,
+    category: str | None = None,
+    tag: str | None = None,
+    search: str | None = None,
+) -> list[dict]:
+    q = db.table(TABLE).select("*").is_("notebook_id", "null")
+    if category:
+        q = q.eq("file_category", category)
+    if tag:
+        q = q.contains("tags", [tag])
+    if search:
+        q = q.ilike("title", f"%{search}%")
+    return q.order("added_at", desc=True).execute().data
+
+
+def get_free(db: Client, item_id: UUID) -> dict | None:
+    rows = (
+        db.table(TABLE)
+        .select("*")
+        .eq("id", str(item_id))
+        .is_("notebook_id", "null")
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def update_free(db: Client, item_id: UUID, patch: dict) -> dict | None:
+    if not patch:
+        return get_free(db, item_id)
+    rows = (
+        db.table(TABLE)
+        .update(patch)
+        .eq("id", str(item_id))
+        .is_("notebook_id", "null")
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def delete_free(db: Client, item_id: UUID) -> dict | None:
+    rows = (
+        db.table(TABLE)
+        .delete()
+        .eq("id", str(item_id))
+        .is_("notebook_id", "null")
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None

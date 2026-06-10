@@ -8,21 +8,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   uploadLibraryNotebookFile, updateLibraryNotebookFile, saveLibraryNoteContent,
+  uploadFreeFormFile, updateFreeFormFile, saveFreeFormNoteContent,
   getLibraryFileContent, type LibraryFile,
 } from "@/lib/api";
 
-// Create or edit a folio note. A note is just a Markdown file (file_category
-// "note"); create uploads a new .md, edit overwrites the existing object.
-export function NoteEditorModal({
+// Create or edit a folio or free-form note. A note is just a Markdown file
+// (file_category "note"); create uploads a new .md, edit overwrites the
+// existing object. `notebookId: null` targets the free-forms endpoints.
+export function NoteEditorModal<T extends { id: string; title: string } = LibraryFile>({
   notebookId,
   file,
   onClose,
   onSaved,
 }: {
-  notebookId: string;
-  file?: LibraryFile | null;
+  /** Folio id, or null for a free-form note. */
+  notebookId: string | null;
+  file?: T | null;
   onClose: () => void;
-  onSaved: (file: LibraryFile) => void;
+  onSaved: (file: T) => void;
 }) {
   const isEdit = !!file;
   const [title, setTitle] = useState(file?.title ?? "");
@@ -58,18 +61,24 @@ export function NoteEditorModal({
     setSaving(true);
     setError(null);
     try {
-      let result: LibraryFile;
+      let result: T;
       if (!file) {
         const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         const f = new File([body], `note-${stamp}.md`, { type: "text/markdown" });
-        result = await uploadLibraryNotebookFile(notebookId, f, "note", t);
+        result = (notebookId
+          ? await uploadLibraryNotebookFile(notebookId, f, "note", t)
+          : await uploadFreeFormFile(f, "note", t)) as unknown as T;
       } else {
         result = file;
         if (t !== file.title) {
-          result = await updateLibraryNotebookFile(notebookId, file.id, { title: t });
+          result = (notebookId
+            ? await updateLibraryNotebookFile(notebookId, file.id, { title: t })
+            : await updateFreeFormFile(file.id, { title: t })) as unknown as T;
         }
         if (body !== initialBody.current) {
-          result = await saveLibraryNoteContent(notebookId, file.id, body);
+          result = (notebookId
+            ? await saveLibraryNoteContent(notebookId, file.id, body)
+            : await saveFreeFormNoteContent(file.id, body)) as unknown as T;
         }
       }
       onSaved(result);

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/notebooklm", label: "NotebookLM", sub: "Curated corpora" },
-  { href: "/library",    label: "My Research", sub: "Free-form folios" },
+  { href: "/notebooklm", label: "NotebookLM", sub: "Corpora" },
+  { href: "/library",    label: "My Research", sub: "Folios" },
+  { href: "/free-forms", label: "Free Forms", sub: "Standalone" },
 ];
 
 /**

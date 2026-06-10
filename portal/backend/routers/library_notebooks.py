@@ -455,12 +455,11 @@ async def delete_notebook_file(nb_id: UUID, file_id: UUID):
     repo.delete_file(db, nb_id, file_id)
 
 
-@router.get("/{nb_id}/files/{file_id}/content")
-async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Query(None)):
-    db = get_supabase()
-    f = repo.get_file(db, nb_id, file_id)
-    if not f:
-        raise HTTPException(404, "File not found")
+def file_content_response(f: dict, format: str | None = None) -> Response:
+    """Build the content response for a stored library file.
+
+    Shared by the folio file endpoint and the free-forms router.
+    """
     if not f.get("r2_key"):
         raise HTTPException(404, "No file stored for this item")
 
@@ -498,6 +497,15 @@ async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Quer
             )
         },
     )
+
+
+@router.get("/{nb_id}/files/{file_id}/content")
+async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Query(None)):
+    db = get_supabase()
+    f = repo.get_file(db, nb_id, file_id)
+    if not f:
+        raise HTTPException(404, "File not found")
+    return file_content_response(f, format)
 
 
 @router.put("/{nb_id}/files/{file_id}/content", response_model=LibraryFileRead)

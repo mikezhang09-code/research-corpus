@@ -36,15 +36,22 @@ export const getLibraryNotebookFiles = (id: string, params?: { category?: string
   return request<LibraryFile[]>(`/api/library-notebooks/${id}/files${q}`);
 };
 
-export async function getLibraryFileContent(notebookId: string, fileId: string): Promise<string> {
-  const res = await fetch(`${BASE}/api/library-notebooks/${notebookId}/files/${fileId}/content`);
+/** Content URL for a folio file, or a free-form file when notebookId is null. */
+function fileContentPath(notebookId: string | null, fileId: string): string {
+  return notebookId
+    ? `/api/library-notebooks/${notebookId}/files/${fileId}/content`
+    : `/api/free-forms/${fileId}/content`;
+}
+
+export async function getLibraryFileContent(notebookId: string | null, fileId: string): Promise<string> {
+  const res = await fetch(`${BASE}${fileContentPath(notebookId, fileId)}`);
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.text();
 }
 
 /** Raw bytes — for client-side renderers (docx-preview, SheetJS, etc). */
-export async function getLibraryFileBlob(notebookId: string, fileId: string): Promise<ArrayBuffer> {
-  const res = await fetch(`${BASE}/api/library-notebooks/${notebookId}/files/${fileId}/content`);
+export async function getLibraryFileBlob(notebookId: string | null, fileId: string): Promise<ArrayBuffer> {
+  const res = await fetch(`${BASE}${fileContentPath(notebookId, fileId)}`);
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.arrayBuffer();
 }
@@ -140,6 +147,64 @@ export const saveLibraryNoteContent = (
 export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
   request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, {
     method: "DELETE",
+  });
+
+// ---- Free Forms ----
+// Standalone files that belong to no folio (library_items with notebook_id NULL).
+
+export interface FreeFormFile {
+  id: string;
+  title: string;
+  description: string;
+  original_name: string;
+  mime_type: string | null;
+  file_ext: string | null;
+  file_category: string;
+  r2_url: string | null;
+  file_size_bytes: number | null;
+  tags: string[];
+  added_at: string;
+  last_modified: string | null;
+}
+
+export const getFreeFormFiles = () => request<FreeFormFile[]>("/api/free-forms");
+
+export async function uploadFreeFormFile(
+  file: File,
+  category: string,
+  title?: string,
+  tags?: string[]
+): Promise<FreeFormFile> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("category", category);
+  if (title) form.append("title", title);
+  if (tags && tags.length > 0) form.append("tags", tags.join(","));
+  const res = await fetch(`${BASE}/api/free-forms/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export const updateFreeFormFile = (
+  fileId: string,
+  patch: { title?: string; description?: string; file_category?: string; tags?: string[] },
+) =>
+  request<FreeFormFile>(`/api/free-forms/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const deleteFreeFormFile = (fileId: string) =>
+  request<void>(`/api/free-forms/${fileId}`, { method: "DELETE" });
+
+/** Overwrite a stored text file's contents — used by the note editor. */
+export const saveFreeFormNoteContent = (fileId: string, content: string) =>
+  request<FreeFormFile>(`/api/free-forms/${fileId}/content`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
   });
 
 // ---- Artifacts (saved NotebookLM corpus) ----

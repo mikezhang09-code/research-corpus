@@ -417,6 +417,31 @@ class LibraryFileBulkRequest(BaseModel):
     file_ids: list[UUID]
 
 
+class FreeFormFileRead(BaseModel):
+    """A standalone library file that belongs to no folio (notebook_id IS NULL)."""
+
+    id: UUID
+    title: str
+    description: str
+    original_name: str
+    mime_type: str | None
+    file_ext: str | None
+    file_category: str
+    r2_key: str | None
+    r2_url: str | None
+    file_size_bytes: int | None
+    tags: list[str] = Field(default_factory=list)
+    added_at: datetime
+    last_modified: datetime | None
+
+
+class FreeFormFileUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    file_category: str | None = None
+    tags: list[str] | None = None
+
+
 class LibraryFilesNewNotebookRequest(BaseModel):
     title: str
     cover_emoji: str | None = None

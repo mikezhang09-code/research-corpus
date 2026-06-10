@@ -15,7 +15,8 @@ export function DocxModal({
   title,
   onClose,
 }: {
-  notebookId: string;
+  /** Folio id, or null for a free-form file. */
+  notebookId: string | null;
   fileId: string;
   title: string;
   onClose: () => void;

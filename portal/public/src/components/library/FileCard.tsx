@@ -32,9 +32,9 @@ import { JsxModal } from "./JsxModal";
 
 // ---- category config ----
 
-type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "image" | "component" | "other";
+export type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "image" | "component" | "other";
 
-const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string; iconColor: string; label: string }> = {
+export const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string; iconColor: string; label: string }> = {
   slide:       { icon: Layers,    bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Slide"       },
   note:        { icon: FileText,  bg: "#ece0c2", iconColor: "var(--color-ochre)",      label: "Note"        },
   report:      { icon: BookOpen,  bg: "#cfd9e3", iconColor: "var(--color-sky)",        label: "Report"      },
@@ -49,7 +49,7 @@ const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string
 
 const DEFAULT_CAT = FILE_CATEGORY_CONFIG.other;
 
-function formatBytes(n: number | null): string | null {
+export function formatBytes(n: number | null): string | null {
   if (n == null) return null;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
   if (n >= 1_000) return `${Math.round(n / 1_000)} KB`;
@@ -216,13 +216,14 @@ function MarkdownBody({ content, fontSize, idPrefix }: { content: string; fontSi
   );
 }
 
-function MarkdownModal({
+export function MarkdownModal({
   notebookId,
   fileId,
   title,
   onClose,
 }: {
-  notebookId: string;
+  /** Folio id, or null for a free-form file. */
+  notebookId: string | null;
   fileId: string;
   title: string;
   onClose: () => void;
