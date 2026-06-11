@@ -38,8 +38,47 @@ function flattenText(node: ReactNode): string {
   return "";
 }
 
-// mermaid is ~1.5 MB, so it is dynamically imported only when a document
-// actually contains a ```mermaid fence.
+// Minimal surface of the mermaid UMD global this module uses.
+type MermaidApi = {
+  initialize(config: Record<string, unknown>): void;
+  render(id: string, source: string): Promise<{ svg: string }>;
+};
+
+declare global {
+  interface Window { mermaid?: MermaidApi }
+}
+
+const MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js";
+let mermaidLoader: Promise<MermaidApi> | null = null;
+
+// mermaid is enormous (the bundled copy pushed the public Worker past
+// Cloudflare's 3 MiB script limit), so it is never bundled: the browser pulls
+// it from the CDN, and only when a document actually contains a ```mermaid
+// fence.
+function loadMermaid(): Promise<MermaidApi> {
+  if (!mermaidLoader) {
+    mermaidLoader = new Promise<MermaidApi>((resolve, reject) => {
+      if (window.mermaid) return resolve(window.mermaid);
+      const script = document.createElement("script");
+      script.src = MERMAID_CDN;
+      script.onload = () => {
+        if (window.mermaid) {
+          window.mermaid.initialize({ startOnLoad: false, theme: "neutral", fontFamily: "inherit" });
+          resolve(window.mermaid);
+        } else {
+          reject(new Error("mermaid script loaded but window.mermaid is missing"));
+        }
+      };
+      script.onerror = () => {
+        mermaidLoader = null; // allow a retry on the next diagram
+        reject(new Error("failed to load mermaid from CDN"));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return mermaidLoader;
+}
+
 function MermaidDiagram({ source }: { source: string }) {
   const renderId = useId().replace(/[^a-zA-Z0-9]/g, "");
   const [svg, setSvg] = useState<string | null>(null);
@@ -47,9 +86,8 @@ function MermaidDiagram({ source }: { source: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    import("mermaid")
-      .then(async ({ default: mermaid }) => {
-        mermaid.initialize({ startOnLoad: false, theme: "neutral", fontFamily: "inherit" });
+    loadMermaid()
+      .then(async (mermaid) => {
         const { svg } = await mermaid.render(`mermaid-${renderId}`, source);
         if (!cancelled) setSvg(svg);
       })
