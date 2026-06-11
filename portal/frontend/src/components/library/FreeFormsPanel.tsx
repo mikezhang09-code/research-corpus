@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Plus, Loader2, AlertCircle, Pencil, Trash2, Download, ExternalLink, Search,
-  NotebookPen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +30,8 @@ import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
+import { MindMapEditorModal } from "./MindMapEditorModal";
+import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { TagInput } from "./TagInput";
@@ -177,6 +178,8 @@ export function FreeFormsPanel() {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
+  const [mindMapEdit, setMindMapEdit] = useState<FreeFormFile | null>(null);
   const [noteTarget, setNoteTarget] = useState<FreeFormFile | null>(null);
   const [editTarget, setEditTarget] = useState<FreeFormFile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FreeFormFile | null>(null);
@@ -291,15 +294,9 @@ export function FreeFormsPanel() {
             </button>
           ))}
           <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 h-7 rounded-[1px]"
-              onClick={() => setShowNote(true)}
-            >
-              <NotebookPen className="h-3.5 w-3.5" />
-              New note
-            </Button>
+            <NewArtifactButton
+              onCreate={(kind) => (kind === "note" ? setShowNote(true) : setShowMindMap(true))}
+            />
             <Button size="sm" className="gap-1.5 h-7 rounded-[1px]" onClick={() => setShowAdd(true)}>
               <Plus className="h-3.5 w-3.5" />
               Add file
@@ -527,6 +524,21 @@ export function FreeFormsPanel() {
           title={viewer.file.title}
           fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
           onClose={() => setViewer(null)}
+          onEdit={() => {
+            setMindMapEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {mindMapEdit && (
+        <MindMapEditorModal<FreeFormFile>
+          notebookId={null}
+          file={mindMapEdit}
+          onClose={() => setMindMapEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setMindMapEdit(null);
+          }}
         />
       )}
       {viewer?.kind === "image" && viewer.file.r2_url && (
@@ -569,6 +581,17 @@ export function FreeFormsPanel() {
           onSaved={(newNote) => {
             setFiles((prev) => [newNote, ...prev]);
             setShowNote(false);
+          }}
+        />
+      )}
+
+      {showMindMap && (
+        <MindMapEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowMindMap(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowMindMap(false);
           }}
         />
       )}

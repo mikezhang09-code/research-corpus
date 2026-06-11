@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Loader2, NotebookPen, CheckSquare, FolderPlus, Trash2, X, AlertCircle,
+  Plus, Loader2, CheckSquare, FolderPlus, Trash2, X, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,8 @@ import {
 import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
 import { NoteEditorModal } from "./NoteEditorModal";
+import { MindMapEditorModal } from "./MindMapEditorModal";
+import { NewArtifactButton } from "./NewArtifactButton";
 
 const CATEGORIES = [
   { value: "",            label: "All"          },
@@ -109,6 +111,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [activeCategory, setActiveCategory] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
@@ -236,15 +239,9 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
               {selectionMode ? "Done" : "Select"}
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 h-7 rounded-[1px]"
-            onClick={() => setShowNote(true)}
-          >
-            <NotebookPen className="h-3.5 w-3.5" />
-            New note
-          </Button>
+          <NewArtifactButton
+            onCreate={(kind) => (kind === "note" ? setShowNote(true) : setShowMindMap(true))}
+          />
           <Button
             size="sm"
             className="gap-1.5 h-7 rounded-[1px]"
@@ -352,6 +349,17 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           onSaved={(newNote) => {
             setFiles((prev) => [newNote, ...prev]);
             setShowNote(false);
+          }}
+        />
+      )}
+
+      {showMindMap && (
+        <MindMapEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowMindMap(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowMindMap(false);
           }}
         />
       )}

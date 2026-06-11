@@ -1,7 +1,18 @@
 # Mindmap viewer review + visual editor design
 
 Date: 2026-06-11
-Status: **awaiting go** — no code written yet.
+Status: **implemented** — built as designed (2026-06-11); verified end-to-end
+against the dev server (create / keyboard editing / undo-redo / save / reopen /
+re-save), saved JSON stays plain `{name, children}`.
+
+Follow-up (same day, per Mike):
+1. "New note" + "New mind map" buttons consolidated into one **"New artifact"**
+   dropdown (`NewArtifactButton.tsx`) — future kinds (quiz, …) are one entry in
+   its `ARTIFACT_TYPES` list plus a case in each panel's `onCreate`.
+2. Opening a mindmap now shows the **read-only viewer first**; an **Edit**
+   button in its header (new optional `onEdit` prop on the frontend
+   `MindMapModal`) hands off to the visual editor. Public Worker copy and the
+   NotebookLM artifact viewer stay untouched (no `onEdit` → no button).
 
 Goal: let Mike create and edit mindmaps **visually** (click/keyboard on the
 canvas), never by typing JSON.
