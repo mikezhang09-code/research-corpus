@@ -31,6 +31,7 @@ import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
+import { QuizModal } from "./QuizModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
@@ -45,12 +46,13 @@ const CATEGORIES = [
   { value: "audio",       label: "Audio"        },
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
+  { value: "quiz",        label: "Quizzes"      },
   { value: "image",       label: "Images"       },
   { value: "component",   label: "Components"   },
 ];
 
 type ViewerKind =
-  | "markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video"
+  | "markdown" | "docx" | "excel" | "mindmap" | "quiz" | "image" | "audio" | "video"
   | "presentation" | "jsx";
 
 /** Pick the viewer for a file, mirroring FileCard's dispatch (notes open read-only). */
@@ -60,6 +62,7 @@ function viewerFor(file: FreeFormFile): ViewerKind | null {
   if (ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv") return "excel";
   if (ext === ".md" || ext === ".txt") return "markdown";
   if (file.file_category === "mindmap") return "mindmap";
+  if (file.file_category === "quiz") return "quiz";
   if (file.file_category === "image") return "image";
   if (file.file_category === "audio") return "audio";
   if (file.file_category === "video") return "video";
@@ -539,6 +542,13 @@ export function FreeFormsPanel() {
             handleUpdated(updated);
             setMindMapEdit(null);
           }}
+        />
+      )}
+      {viewer?.kind === "quiz" && (
+        <QuizModal
+          title={viewer.file.title}
+          fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
+          onClose={() => setViewer(null)}
         />
       )}
       {viewer?.kind === "image" && viewer.file.r2_url && (
