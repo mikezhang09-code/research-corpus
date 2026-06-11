@@ -11,6 +11,8 @@ export const CATEGORY_OPTIONS = [
   { value: "audio",       label: "Audio"       },
   { value: "video",       label: "Video"       },
   { value: "mindmap",     label: "Mind Map"    },
+  { value: "quiz",        label: "Quiz"        },
+  { value: "flashcards",  label: "Flashcards"  },
   { value: "image",       label: "Image"       },
   { value: "component",   label: "Component"   },
   { value: "other",       label: "Other"       },

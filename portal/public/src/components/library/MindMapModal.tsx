@@ -1,75 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, ChevronRight, Loader2, AlertCircle } from "lucide-react";
+import { X, ChevronRight, Loader2, AlertCircle, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
-
-// ---- layout constants ----
-const MM_NW = 180;
-const MM_NH = 44;
-const MM_HG = 40;
-const MM_VG = 8;
-const MM_PAD = 20;
-
-type MindNode = { name?: string; title?: string; children?: MindNode[] };
-type MmNode = { id: string; label: string; x: number; y: number; depth: number; hasChildren: boolean };
-type MmEdge = { x1: number; y1: number; x2: number; y2: number };
-type MmLayout = { nodes: MmNode[]; edges: MmEdge[]; width: number; height: number };
-
-function subtreeH(node: MindNode, id: string, collapsed: Set<string>): number {
-  if (!node.children?.length || collapsed.has(id)) return MM_NH;
-  let h = (node.children.length - 1) * MM_VG;
-  node.children.forEach((c, i) => { h += subtreeH(c, `${id}-${i}`, collapsed); });
-  return h;
-}
-
-function buildMindLayout(root: MindNode, collapsed: Set<string>): MmLayout {
-  const nodes: MmNode[] = [];
-  const edges: MmEdge[] = [];
-
-  function visit(node: MindNode, id: string, depth: number, yOff: number) {
-    const h = subtreeH(node, id, collapsed);
-    const nx = MM_PAD + depth * (MM_NW + MM_HG);
-    const ny = MM_PAD + yOff + (h - MM_NH) / 2;
-    const hasChildren = !!node.children?.length;
-    nodes.push({ id, label: node.name ?? node.title ?? "", x: nx, y: ny, depth, hasChildren });
-
-    if (hasChildren && !collapsed.has(id)) {
-      let cy = yOff;
-      node.children!.forEach((child, i) => {
-        const cid = `${id}-${i}`;
-        const ch = subtreeH(child, cid, collapsed);
-        const cnx = MM_PAD + (depth + 1) * (MM_NW + MM_HG);
-        const cny = MM_PAD + cy + (ch - MM_NH) / 2;
-        edges.push({ x1: nx + MM_NW, y1: ny + MM_NH / 2, x2: cnx, y2: cny + MM_NH / 2 });
-        visit(child, cid, depth + 1, cy);
-        cy += ch + MM_VG;
-      });
-    }
-  }
-
-  visit(root, "root", 0, 0);
-  const w = nodes.reduce((m, n) => Math.max(m, n.x + MM_NW), 0) + MM_PAD;
-  const h = nodes.reduce((m, n) => Math.max(m, n.y + MM_NH), 0) + MM_PAD;
-  return { nodes, edges, width: w, height: h };
-}
-
-const MM_NODE_COLORS = [
-  "bg-ink text-paper border-ink",
-  "bg-terracotta text-paper border-terracotta",
-  "bg-vellum border-ink text-ink",
-  "bg-paper-deep border-rule text-ink-soft",
-];
+import {
+  MM_NW, MM_NH, MM_NODE_COLORS, buildMindLayout, type MindNode,
+} from "./mindmap-layout";
 
 export function MindMapModal({
   title,
   fetchContent,
   onClose,
+  onEdit,
 }: {
   title: string;
   fetchContent: () => Promise<string>;
   onClose: () => void;
+  /** When set, shows an Edit button that hands off to the visual editor (main portal only). */
+  onEdit?: () => void;
 }) {
   const [root, setRoot] = useState<MindNode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +54,17 @@ export function MindMapModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
           <div className="flex items-center gap-1 shrink-0">
+            {onEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-7 rounded-[1px] mr-1"
+                onClick={onEdit}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
             <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose}>
               <X className="h-4 w-4" />

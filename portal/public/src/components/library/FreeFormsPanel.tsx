@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Plus, Loader2, AlertCircle, Pencil, Trash2, Download, ExternalLink, Search,
-  NotebookPen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +30,12 @@ import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
+import { MindMapEditorModal } from "./MindMapEditorModal";
+import { QuizModal } from "./QuizModal";
+import { QuizEditorModal } from "./QuizEditorModal";
+import { FlashcardsModal } from "./FlashcardsModal";
+import { FlashcardEditorModal } from "./FlashcardEditorModal";
+import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { TagInput } from "./TagInput";
@@ -44,13 +49,15 @@ const CATEGORIES = [
   { value: "audio",       label: "Audio"        },
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
+  { value: "quiz",        label: "Quizzes"      },
+  { value: "flashcards",  label: "Flashcards"   },
   { value: "image",       label: "Images"       },
   { value: "component",   label: "Components"   },
 ];
 
 type ViewerKind =
-  | "markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video"
-  | "presentation" | "jsx";
+  | "markdown" | "docx" | "excel" | "mindmap" | "quiz" | "flashcards" | "image" | "audio"
+  | "video" | "presentation" | "jsx";
 
 /** Pick the viewer for a file, mirroring FileCard's dispatch (notes open read-only). */
 function viewerFor(file: FreeFormFile): ViewerKind | null {
@@ -59,6 +66,8 @@ function viewerFor(file: FreeFormFile): ViewerKind | null {
   if (ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv") return "excel";
   if (ext === ".md" || ext === ".txt") return "markdown";
   if (file.file_category === "mindmap") return "mindmap";
+  if (file.file_category === "quiz") return "quiz";
+  if (file.file_category === "flashcards") return "flashcards";
   if (file.file_category === "image") return "image";
   if (file.file_category === "audio") return "audio";
   if (file.file_category === "video") return "video";
@@ -177,6 +186,12 @@ export function FreeFormsPanel() {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
+  const [mindMapEdit, setMindMapEdit] = useState<FreeFormFile | null>(null);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizEdit, setQuizEdit] = useState<FreeFormFile | null>(null);
+  const [showFlashcards, setShowFlashcards] = useState(false);
+  const [flashcardsEdit, setFlashcardsEdit] = useState<FreeFormFile | null>(null);
   const [noteTarget, setNoteTarget] = useState<FreeFormFile | null>(null);
   const [editTarget, setEditTarget] = useState<FreeFormFile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FreeFormFile | null>(null);
@@ -291,15 +306,14 @@ export function FreeFormsPanel() {
             </button>
           ))}
           <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 h-7 rounded-[1px]"
-              onClick={() => setShowNote(true)}
-            >
-              <NotebookPen className="h-3.5 w-3.5" />
-              New note
-            </Button>
+            <NewArtifactButton
+              onCreate={(kind) => {
+                if (kind === "note") setShowNote(true);
+                else if (kind === "mindmap") setShowMindMap(true);
+                else if (kind === "flashcards") setShowFlashcards(true);
+                else setShowQuiz(true);
+              }}
+            />
             <Button size="sm" className="gap-1.5 h-7 rounded-[1px]" onClick={() => setShowAdd(true)}>
               <Plus className="h-3.5 w-3.5" />
               Add file
@@ -527,6 +541,65 @@ export function FreeFormsPanel() {
           title={viewer.file.title}
           fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
           onClose={() => setViewer(null)}
+          onEdit={() => {
+            setMindMapEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {mindMapEdit && (
+        <MindMapEditorModal<FreeFormFile>
+          notebookId={null}
+          file={mindMapEdit}
+          onClose={() => setMindMapEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setMindMapEdit(null);
+          }}
+        />
+      )}
+      {viewer?.kind === "quiz" && (
+        <QuizModal
+          title={viewer.file.title}
+          fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
+          onClose={() => setViewer(null)}
+          onEdit={() => {
+            setQuizEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {quizEdit && (
+        <QuizEditorModal<FreeFormFile>
+          notebookId={null}
+          file={quizEdit}
+          onClose={() => setQuizEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setQuizEdit(null);
+          }}
+        />
+      )}
+      {viewer?.kind === "flashcards" && (
+        <FlashcardsModal
+          title={viewer.file.title}
+          fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
+          onClose={() => setViewer(null)}
+          onEdit={() => {
+            setFlashcardsEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {flashcardsEdit && (
+        <FlashcardEditorModal<FreeFormFile>
+          notebookId={null}
+          file={flashcardsEdit}
+          onClose={() => setFlashcardsEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setFlashcardsEdit(null);
+          }}
         />
       )}
       {viewer?.kind === "image" && viewer.file.r2_url && (
@@ -569,6 +642,39 @@ export function FreeFormsPanel() {
           onSaved={(newNote) => {
             setFiles((prev) => [newNote, ...prev]);
             setShowNote(false);
+          }}
+        />
+      )}
+
+      {showMindMap && (
+        <MindMapEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowMindMap(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowMindMap(false);
+          }}
+        />
+      )}
+
+      {showQuiz && (
+        <QuizEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowQuiz(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowQuiz(false);
+          }}
+        />
+      )}
+
+      {showFlashcards && (
+        <FlashcardEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowFlashcards(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowFlashcards(false);
           }}
         />
       )}

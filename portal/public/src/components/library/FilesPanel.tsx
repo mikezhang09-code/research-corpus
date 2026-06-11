@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Loader2, NotebookPen, CheckSquare, FolderPlus, Trash2, X, AlertCircle,
+  Plus, Loader2, CheckSquare, FolderPlus, Trash2, X, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,10 @@ import {
 import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
 import { NoteEditorModal } from "./NoteEditorModal";
+import { MindMapEditorModal } from "./MindMapEditorModal";
+import { QuizEditorModal } from "./QuizEditorModal";
+import { FlashcardEditorModal } from "./FlashcardEditorModal";
+import { NewArtifactButton } from "./NewArtifactButton";
 
 const CATEGORIES = [
   { value: "",            label: "All"          },
@@ -32,6 +36,8 @@ const CATEGORIES = [
   { value: "audio",       label: "Audio"        },
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
+  { value: "quiz",        label: "Quizzes"      },
+  { value: "flashcards",  label: "Flashcards"   },
   { value: "image",       label: "Images"       },
   { value: "component",   label: "Components"   },
 ];
@@ -109,6 +115,9 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [activeCategory, setActiveCategory] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [showFlashcards, setShowFlashcards] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
@@ -236,15 +245,14 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
               {selectionMode ? "Done" : "Select"}
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 h-7 rounded-[1px]"
-            onClick={() => setShowNote(true)}
-          >
-            <NotebookPen className="h-3.5 w-3.5" />
-            New note
-          </Button>
+          <NewArtifactButton
+            onCreate={(kind) => {
+              if (kind === "note") setShowNote(true);
+              else if (kind === "mindmap") setShowMindMap(true);
+              else if (kind === "flashcards") setShowFlashcards(true);
+              else setShowQuiz(true);
+            }}
+          />
           <Button
             size="sm"
             className="gap-1.5 h-7 rounded-[1px]"
@@ -352,6 +360,39 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           onSaved={(newNote) => {
             setFiles((prev) => [newNote, ...prev]);
             setShowNote(false);
+          }}
+        />
+      )}
+
+      {showMindMap && (
+        <MindMapEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowMindMap(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowMindMap(false);
+          }}
+        />
+      )}
+
+      {showQuiz && (
+        <QuizEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowQuiz(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowQuiz(false);
+          }}
+        />
+      )}
+
+      {showFlashcards && (
+        <FlashcardEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowFlashcards(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowFlashcards(false);
           }}
         />
       )}

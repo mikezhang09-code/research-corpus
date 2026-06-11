@@ -4,7 +4,7 @@ import { type HTMLAttributes, type ReactNode, useEffect, useMemo, useState } fro
 import {
   Layers, FileText, BookOpen, Music, Video, Network, ImageIcon, File, Table,
   ExternalLink, Trash2, Pencil, Loader2, AlertCircle, CheckSquare, Square,
-  ChevronLeft, ChevronRight, Search, Code2,
+  ChevronLeft, ChevronRight, Search, Code2, Brain, StickyNote,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents } from "@/components/markdown/markdown-extras";
@@ -27,12 +27,17 @@ import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
+import { MindMapEditorModal } from "./MindMapEditorModal";
+import { QuizModal } from "./QuizModal";
+import { QuizEditorModal } from "./QuizEditorModal";
+import { FlashcardsModal } from "./FlashcardsModal";
+import { FlashcardEditorModal } from "./FlashcardEditorModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { JsxModal } from "./JsxModal";
 
 // ---- category config ----
 
-export type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "image" | "component" | "other";
+export type CatKey = "slide" | "note" | "report" | "spreadsheet" | "audio" | "video" | "mindmap" | "quiz" | "flashcards" | "image" | "component" | "other";
 
 export const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg: string; iconColor: string; label: string }> = {
   slide:       { icon: Layers,    bg: "#f5e2d4", iconColor: "var(--color-terracotta)", label: "Slide"       },
@@ -42,6 +47,8 @@ export const FILE_CATEGORY_CONFIG: Record<CatKey, { icon: React.ElementType; bg:
   audio:       { icon: Music,     bg: "#dcd5e8", iconColor: "var(--color-lavender)",   label: "Audio"       },
   video:       { icon: Video,     bg: "#ecd5d6", iconColor: "var(--color-blush)",      label: "Video"       },
   mindmap:     { icon: Network,   bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Mind Map"    },
+  quiz:        { icon: Brain,     bg: "#dde2cf", iconColor: "var(--color-sage)",       label: "Quiz"        },
+  flashcards:  { icon: StickyNote, bg: "#dde2cf", iconColor: "var(--color-mint)",      label: "Flashcards"  },
   image:       { icon: ImageIcon, bg: "#dde2cf", iconColor: "var(--color-mint)",       label: "Image"       },
   component:   { icon: Code2,     bg: "#d6e0e0", iconColor: "var(--color-sky)",        label: "Component"   },
   other:       { icon: File,      bg: "var(--color-paper-deep)", iconColor: "var(--color-ink-fade)", label: "File" },
@@ -341,7 +348,7 @@ export function FileCard({
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "mindmap-edit" | "quiz" | "quiz-edit" | "flashcards" | "flashcards-edit" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
@@ -350,14 +357,16 @@ export function FileCard({
   const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
   const isPresentation = ext === ".ppt" || ext === ".pptx";
   const isMindMap = file.file_category === "mindmap";
+  const isQuiz = file.file_category === "quiz";
+  const isFlashcards = file.file_category === "flashcards";
   const isNote = file.file_category === "note";
   const isImage = file.file_category === "image";
   const isAudio = file.file_category === "audio";
   const isVideo = file.file_category === "video";
   // The presentation viewer (Office Online embed) needs a public file URL.
   const hasViewer =
-    isMarkdown || isDocx || isExcel || isMindMap || isImage || isAudio || isVideo ||
-    isComponent || (isPresentation && !!file.r2_url);
+    isMarkdown || isDocx || isExcel || isMindMap || isQuiz || isFlashcards || isImage ||
+    isAudio || isVideo || isComponent || (isPresentation && !!file.r2_url);
 
   const added = new Date(file.added_at).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
@@ -380,6 +389,8 @@ export function FileCard({
     else if (isExcel) setViewer("excel");
     else if (isMarkdown) setViewer("markdown");
     else if (isMindMap) setViewer("mindmap");
+    else if (isQuiz) setViewer("quiz");
+    else if (isFlashcards) setViewer("flashcards");
     else if (isImage) setViewer("image");
     else if (isAudio) setViewer("audio");
     else if (isVideo) setViewer("video");
@@ -409,6 +420,56 @@ export function FileCard({
           title={file.title}
           fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
           onClose={() => setViewer(null)}
+          onEdit={() => setViewer("mindmap-edit")}
+        />
+      )}
+      {viewer === "mindmap-edit" && (
+        <MindMapEditorModal
+          notebookId={file.notebook_id}
+          file={file}
+          onClose={() => setViewer(null)}
+          onSaved={(updated) => {
+            onUpdated?.(updated);
+            setViewer(null);
+          }}
+        />
+      )}
+      {viewer === "quiz" && (
+        <QuizModal
+          title={file.title}
+          fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
+          onClose={() => setViewer(null)}
+          onEdit={() => setViewer("quiz-edit")}
+        />
+      )}
+      {viewer === "quiz-edit" && (
+        <QuizEditorModal
+          notebookId={file.notebook_id}
+          file={file}
+          onClose={() => setViewer(null)}
+          onSaved={(updated) => {
+            onUpdated?.(updated);
+            setViewer(null);
+          }}
+        />
+      )}
+      {viewer === "flashcards" && (
+        <FlashcardsModal
+          title={file.title}
+          fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
+          onClose={() => setViewer(null)}
+          onEdit={() => setViewer("flashcards-edit")}
+        />
+      )}
+      {viewer === "flashcards-edit" && (
+        <FlashcardEditorModal
+          notebookId={file.notebook_id}
+          file={file}
+          onClose={() => setViewer(null)}
+          onSaved={(updated) => {
+            onUpdated?.(updated);
+            setViewer(null);
+          }}
         />
       )}
       {viewer === "image" && file.r2_url && (
@@ -480,7 +541,7 @@ export function FileCard({
                 className="flex-1 gap-1.5 h-8 rounded-[1px]"
                 onClick={openViewer}
               >
-                {isNote ? "Open" : isAudio || isVideo ? "Play" : "View"}
+                {isNote ? "Open" : isAudio || isVideo ? "Play" : isQuiz ? "Take quiz" : isFlashcards ? "Study" : "View"}
               </Button>
             ) : file.r2_url ? (
               <a href={file.r2_url} target="_blank" rel="noopener noreferrer" className="flex-1">
