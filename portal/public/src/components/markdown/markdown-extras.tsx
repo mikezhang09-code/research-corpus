@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
-import { Loader2 } from "lucide-react";
+import { Check, Copy, Loader2 } from "lucide-react";
 import "katex/dist/katex.min.css";
 import "./markdown-extras.css";
 
@@ -124,6 +124,60 @@ function MermaidDiagram({ source }: { source: string }) {
 type CodeProps = HTMLAttributes<HTMLElement> & { children?: ReactNode; node?: unknown };
 type PreProps = HTMLAttributes<HTMLPreElement> & { children?: ReactNode; node?: unknown };
 
+// The main portal is reached over plain http on the Tailscale IP, which is
+// not a secure context — navigator.clipboard is undefined there. Fall back
+// to the legacy execCommand path in that case.
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the legacy path
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    ta.remove();
+  }
+}
+
+function CopyablePre({ children, node: _node, ...props }: PreProps) {
+  void _node;
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    if (await copyTextToClipboard(flattenText(children))) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  }
+
+  return (
+    <div className="relative group">
+      <pre {...props}>{children}</pre>
+      <button
+        type="button"
+        onClick={handleCopy}
+        title={copied ? "Copied" : "Copy code"}
+        aria-label={copied ? "Copied" : "Copy code"}
+        className="absolute top-2 right-2 h-7 w-7 inline-flex items-center justify-center rounded-[1px] border border-rule bg-vellum/90 text-ink-fade opacity-60 hover:opacity-100 hover:text-ink hover:border-ink group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
 function childClassName(children: ReactNode): string {
   const only = Array.isArray(children) ? children.find(Boolean) : children;
   if (only && typeof only === "object" && "props" in only) {
@@ -143,9 +197,8 @@ export const markdownCodeComponents: Components = {
     }
     return <code className={className} {...props}>{children}</code>;
   },
-  pre({ children, node: _node, ...props }: PreProps) {
-    void _node;
-    if (MERMAID_RE.test(childClassName(children))) return <>{children}</>;
-    return <pre {...props}>{children}</pre>;
+  pre(props: PreProps) {
+    if (MERMAID_RE.test(childClassName(props.children))) return <>{props.children}</>;
+    return <CopyablePre {...props} />;
   },
 };
