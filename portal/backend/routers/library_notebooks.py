@@ -841,8 +841,12 @@ async def generate_artifact(nb_id: UUID, body: GenerateArtifactRequest):
 
     from ..ai import ai_chat
 
+    # Repeat the language directive in the user turn — with a large files
+    # context the tail of the system prompt can get under-weighted.
+    user_prompt = f"{_GEN_INSTRUCTIONS[kind]}\n\n{lang_directive}"
+
     try:
-        raw = await ai_chat(system_prompt, [{"role": "user", "content": _GEN_INSTRUCTIONS[kind]}], s)
+        raw = await ai_chat(system_prompt, [{"role": "user", "content": user_prompt}], s)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
 
