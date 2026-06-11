@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Loader2, Save, AlertCircle, Eye, Pencil } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents } from "@/components/markdown/markdown-extras";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -55,6 +55,14 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
     ? title.trim() !== file.title || body !== initialBody.current
     : title.trim().length > 0 || body.length > 0;
 
+  // Closing must never silently discard typed work (backdrop clicks are easy
+  // to hit by accident).
+  function requestClose() {
+    if (saving) return;
+    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    onClose();
+  }
+
   async function handleSave() {
     const t = title.trim();
     if (!t) { setError("Title is required"); return; }
@@ -91,7 +99,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
     >
       <div className="bg-vellum rounded-[2px] border border-ink shadow-[4px_4px_0_rgb(42_36_24_/_0.18)] w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden">
         {/* Header */}
@@ -99,7 +107,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
           <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink">
             {isEdit ? "Edit note" : "New note"}
           </h2>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={requestClose} disabled={saving}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -137,7 +145,13 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
                   prose-code:bg-paper-deep prose-code:px-1 prose-code:rounded-[1px] prose-code:text-[13px] prose-code:font-mono prose-code:text-ink
                   prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2
                   prose-blockquote:border-l-2 prose-blockquote:border-terracotta prose-blockquote:pl-4 prose-blockquote:text-ink-fade prose-blockquote:italic">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={markdownRemarkPlugins}
+                    rehypePlugins={markdownRehypePlugins}
+                    components={markdownCodeComponents}
+                  >
+                    {body}
+                  </ReactMarkdown>
                 </div>
               ) : (
                 <p className="font-serif italic text-[13px] text-ink-mute">Nothing to preview yet.</p>
@@ -163,7 +177,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-rule bg-paper-light shrink-0">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={requestClose} disabled={saving}>Cancel</Button>
           <Button
             size="sm"
             onClick={handleSave}

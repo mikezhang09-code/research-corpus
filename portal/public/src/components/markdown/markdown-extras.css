@@ -1,0 +1,80 @@
+/* Code-block + KaTeX styling for the shared markdown surfaces.
+
+   Instead of importing a stock highlight.js theme (whose fixed light or dark
+   palette breaks under the portal's sepia/ink/dark theme variants), code
+   blocks use the paper/ink variables and a small token palette built from the
+   portal's accent colors — all mid-tone, so they stay readable on every
+   theme. This also overrides @tailwindcss/typography's slate-on-dark `pre`
+   default, which clashed with the paper aesthetic. */
+
+.prose pre {
+  background-color: var(--color-paper-deep);
+  color: var(--color-ink);
+}
+
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--color-ink-fade);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-deletion {
+  color: var(--color-terracotta);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta-string {
+  color: var(--color-sage);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--color-ochre);
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--color-sky);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-built_in,
+.hljs-params {
+  color: var(--color-lavender);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
+
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}

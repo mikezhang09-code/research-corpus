@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, Search, Code2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents } from "@/components/markdown/markdown-extras";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -207,8 +207,9 @@ function MarkdownBody({ content, fontSize, idPrefix }: { content: string; fontSi
       prose-a:text-terracotta prose-a:underline prose-a:underline-offset-2"
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{ h1: heading(1), h2: heading(2), h3: heading(3), h4: heading(4) }}
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={markdownRehypePlugins}
+        components={{ ...markdownCodeComponents, h1: heading(1), h2: heading(2), h3: heading(3), h4: heading(4) }}
       >
         {content}
       </ReactMarkdown>
