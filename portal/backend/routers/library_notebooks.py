@@ -16,6 +16,7 @@ from ..models import (
     ChatHistoryResponse,
     ChatResponse,
     ChatTurn,
+    GenerateArtifactRequest,
     GenerateDescriptionRequest,
     GenerateDescriptionResponse,
     LibraryChatRequest,
@@ -660,6 +661,222 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
         is_follow_up=turn_number > 1,
         references=[],
     )
+
+
+# ---------------------------------------------------------------------------
+# AI artifact generation
+# ---------------------------------------------------------------------------
+
+_GEN_KINDS = ("note", "mindmap", "quiz", "flashcards")
+
+# Per-kind output instructions. JSON kinds carry a "title" field that is
+# stripped before saving so the stored file is exactly the shape the
+# corresponding viewer/editor reads (mirrors the public viewer's generate
+# route in portal/public).
+_GEN_INSTRUCTIONS: dict[str, str] = {
+    "note": (
+        "Write a synthesis note in Markdown that distils the key ideas across ALL the "
+        "files above: the main themes, how the pieces relate, and any open questions. "
+        'Start with a single "# <title>" heading on the first line (a short, specific '
+        "title), then well-structured sections. Output ONLY the Markdown — no preamble, "
+        "no code fence."
+    ),
+    "mindmap": (
+        "Produce a mind map of the source material as STRICT JSON (no code fence, no "
+        "commentary) in exactly this shape:\n"
+        '{"title": "<short file title>", "name": "<central topic>", '
+        '"children": [{"name": "...", "children": [...]}]}\n'
+        'Aim for 3-6 main branches and 2-4 levels of depth. "children" may be omitted '
+        "on leaves."
+    ),
+    "quiz": (
+        "Produce a multiple-choice quiz covering the most important points of the "
+        "source material as STRICT JSON (no code fence, no commentary) in exactly this "
+        "shape:\n"
+        '{"title": "<short quiz title>", "questions": [{"question": "...", "hint": "...", '
+        '"answerOptions": [{"text": "...", "rationale": "why right/wrong", "isCorrect": true}]}]}\n'
+        "Write 6-10 questions, each with exactly 4 answer options and exactly one "
+        "isCorrect: true. Every option needs a rationale. The hint is optional but "
+        "encouraged."
+    ),
+    "flashcards": (
+        "Produce study flashcards covering the key facts and concepts of the source "
+        "material as STRICT JSON (no code fence, no commentary) in exactly this shape:\n"
+        '{"title": "<short deck title>", "cards": [{"front": "question or term", '
+        '"back": "answer or definition"}]}\n'
+        "Write 12-20 cards. Fronts should be specific prompts, backs concise but complete."
+    ),
+}
+
+
+def _extract_json_object(text: str) -> dict:
+    stripped = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
+    stripped = re.sub(r"```\s*$", "", stripped)
+    start, end = stripped.find("{"), stripped.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("model response contained no JSON object")
+    import json
+
+    parsed = json.loads(stripped[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("model response was not a JSON object")
+    return parsed
+
+
+def _clean_mindmap_node(raw: Any, depth: int = 0) -> dict | None:
+    if depth > 6 or not isinstance(raw, dict):
+        return None
+    name = str(raw.get("name") or "").strip()
+    if not name:
+        return None
+    children = [
+        node
+        for c in (raw.get("children") or [])
+        if (node := _clean_mindmap_node(c, depth + 1)) is not None
+    ]
+    return {"name": name, "children": children} if children else {"name": name}
+
+
+def _build_generated_artifact(kind: str, raw: str) -> tuple[str, str, str, str]:
+    """Validate model output for `kind` → (title, content, ext, mime).
+
+    Raises ValueError with a user-presentable message on malformed output.
+    """
+    import json
+
+    if kind == "note":
+        heading = re.search(r"^#\s+(.+)$", raw, flags=re.MULTILINE)
+        title = (heading.group(1) if heading else "Generated note").strip()
+        return title, raw, ".md", "text/markdown"
+
+    obj = _extract_json_object(raw)
+    title = str(obj.get("title") or "").strip() or f"Generated {kind}"
+
+    if kind == "mindmap":
+        root = _clean_mindmap_node({"name": obj.get("name"), "children": obj.get("children")})
+        if not root or not root.get("children"):
+            raise ValueError("model returned an empty mind map")
+        return title, json.dumps(root, ensure_ascii=False, indent=2), ".json", "application/json"
+
+    if kind == "quiz":
+        questions = []
+        for q in obj.get("questions") or []:
+            if not isinstance(q, dict):
+                continue
+            opts = [
+                {
+                    "text": str(o.get("text") or "").strip(),
+                    "rationale": str(o.get("rationale") or "").strip(),
+                    "isCorrect": bool(o.get("isCorrect")),
+                }
+                for o in (q.get("answerOptions") or [])
+                if isinstance(o, dict) and str(o.get("text") or "").strip()
+            ]
+            question = str(q.get("question") or "").strip()
+            hint = str(q.get("hint") or "").strip()
+            if question and len(opts) >= 2 and any(o["isCorrect"] for o in opts):
+                questions.append(
+                    {"question": question, **({"hint": hint} if hint else {}), "answerOptions": opts}
+                )
+        if not questions:
+            raise ValueError("model returned no valid quiz questions")
+        return (
+            title,
+            json.dumps({"questions": questions}, ensure_ascii=False, indent=2),
+            ".json",
+            "application/json",
+        )
+
+    # flashcards
+    cards = [
+        {"front": str(c.get("front") or "").strip(), "back": str(c.get("back") or "").strip()}
+        for c in (obj.get("cards") or [])
+        if isinstance(c, dict)
+    ]
+    cards = [c for c in cards if c["front"] and c["back"]]
+    if not cards:
+        raise ValueError("model returned no valid flashcards")
+    return (
+        title,
+        json.dumps({"cards": cards}, ensure_ascii=False, indent=2),
+        ".json",
+        "application/json",
+    )
+
+
+@router.post("/{nb_id}/generate", response_model=LibraryFileRead, status_code=201)
+async def generate_artifact(nb_id: UUID, body: GenerateArtifactRequest):
+    """Generate a new artifact with AI, using the folio's files as context.
+
+    The result is stored exactly like a manual upload so every viewer/editor
+    opens it unchanged.
+    """
+    kind = body.kind
+    if kind not in _GEN_KINDS:
+        raise HTTPException(400, f"kind must be one of: {', '.join(_GEN_KINDS)}")
+
+    db = get_supabase()
+    nb = _notebook_or_404(db, nb_id)
+    s = get_settings()
+
+    files = repo.list_files(db, nb_id)
+    if not files:
+        raise HTTPException(400, "This folio has no files to use as context — add some first.")
+    files_context = _build_files_context(files)
+
+    lang = (body.language or "en").lower()
+    if lang == "zh":
+        lang_directive = "Write the artifact in Simplified Chinese (中文)."
+    else:
+        lang_directive = "Write the artifact in English."
+
+    system_prompt = (
+        "You are generating a study artifact for a personal research portal.\n"
+        f'The artifact is based on the research folio "{nb["title"]}". The folio\'s '
+        "files appear below — base your output ONLY on them; do not invent facts "
+        "they don't support. Some files may be truncated or shown as placeholders.\n\n"
+        f"{files_context}\n\n"
+        f"{lang_directive}"
+    )
+
+    from ..ai import ai_chat
+
+    try:
+        raw = await ai_chat(system_prompt, [{"role": "user", "content": _GEN_INSTRUCTIONS[kind]}], s)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
+    try:
+        title, content, ext, mime = _build_generated_artifact(kind, raw)
+    except ValueError as exc:  # includes json.JSONDecodeError
+        raise HTTPException(502, f"Generation failed: {exc}")
+
+    from datetime import datetime, timezone
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    filename = f"{kind}-{stamp}{ext}"
+    item_id = str(uuid4())
+    data = content.encode("utf-8")
+    r2_key = r2_key_for_upload(item_id, filename)
+    r2_url_val = upload_file(r2_key, data, mime)
+
+    row = {
+        "id": item_id,
+        "title": title,
+        "description": f"Generated by AI from {len(files)} folio file(s)",
+        "source_type": "upload",
+        "original_name": filename,
+        "mime_type": mime,
+        "file_ext": ext,
+        "file_category": kind,
+        "r2_key": r2_key,
+        "r2_url": r2_url_val,
+        "file_size_bytes": len(data),
+        "is_link_only": False,
+        "tags": [],
+        "notebook_id": str(nb_id),
+    }
+    return db.table("library_items").insert(row).execute().data[0]
 
 
 @router.post("/{nb_id}/description/generate", response_model=GenerateDescriptionResponse)

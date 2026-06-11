@@ -427,6 +427,17 @@ export async function uploadLibraryNotebookFile(
   return res.json();
 }
 
+/** Ask the AI to generate a new artifact from the folio's existing files. */
+export const generateLibraryArtifact = (
+  notebookId: string,
+  kind: "note" | "mindmap" | "quiz" | "flashcards",
+  language?: string,
+) =>
+  request<LibraryFile>(`/api/library-notebooks/${notebookId}/generate`, {
+    method: "POST",
+    body: JSON.stringify({ kind, language: language ?? null }),
+  });
+
 export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>
   request<void>(`/api/library-notebooks/${notebookId}/files/${fileId}`, { method: "DELETE" });
 

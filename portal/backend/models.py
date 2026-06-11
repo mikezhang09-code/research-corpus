@@ -469,3 +469,8 @@ class GenerateDescriptionRequest(BaseModel):
 
 class GenerateDescriptionResponse(BaseModel):
     description: str
+
+
+class GenerateArtifactRequest(BaseModel):
+    kind: str  # "note" | "mindmap" | "quiz" | "flashcards"
+    language: str | None = None  # "en" | "zh"; user's preferred output language
