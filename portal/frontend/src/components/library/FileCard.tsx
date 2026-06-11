@@ -29,6 +29,7 @@ import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizModal } from "./QuizModal";
+import { QuizEditorModal } from "./QuizEditorModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { JsxModal } from "./JsxModal";
 
@@ -344,7 +345,7 @@ export function FileCard({
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "mindmap-edit" | "quiz" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "mindmap-edit" | "quiz" | "quiz-edit" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
@@ -433,6 +434,18 @@ export function FileCard({
           title={file.title}
           fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
           onClose={() => setViewer(null)}
+          onEdit={() => setViewer("quiz-edit")}
+        />
+      )}
+      {viewer === "quiz-edit" && (
+        <QuizEditorModal
+          notebookId={file.notebook_id}
+          file={file}
+          onClose={() => setViewer(null)}
+          onSaved={(updated) => {
+            onUpdated?.(updated);
+            setViewer(null);
+          }}
         />
       )}
       {viewer === "image" && file.r2_url && (

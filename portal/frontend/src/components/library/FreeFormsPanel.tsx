@@ -32,6 +32,7 @@ import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizModal } from "./QuizModal";
+import { QuizEditorModal } from "./QuizEditorModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
@@ -183,6 +184,8 @@ export function FreeFormsPanel() {
   const [showNote, setShowNote] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
   const [mindMapEdit, setMindMapEdit] = useState<FreeFormFile | null>(null);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizEdit, setQuizEdit] = useState<FreeFormFile | null>(null);
   const [noteTarget, setNoteTarget] = useState<FreeFormFile | null>(null);
   const [editTarget, setEditTarget] = useState<FreeFormFile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FreeFormFile | null>(null);
@@ -298,7 +301,11 @@ export function FreeFormsPanel() {
           ))}
           <div className="ml-auto flex items-center gap-2">
             <NewArtifactButton
-              onCreate={(kind) => (kind === "note" ? setShowNote(true) : setShowMindMap(true))}
+              onCreate={(kind) => {
+                if (kind === "note") setShowNote(true);
+                else if (kind === "mindmap") setShowMindMap(true);
+                else setShowQuiz(true);
+              }}
             />
             <Button size="sm" className="gap-1.5 h-7 rounded-[1px]" onClick={() => setShowAdd(true)}>
               <Plus className="h-3.5 w-3.5" />
@@ -549,6 +556,21 @@ export function FreeFormsPanel() {
           title={viewer.file.title}
           fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
           onClose={() => setViewer(null)}
+          onEdit={() => {
+            setQuizEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {quizEdit && (
+        <QuizEditorModal<FreeFormFile>
+          notebookId={null}
+          file={quizEdit}
+          onClose={() => setQuizEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setQuizEdit(null);
+          }}
         />
       )}
       {viewer?.kind === "image" && viewer.file.r2_url && (
@@ -602,6 +624,17 @@ export function FreeFormsPanel() {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowMindMap(false);
+          }}
+        />
+      )}
+
+      {showQuiz && (
+        <QuizEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowQuiz(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowQuiz(false);
           }}
         />
       )}

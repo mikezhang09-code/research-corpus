@@ -1,14 +1,14 @@
 "use client";
 
-import { ChevronDown, Network, NotebookPen, Sparkles } from "lucide-react";
+import { Brain, ChevronDown, Network, NotebookPen, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export type ArtifactKind = "note" | "mindmap";
+export type ArtifactKind = "note" | "mindmap" | "quiz";
 
-// One row per creatable artifact type. Future kinds (quiz, flashcards, …)
+// One row per creatable artifact type. Future kinds (flashcards, …)
 // get an entry here plus a case in each panel's onCreate handler.
 const ARTIFACT_TYPES: {
   kind: ArtifactKind;
@@ -18,6 +18,7 @@ const ARTIFACT_TYPES: {
 }[] = [
   { kind: "note", label: "Note", hint: "Markdown text", icon: NotebookPen },
   { kind: "mindmap", label: "Mind map", hint: "Topic tree", icon: Network },
+  { kind: "quiz", label: "Quiz", hint: "Multiple choice", icon: Brain },
 ];
 
 /** "New artifact" dropdown shared by the Free Forms and folio file panels. */

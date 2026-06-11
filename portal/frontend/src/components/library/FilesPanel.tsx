@@ -23,6 +23,7 @@ import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
+import { QuizEditorModal } from "./QuizEditorModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 
 const CATEGORIES = [
@@ -34,6 +35,7 @@ const CATEGORIES = [
   { value: "audio",       label: "Audio"        },
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
+  { value: "quiz",        label: "Quizzes"      },
   { value: "image",       label: "Images"       },
   { value: "component",   label: "Components"   },
 ];
@@ -112,6 +114,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
@@ -240,7 +243,11 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             </Button>
           )}
           <NewArtifactButton
-            onCreate={(kind) => (kind === "note" ? setShowNote(true) : setShowMindMap(true))}
+            onCreate={(kind) => {
+              if (kind === "note") setShowNote(true);
+              else if (kind === "mindmap") setShowMindMap(true);
+              else setShowQuiz(true);
+            }}
           />
           <Button
             size="sm"
@@ -360,6 +367,17 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowMindMap(false);
+          }}
+        />
+      )}
+
+      {showQuiz && (
+        <QuizEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowQuiz(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowQuiz(false);
           }}
         />
       )}
