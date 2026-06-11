@@ -33,6 +33,8 @@ import { MindMapModal } from "./MindMapModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizModal } from "./QuizModal";
 import { QuizEditorModal } from "./QuizEditorModal";
+import { FlashcardsModal } from "./FlashcardsModal";
+import { FlashcardEditorModal } from "./FlashcardEditorModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
@@ -48,13 +50,14 @@ const CATEGORIES = [
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
   { value: "quiz",        label: "Quizzes"      },
+  { value: "flashcards",  label: "Flashcards"   },
   { value: "image",       label: "Images"       },
   { value: "component",   label: "Components"   },
 ];
 
 type ViewerKind =
-  | "markdown" | "docx" | "excel" | "mindmap" | "quiz" | "image" | "audio" | "video"
-  | "presentation" | "jsx";
+  | "markdown" | "docx" | "excel" | "mindmap" | "quiz" | "flashcards" | "image" | "audio"
+  | "video" | "presentation" | "jsx";
 
 /** Pick the viewer for a file, mirroring FileCard's dispatch (notes open read-only). */
 function viewerFor(file: FreeFormFile): ViewerKind | null {
@@ -64,6 +67,7 @@ function viewerFor(file: FreeFormFile): ViewerKind | null {
   if (ext === ".md" || ext === ".txt") return "markdown";
   if (file.file_category === "mindmap") return "mindmap";
   if (file.file_category === "quiz") return "quiz";
+  if (file.file_category === "flashcards") return "flashcards";
   if (file.file_category === "image") return "image";
   if (file.file_category === "audio") return "audio";
   if (file.file_category === "video") return "video";
@@ -186,6 +190,8 @@ export function FreeFormsPanel() {
   const [mindMapEdit, setMindMapEdit] = useState<FreeFormFile | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizEdit, setQuizEdit] = useState<FreeFormFile | null>(null);
+  const [showFlashcards, setShowFlashcards] = useState(false);
+  const [flashcardsEdit, setFlashcardsEdit] = useState<FreeFormFile | null>(null);
   const [noteTarget, setNoteTarget] = useState<FreeFormFile | null>(null);
   const [editTarget, setEditTarget] = useState<FreeFormFile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FreeFormFile | null>(null);
@@ -304,6 +310,7 @@ export function FreeFormsPanel() {
               onCreate={(kind) => {
                 if (kind === "note") setShowNote(true);
                 else if (kind === "mindmap") setShowMindMap(true);
+                else if (kind === "flashcards") setShowFlashcards(true);
                 else setShowQuiz(true);
               }}
             />
@@ -573,6 +580,28 @@ export function FreeFormsPanel() {
           }}
         />
       )}
+      {viewer?.kind === "flashcards" && (
+        <FlashcardsModal
+          title={viewer.file.title}
+          fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
+          onClose={() => setViewer(null)}
+          onEdit={() => {
+            setFlashcardsEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {flashcardsEdit && (
+        <FlashcardEditorModal<FreeFormFile>
+          notebookId={null}
+          file={flashcardsEdit}
+          onClose={() => setFlashcardsEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setFlashcardsEdit(null);
+          }}
+        />
+      )}
       {viewer?.kind === "image" && viewer.file.r2_url && (
         <ImageModal src={viewer.file.r2_url} title={viewer.file.title} onClose={() => setViewer(null)} />
       )}
@@ -635,6 +664,17 @@ export function FreeFormsPanel() {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowQuiz(false);
+          }}
+        />
+      )}
+
+      {showFlashcards && (
+        <FlashcardEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowFlashcards(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowFlashcards(false);
           }}
         />
       )}

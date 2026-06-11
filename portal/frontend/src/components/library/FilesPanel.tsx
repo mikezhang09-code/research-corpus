@@ -24,6 +24,7 @@ import { AddFileModal } from "./AddFileModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizEditorModal } from "./QuizEditorModal";
+import { FlashcardEditorModal } from "./FlashcardEditorModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 
 const CATEGORIES = [
@@ -36,6 +37,7 @@ const CATEGORIES = [
   { value: "video",       label: "Video"        },
   { value: "mindmap",     label: "Mindmap"      },
   { value: "quiz",        label: "Quizzes"      },
+  { value: "flashcards",  label: "Flashcards"   },
   { value: "image",       label: "Images"       },
   { value: "component",   label: "Components"   },
 ];
@@ -115,6 +117,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showNote, setShowNote] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [showFlashcards, setShowFlashcards] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
@@ -246,6 +249,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             onCreate={(kind) => {
               if (kind === "note") setShowNote(true);
               else if (kind === "mindmap") setShowMindMap(true);
+              else if (kind === "flashcards") setShowFlashcards(true);
               else setShowQuiz(true);
             }}
           />
@@ -378,6 +382,17 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowQuiz(false);
+          }}
+        />
+      )}
+
+      {showFlashcards && (
+        <FlashcardEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowFlashcards(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowFlashcards(false);
           }}
         />
       )}
