@@ -53,8 +53,13 @@ async function readText(row: ContextRow): Promise<string | null> {
 
 const SYSTEM = `You are generating a study artifact for a personal research portal.
 Base your output ONLY on the source artifacts provided by the user. Do not invent
-facts that are not supported by the sources. Write in the same language the
-sources are predominantly written in.`;
+facts that are not supported by the sources.`;
+
+function languageDirective(language: string): string {
+  return language === "zh"
+    ? "Write the artifact in Simplified Chinese (中文)."
+    : "Write the artifact in English.";
+}
 
 const KIND_INSTRUCTIONS: Record<Kind, string> = {
   note: `Write a synthesis note in Markdown that distils the key ideas across ALL the
@@ -114,10 +119,35 @@ async function callModel(system: string, prompt: string): Promise<string> {
 
 function extractJson(text: string): unknown {
   const stripped = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  const start = stripped.indexOf("{");
-  const end = stripped.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Model response contained no JSON object");
-  return JSON.parse(stripped.slice(start, end + 1));
+  // The model may wrap the object in prose (or append commentary after it),
+  // so find the balanced "}" for each candidate "{" instead of slicing
+  // first-"{" .. last-"}".
+  for (let start = stripped.indexOf("{"); start >= 0; start = stripped.indexOf("{", start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < stripped.length; i++) {
+      const ch = stripped[i];
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = inString;
+      } else if (ch === '"') {
+        inString = !inString;
+      } else if (!inString && ch === "{") {
+        depth++;
+      } else if (!inString && ch === "}" && --depth === 0) {
+        try {
+          const parsed: unknown = JSON.parse(stripped.slice(start, i + 1));
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+        } catch {
+          /* not valid JSON from this "{" — try the next one */
+        }
+        break;
+      }
+    }
+  }
+  throw new Error("Model response contained no JSON object");
 }
 
 type MindMapNode = { name: string; children?: MindMapNode[] };
@@ -188,7 +218,7 @@ function buildArtifact(kind: Kind, raw: string): { title: string; content: strin
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  let body: { kind?: string };
+  let body: { kind?: string; language?: string };
   try {
     body = await req.json();
   } catch {
@@ -198,6 +228,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!KINDS.includes(kind)) {
     return NextResponse.json({ error: `kind must be one of: ${KINDS.join(", ")}` }, { status: 400 });
   }
+  const langDirective = languageDirective((body.language ?? "en").toLowerCase());
 
   const db = supabase();
   const { data: notebook } = await db
@@ -238,15 +269,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
+  // The directive appears in both turns — with a large sources block the
+  // tail of the system prompt can get under-weighted (same fix as the
+  // private portal's generate endpoint).
   const prompt = `Folio: "${(notebook as { title: string }).title}" — ${sections.length} source artifact(s) follow.
 
 ${sections.join("\n\n")}
 
-${KIND_INSTRUCTIONS[kind]}`;
+${KIND_INSTRUCTIONS[kind]}
+
+${langDirective}`;
 
   let artifact: { title: string; content: string; ext: string; mime: string };
   try {
-    artifact = buildArtifact(kind, await callModel(SYSTEM, prompt));
+    artifact = buildArtifact(kind, await callModel(`${SYSTEM}\n${langDirective}`, prompt));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `Generation failed: ${msg}` }, { status: 502 });

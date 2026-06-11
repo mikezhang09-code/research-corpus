@@ -166,10 +166,11 @@ export const saveLibraryNoteContent = (
 export const generateLibraryArtifact = (
   notebookId: string,
   kind: "note" | "mindmap" | "quiz" | "flashcards",
+  language: "en" | "zh" = "en",
 ) =>
   request<LibraryFile>(`/api/library-notebooks/${notebookId}/generate`, {
     method: "POST",
-    body: JSON.stringify({ kind }),
+    body: JSON.stringify({ kind, language }),
   });
 
 export const deleteLibraryNotebookFile = (notebookId: string, fileId: string) =>

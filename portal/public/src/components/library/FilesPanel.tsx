@@ -19,6 +19,7 @@ import {
   createLibraryNotebookFromFiles, deleteLibraryNotebookFiles,
   generateLibraryArtifact, getLibraryNotebookFiles, type LibraryFile,
 } from "@/lib/api";
+import { useLanguageMounted } from "@/hooks/use-language";
 import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
 import { NoteEditorModal } from "./NoteEditorModal";
@@ -124,6 +125,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [generating, setGenerating] = useState<ArtifactKind | null>(null);
+  const language = useLanguageMounted();
   const [actionError, setActionError] = useState<string | null>(null);
 
   const loadFiles = useCallback(async (category: string) => {
@@ -206,7 +208,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
     setGenerating(kind);
     setActionError(null);
     try {
-      const file = await generateLibraryArtifact(notebookId, kind);
+      const file = await generateLibraryArtifact(notebookId, kind, language);
       setFiles((prev) => [file, ...prev]);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
