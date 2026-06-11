@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from portal.backend.ai import strip_reasoning
+from portal.backend.routers.library_notebooks import _extract_json_object
 from portal.backend.routers.notebooks import _FORMAT_MAP, _nlm_lang
 from portal.backend.storage import (
     r2_key_for_artifact,
@@ -199,3 +200,34 @@ def test_format_map_covers_every_generate_type():
         "mind_map",
     }
     assert set(_FORMAT_MAP) == expected
+
+
+# ---------------------------------------------------------------------------
+# library_notebooks generate helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"title": "T", "name": "R"}',
+        '```json\n{"title": "T", "name": "R"}\n```',
+        # Trailing commentary containing a "}" — regression for the mindmap
+        # 502 ("Extra data: line 1 column N") from first-{ .. last-} slicing.
+        '{"title": "T", "name": "R"} Note: I kept it to {3} branches.',
+        # Leading prose containing braces before the real object.
+        'Here is the map {as requested}: {"title": "T", "name": "R"} done',
+    ],
+)
+def test_extract_json_object_tolerates_surrounding_text(text):
+    assert _extract_json_object(text) == {"title": "T", "name": "R"}
+
+
+def test_extract_json_object_first_object_wins():
+    assert _extract_json_object('{"a": 1} {"b": 2}') == {"a": 1}
+
+
+@pytest.mark.parametrize("text", ["no json here }", "[1, 2, 3]", ""])
+def test_extract_json_object_rejects_non_objects(text):
+    with pytest.raises(ValueError, match="no JSON object"):
+        _extract_json_object(text)

@@ -710,17 +710,24 @@ _GEN_INSTRUCTIONS: dict[str, str] = {
 
 
 def _extract_json_object(text: str) -> dict:
-    stripped = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
-    stripped = re.sub(r"```\s*$", "", stripped)
-    start, end = stripped.find("{"), stripped.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("model response contained no JSON object")
     import json
 
-    parsed = json.loads(stripped[start : end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("model response was not a JSON object")
-    return parsed
+    stripped = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
+    stripped = re.sub(r"```\s*$", "", stripped)
+    # The model may wrap the object in prose (or append commentary after it),
+    # so try each "{" and let raw_decode stop at the end of the first complete
+    # object instead of slicing first-"{" .. last-"}".
+    decoder = json.JSONDecoder()
+    idx = stripped.find("{")
+    while idx >= 0:
+        try:
+            parsed, _ = decoder.raw_decode(stripped, idx)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+        idx = stripped.find("{", idx + 1)
+    raise ValueError("model response contained no JSON object")
 
 
 def _clean_mindmap_node(raw: Any, depth: int = 0) -> dict | None:
