@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   createLibraryNotebookFromFiles, deleteLibraryNotebookFiles,
-  getLibraryNotebookFiles, type LibraryFile,
+  generateLibraryArtifact, getLibraryNotebookFiles, type LibraryFile,
 } from "@/lib/api";
 import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
@@ -25,7 +25,7 @@ import { NoteEditorModal } from "./NoteEditorModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
-import { NewArtifactButton } from "./NewArtifactButton";
+import { GenerateArtifactButton, NewArtifactButton, type ArtifactKind } from "./NewArtifactButton";
 
 const CATEGORIES = [
   { value: "",            label: "All"          },
@@ -123,6 +123,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [generating, setGenerating] = useState<ArtifactKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const loadFiles = useCallback(async (category: string) => {
@@ -201,6 +202,19 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
     }
   }
 
+  async function handleGenerate(kind: ArtifactKind) {
+    setGenerating(kind);
+    setActionError(null);
+    try {
+      const file = await generateLibraryArtifact(notebookId, kind);
+      setFiles((prev) => [file, ...prev]);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenerating(null);
+    }
+  }
+
   async function handleCreateFolioFromSelection(title: string) {
     if (selectedCount === 0) return;
     const fileIds = selectedFileIds;
@@ -245,6 +259,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
               {selectionMode ? "Done" : "Select"}
             </Button>
           )}
+          <GenerateArtifactButton generating={generating} onGenerate={handleGenerate} />
           <NewArtifactButton
             onCreate={(kind) => {
               if (kind === "note") setShowNote(true);

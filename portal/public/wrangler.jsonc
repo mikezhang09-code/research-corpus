@@ -11,12 +11,16 @@
   "observability": {
     "enabled": true
   },
-  // SUPABASE_URL and R2_PUBLIC_URL are plain vars (not secret). The
-  // service-role key is a secret — set it with:
+  // SUPABASE_URL, R2_PUBLIC_URL, and the Anthropic-compatible proxy base/model
+  // are plain vars (not secret). The service-role key and the model API key
+  // are secrets — set them with:
   //   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+  //   wrangler secret put ANTHROPIC_API_KEY
   "vars": {
     "SUPABASE_URL": "https://llusronucprogsrgzxrw.supabase.co",
-    "R2_PUBLIC_URL": "https://pub-7476dba8b5e64618bdb1c80b8df63baa.r2.dev"
+    "R2_PUBLIC_URL": "https://pub-7476dba8b5e64618bdb1c80b8df63baa.r2.dev",
+    "ANTHROPIC_BASE_URL": "https://api.xiaomimimo.com/anthropic",
+    "ANTHROPIC_MODEL": "mimo-v2.5"
   },
   // R2 bucket binding — used to write/delete folio file objects. File reads
   // still go through the public URL (see streamR2 in src/lib/supabase.ts).

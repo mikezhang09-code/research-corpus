@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, ChevronDown, Network, NotebookPen, Sparkles, StickyNote } from "lucide-react";
+import { Brain, ChevronDown, Loader2, Network, NotebookPen, Sparkles, StickyNote, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -21,6 +21,43 @@ const ARTIFACT_TYPES: {
   { kind: "quiz", label: "Quiz", hint: "Multiple choice", icon: Brain },
   { kind: "flashcards", label: "Flashcards", hint: "Study cards", icon: StickyNote },
 ];
+
+/** "Generate" dropdown — asks the AI to create an artifact of the chosen kind
+ *  from the folio's existing artifacts. Disabled (with a spinner) while one
+ *  generation is in flight. */
+export function GenerateArtifactButton({
+  generating,
+  onGenerate,
+}: {
+  generating: ArtifactKind | null;
+  onGenerate: (kind: ArtifactKind) => void;
+}) {
+  const busy = generating !== null;
+  const busyLabel = ARTIFACT_TYPES.find((t) => t.kind === generating)?.label.toLowerCase();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={busy}
+        render={<Button variant="outline" size="sm" className="gap-1.5 h-7 rounded-[1px]" />}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+        {busy ? `Generating ${busyLabel}…` : "Generate"}
+        {!busy && <ChevronDown className="h-3 w-3 opacity-60" />}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[190px]">
+        {ARTIFACT_TYPES.map(({ kind, label, hint, icon: Icon }) => (
+          <DropdownMenuItem key={kind} onClick={() => onGenerate(kind)}>
+            <Icon className="h-3.5 w-3.5 text-ink-fade" />
+            <span className="flex-1">{label}</span>
+            <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-ink-mute">
+              {hint}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** "New artifact" dropdown shared by the Free Forms and folio file panels. */
 export function NewArtifactButton({ onCreate }: { onCreate: (kind: ArtifactKind) => void }) {
