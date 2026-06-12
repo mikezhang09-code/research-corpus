@@ -3,7 +3,9 @@
   "name": "research-portal-public",
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-05-05",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "binding": "ASSETS",
     "directory": ".open-next/assets"
@@ -11,24 +13,28 @@
   "observability": {
     "enabled": true
   },
-  // SUPABASE_URL, R2_PUBLIC_URL, and the AI provider base/model names are
-  // plain vars (not secret). The service-role key and the model API keys
-  // are secrets — set them with:
-  //   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-  //   wrangler secret put ANTHROPIC_API_KEY
-  //   wrangler secret put GEMINI_API_KEY   (synced by the deploy workflow)
+  // SUPABASE_URL, R2_PUBLIC_URL, and the MiMo proxy base URL are plain vars.
+  // Everything else is a Secret-type value in the Cloudflare dashboard
+  // (Workers → research-portal-public → Settings → Variables and Secrets):
+  //   SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY — set once
+  //   ADMIN_PASSWORD, GEMINI_API_KEY — synced from GitHub by the deploy workflow
+  //   ANTHROPIC_MODEL, GEMINI_MODEL — model names, kept as dashboard secrets so
+  //     they can be changed instantly without a redeploy (plain vars added in
+  //     the dashboard would be wiped by the next deploy; secrets persist).
+  //     Code defaults if unset: mimo-v2.5 / gemini-2.5-flash.
   // AI generate tries MiMo first, then falls back to Gemini (same policy as
   // portal/backend/ai.py).
   "vars": {
     "SUPABASE_URL": "https://llusronucprogsrgzxrw.supabase.co",
     "R2_PUBLIC_URL": "https://pub-7476dba8b5e64618bdb1c80b8df63baa.r2.dev",
-    "ANTHROPIC_BASE_URL": "https://api.xiaomimimo.com/anthropic",
-    "ANTHROPIC_MODEL": "mimo-v2.5",
-    "GEMINI_MODEL": "gemini-2.5-flash"
+    "ANTHROPIC_BASE_URL": "https://api.xiaomimimo.com/anthropic"
   },
   // R2 bucket binding — used to write/delete folio file objects. File reads
   // still go through the public URL (see streamR2 in src/lib/supabase.ts).
   "r2_buckets": [
-    { "binding": "R2_BUCKET", "bucket_name": "research-portal" }
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "research-portal"
+    }
   ]
 }
