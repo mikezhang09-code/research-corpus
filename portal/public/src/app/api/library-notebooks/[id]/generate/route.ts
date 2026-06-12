@@ -82,8 +82,9 @@ Write 12-20 cards. Fronts should be specific prompts, backs concise but complete
 };
 
 // ---- model call ----
+// MiMo primary, Gemini fallback — mirrors portal/backend/ai.py (ai_chat).
 
-async function callModel(system: string, prompt: string): Promise<string> {
+async function callMimo(system: string, prompt: string): Promise<string> {
   const key = env("ANTHROPIC_API_KEY");
   if (!key) throw new Error("ANTHROPIC_API_KEY is not configured");
   const base = (env("ANTHROPIC_BASE_URL") ?? "https://api.xiaomimimo.com/anthropic").replace(/\/$/, "");
@@ -102,7 +103,7 @@ async function callModel(system: string, prompt: string): Promise<string> {
     }),
   });
   if (!res.ok) {
-    throw new Error(`Model API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    throw new Error(`MiMo API ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
   const data = (await res.json()) as { content?: { type: string; text?: string }[] };
   // MiMo can interleave {"type":"thinking"} blocks — keep text blocks only.
@@ -111,8 +112,61 @@ async function callModel(system: string, prompt: string): Promise<string> {
     .map((b) => b.text)
     .join("")
     .trim();
-  if (!text) throw new Error("Model returned an empty response");
+  if (!text) throw new Error("MiMo returned an empty response");
   return text;
+}
+
+async function callGemini(system: string, prompt: string): Promise<string> {
+  const key = env("GEMINI_API_KEY");
+  if (!key) throw new Error("GEMINI_API_KEY is not configured");
+  const model = env("GEMINI_MODEL") ?? "gemini-2.5-flash";
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Gemini API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
+  const data = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const text = (data.candidates?.[0]?.content?.parts ?? [])
+    .map((p) => p.text ?? "")
+    .join("")
+    .trim();
+  if (!text) throw new Error("Gemini returned an empty response");
+  return text;
+}
+
+async function callModel(system: string, prompt: string): Promise<string> {
+  const errors: string[] = [];
+  if (env("ANTHROPIC_API_KEY")) {
+    try {
+      return await callMimo(system, prompt);
+    } catch (e) {
+      console.warn(`MiMo failed, trying Gemini fallback: ${e}`);
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (env("GEMINI_API_KEY")) {
+    try {
+      return await callGemini(system, prompt);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  throw new Error(
+    errors.length
+      ? `All AI providers failed — ${errors.join("; ")}`
+      : "No AI provider configured (set ANTHROPIC_API_KEY and/or GEMINI_API_KEY)",
+  );
 }
 
 // ---- output parsing / validation ----

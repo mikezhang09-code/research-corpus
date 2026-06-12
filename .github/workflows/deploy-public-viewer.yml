@@ -34,15 +34,19 @@ jobs:
         working-directory: portal/public
         run: npm ci
 
-      # Sync the password gate secret before deploying so a new middleware
-      # build never goes live without it (middleware fails closed with 503).
-      - name: Sync ADMIN_PASSWORD Worker secret
+      # Sync GitHub-managed Worker secrets before deploying so a new build
+      # never goes live without them (the password middleware fails closed
+      # with 503 if ADMIN_PASSWORD is missing).
+      - name: Sync Worker secrets
         working-directory: portal/public
-        run: printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
+        run: |
+          printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
+          printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Build and deploy
         working-directory: portal/public
