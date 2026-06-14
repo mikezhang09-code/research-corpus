@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,16 +60,25 @@ function TagChip({
 }
 
 /**
- * Single-line tag filter row. Highest-count tags render inline from the left;
- * any that don't fit the current width collapse into a right-aligned dropdown
- * that lists every tag. Recomputes on resize so it stays one line on desktop
- * and mobile alike.
+ * Single-line tag filter row. Chips are ordered live by their current visible
+ * count (highest first), so selecting a tag re-sorts the row to surface the
+ * tags still relevant to the filtered result and sinks the now-empty ones into
+ * the right-aligned dropdown. Recomputes on resize so it stays one line on
+ * desktop and mobile alike.
  */
 export function TagFilterBar({ tags, counts, selected, onToggle, onClear, label = "Tags" }: TagFilterBarProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(tags.length);
   const hasSelection = selected.size > 0;
+
+  // Order by live visible count, highest first. Sort is stable, so ties keep
+  // the incoming order (the parent's total-count order) and chips only move
+  // when their counts actually change.
+  const orderedTags = useMemo(
+    () => [...tags].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0)),
+    [tags, counts],
+  );
 
   useIsoLayoutEffect(() => {
     const row = rowRef.current;
@@ -105,26 +114,26 @@ export function TagFilterBar({ tags, counts, selected, onToggle, onClear, label 
     const ro = new ResizeObserver(compute);
     ro.observe(row);
     return () => ro.disconnect();
-  }, [tags, hasSelection]);
+  }, [orderedTags, hasSelection]);
 
-  if (tags.length === 0) return null;
+  if (orderedTags.length === 0) return null;
 
-  const visible = tags.slice(0, visibleCount);
-  const hiddenCount = tags.length - visible.length;
+  const visible = orderedTags.slice(0, visibleCount);
+  const hiddenCount = orderedTags.length - visible.length;
 
   return (
     <div className="relative">
       {/* Hidden measurement layer: label + every chip + trigger + clear, never wraps. */}
       <div ref={measureRef} aria-hidden className="pointer-events-none absolute -z-10 flex items-center gap-2 whitespace-nowrap opacity-0">
         <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute shrink-0">{label}</span>
-        {tags.map((tag) => (
+        {orderedTags.map((tag) => (
           <span key={tag} className={chipClass(false, false)}>
             {tag}
             <span>{counts.get(tag) ?? 0}</span>
           </span>
         ))}
         <span className={chipBase + " border-rule bg-vellum text-ink-fade"}>
-          <ChevronDown className="h-3 w-3" />+{tags.length}
+          <ChevronDown className="h-3 w-3" />+{orderedTags.length}
         </span>
         <span className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.14em] uppercase ml-1">
           <X className="h-3 w-3" />
@@ -146,13 +155,13 @@ export function TagFilterBar({ tags, counts, selected, onToggle, onClear, label 
                 chipBase +
                 " border-rule bg-vellum text-ink-fade hover:border-ink hover:text-ink data-[state=open]:border-ink data-[state=open]:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               }
-              aria-label={`Show all ${tags.length} tags`}
+              aria-label={`Show all ${orderedTags.length} tags`}
             >
               <ChevronDown className="h-3 w-3" />+{hiddenCount}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto p-2">
               <div className="flex flex-wrap gap-1.5 max-w-[min(22rem,80vw)]">
-                {tags.map((tag) => (
+                {orderedTags.map((tag) => (
                   <TagChip key={tag} tag={tag} active={selected.has(tag)} count={counts.get(tag) ?? 0} onToggle={onToggle} />
                 ))}
               </div>
