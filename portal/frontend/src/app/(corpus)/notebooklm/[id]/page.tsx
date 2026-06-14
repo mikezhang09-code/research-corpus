@@ -1422,6 +1422,8 @@ export default function NotebookDetailPage() {
   useEffect(() => {
     loadArtifacts();
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
+    // Run once on mount; loadArtifacts closes over the route-stable notebookId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadArtifacts(silent = false) {

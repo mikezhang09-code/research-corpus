@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { Languages, User } from "lucide-react";
 import {
@@ -40,19 +40,30 @@ export function Masthead() {
   );
 }
 
+// Module-level clock shared by every RomanDate instance. The snapshot is a
+// stable Date reference (so useSyncExternalStore doesn't loop) that refreshes
+// once at midnight to keep a long-open tab from going stale.
+let dateSnapshot: Date | null = null;
+function getDateSnapshot(): Date {
+  if (dateSnapshot === null) dateSnapshot = new Date();
+  return dateSnapshot;
+}
+function subscribeMidnight(onChange: () => void) {
+  const next = new Date();
+  next.setHours(24, 0, 5, 0);
+  const t = setTimeout(() => {
+    dateSnapshot = new Date();
+    onChange();
+  }, next.getTime() - Date.now());
+  return () => clearTimeout(t);
+}
+
 /** Today in elegant Latin: <month> · <day> · <year>, all Roman numerals. */
 function RomanDate() {
-  // Mount-gated so SSR and the first client paint render the same placeholder
-  // (otherwise hydration warns when the server's date differs by timezone).
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    setNow(new Date());
-    // Tick at midnight so the date doesn't go stale if the tab is left open.
-    const next = new Date();
-    next.setHours(24, 0, 5, 0);
-    const t = setTimeout(() => setNow(new Date()), next.getTime() - Date.now());
-    return () => clearTimeout(t);
-  }, []);
+  // getServerSnapshot returns null so SSR and the first client paint render the
+  // same placeholder (otherwise hydration warns when the server's date differs
+  // by timezone); the real date appears after hydration.
+  const now = useSyncExternalStore(subscribeMidnight, getDateSnapshot, () => null);
 
   const label = now
     ? `${toRoman(now.getMonth() + 1)} · ${toRoman(now.getDate())} · ${toRoman(now.getFullYear())}`

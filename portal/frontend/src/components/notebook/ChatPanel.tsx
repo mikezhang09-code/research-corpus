@@ -4,12 +4,11 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { MessageSquare, Plus, Send, Loader2, AlertCircle, Save } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   askChat, getChatHistory, uploadLibraryNotebookFile, clearLibraryChatHistory,
-  type ChatReference, type ChatTurn,
+  type ChatReference,
 } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 
@@ -37,6 +36,7 @@ function ChatPanel(
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState(`${notebookId}|${apiPrefix ?? ""}`);
   const [error, setError] = useState<string | null>(null);
   const [expandedCite, setExpandedCite] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -48,9 +48,16 @@ function ChatPanel(
   // NotebookLM's chat lives in Google's product and isn't ours to persist.
   const canSave = apiPrefix === LIBRARY_PREFIX && messages.length > 0 && !loading && !saving;
 
-  // Load history on mount
-  useEffect(() => {
+  // Show the loading state synchronously when the conversation changes, before
+  // the new history resolves (React's "adjust state during render" pattern).
+  const conversationKey = `${notebookId}|${apiPrefix ?? ""}`;
+  if (loadedKey !== conversationKey) {
+    setLoadedKey(conversationKey);
     setHistoryLoading(true);
+  }
+
+  // Load history when the notebook (or API path) changes.
+  useEffect(() => {
     getChatHistory(notebookId, { apiPrefix })
       .then((data) => {
         if (data.turns.length > 0) {
@@ -65,7 +72,7 @@ function ChatPanel(
       })
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
-  }, [notebookId]);
+  }, [notebookId, apiPrefix]);
 
   // Auto-scroll on messages or loading change
   useEffect(() => {
@@ -118,7 +125,9 @@ function ChatPanel(
   // Keep an up-to-date reference so the imperative `send()` always uses the
   // latest closure (with current conversationId and loading state).
   const sendRef = useRef(sendQuestion);
-  sendRef.current = sendQuestion;
+  useEffect(() => {
+    sendRef.current = sendQuestion;
+  });
   useImperativeHandle(ref, () => ({ send: (prompt: string) => sendRef.current(prompt) }), []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -263,7 +272,6 @@ function ChatPanel(
                             key={citeKey}
                             chatRef={chatRef}
                             index={i}
-                            msgKey={msg.key}
                             expanded={expandedCite === citeKey}
                             onToggle={() =>
                               setExpandedCite((prev) =>
@@ -333,13 +341,11 @@ function ChatPanel(
 function CitationBadge({
   chatRef,
   index,
-  msgKey,
   expanded,
   onToggle,
 }: {
   chatRef: ChatReference;
   index: number;
-  msgKey: string;
   expanded: boolean;
   onToggle: () => void;
 }) {

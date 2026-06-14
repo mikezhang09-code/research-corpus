@@ -95,6 +95,6 @@ export function pickSwatch(nb: { id: string }): CorpusCardProps["swatch"] {
   return SWATCH_LIST[Math.abs(h) % SWATCH_LIST.length];
 }
 
-export function pickGlyph(_nb: unknown): ReactNode {
+export function pickGlyph(): ReactNode {
   return <DefaultGlyph />;
 }

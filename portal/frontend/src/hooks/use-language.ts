@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 export type Language = "en" | "zh";
 
@@ -49,13 +49,9 @@ export function useLanguage(): [Language, (lang: Language) => void] {
  * default until mounted.
  */
 export function useLanguageMounted(): Language {
-  const [lang, setLang] = useState<Language>(DEFAULT);
-  useEffect(() => {
-    setLang(read());
-    const unsubscribe = subscribe(() => setLang(read()));
-    return unsubscribe;
-  }, []);
-  return lang;
+  // getServerSnapshot returns DEFAULT so the server and first client paint
+  // agree; React then re-renders with the stored value after hydration.
+  return useSyncExternalStore(subscribe, read, () => DEFAULT);
 }
 
 export function languageInstructionEn(lang: Language): string {

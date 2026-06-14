@@ -16,11 +16,19 @@ export function NotebookDescription({
 }) {
   const [data, setData] = useState<NotebookDescriptionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadedId, setLoadedId] = useState(notebookId);
+
+  // Reset to the skeleton the moment the notebook changes — before the new
+  // fetch resolves — so we never flash the previous notebook's synopsis. This
+  // is React's documented "adjust state during render" pattern.
+  if (loadedId !== notebookId) {
+    setLoadedId(notebookId);
+    setData(null);
+    setError(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setData(null);
-    setError(null);
     getNotebookDescription(notebookId)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });

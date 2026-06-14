@@ -293,7 +293,7 @@ export default function NotebookLMPage() {
   function applyLocalUpdate(updater: (nbs: Notebook[]) => Notebook[]) {
     setNotebooks((prev) => {
       const next = updater(prev);
-      setFiltered((cur) => {
+      setFiltered(() => {
         const q = search.trim().toLowerCase();
         return q ? next.filter((n) => n.title.toLowerCase().includes(q)) : next;
       });

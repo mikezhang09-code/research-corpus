@@ -62,7 +62,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
   const isEdit = !!file;
   const [title, setTitle] = useState(file?.title ?? "");
   const [body, setBody] = useState("");
-  const initialBody = useRef("");
+  const [initialBody, setInitialBody] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [loading, setLoading] = useState(isEdit);
   const [preview, setPreview] = useState(false);
@@ -78,7 +78,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
       .then((text) => {
         if (cancelled) return;
         setBody(text);
-        initialBody.current = text;
+        setInitialBody(text);
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -86,7 +86,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
   }, [file, notebookId]);
 
   const dirty = file
-    ? title.trim() !== file.title || body !== initialBody.current
+    ? title.trim() !== file.title || body !== initialBody
     : title.trim().length > 0 || body.length > 0;
 
   // Closing must never silently discard typed work (backdrop clicks are easy
@@ -148,7 +148,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
             ? await updateLibraryNotebookFile(notebookId, file.id, { title: t })
             : await updateFreeFormFile(file.id, { title: t })) as unknown as T;
         }
-        if (body !== initialBody.current) {
+        if (body !== initialBody) {
           result = (notebookId
             ? await saveLibraryNoteContent(notebookId, file.id, body)
             : await saveFreeFormNoteContent(file.id, body)) as unknown as T;
