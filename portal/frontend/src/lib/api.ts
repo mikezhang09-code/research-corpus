@@ -101,6 +101,18 @@ export const askChat = (
   });
 };
 
+// ---- Diagram studio ----
+export interface DiagramAssistResponse {
+  mermaid: string;
+  explanation: string;
+}
+/** Ask the AI to create or edit a Mermaid diagram. Returns the full updated source. */
+export const assistDiagram = (prompt: string, current: string) =>
+  request<DiagramAssistResponse>("/api/diagrams/assist", {
+    method: "POST",
+    body: JSON.stringify({ prompt, current }),
+  });
+
 export const getChatHistory = (notebookId: string, opts?: { conversationId?: string; apiPrefix?: string }) => {
   const prefix = opts?.apiPrefix ?? "/api/notebooks";
   const params = new URLSearchParams();

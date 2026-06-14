@@ -7,6 +7,7 @@ const TABS = [
   { href: "/notebooklm", label: "NotebookLM", sub: "Corpora" },
   { href: "/library",    label: "My Research", sub: "Folios" },
   { href: "/free-forms", label: "Free Forms", sub: "Standalone" },
+  { href: "/diagrams",   label: "Diagrams",   sub: "Mermaid" },
 ];
 
 /**
