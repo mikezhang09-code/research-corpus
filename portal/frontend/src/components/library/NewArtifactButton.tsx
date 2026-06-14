@@ -1,12 +1,12 @@
 "use client";
 
-import { Brain, ChevronDown, Loader2, Network, NotebookPen, Sparkles, StickyNote, Wand2 } from "lucide-react";
+import { Brain, ChevronDown, Loader2, Network, NotebookPen, Sparkles, StickyNote, Wand2, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export type ArtifactKind = "note" | "mindmap" | "quiz" | "flashcards";
+export type ArtifactKind = "note" | "mindmap" | "quiz" | "flashcards" | "diagram";
 
 // One row per creatable artifact type. Future kinds get an entry here
 // plus a case in each panel's onCreate handler.
@@ -18,6 +18,7 @@ const ARTIFACT_TYPES: {
 }[] = [
   { kind: "note", label: "Note", hint: "Markdown text", icon: NotebookPen },
   { kind: "mindmap", label: "Mind map", hint: "Topic tree", icon: Network },
+  { kind: "diagram", label: "Diagram", hint: "Mermaid", icon: Workflow },
   { kind: "quiz", label: "Quiz", hint: "Multiple choice", icon: Brain },
   { kind: "flashcards", label: "Flashcards", hint: "Study cards", icon: StickyNote },
 ];

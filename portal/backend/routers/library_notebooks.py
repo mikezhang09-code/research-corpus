@@ -12,6 +12,13 @@ from fastapi.responses import HTMLResponse
 
 from ..config import get_settings
 from ..database import get_supabase
+from ..diagram_utils import (
+    GENERATE_INSTRUCTIONS as _DIAGRAM_GEN_INSTRUCTIONS,
+)
+from ..diagram_utils import (
+    diagram_title,
+    split_mermaid,
+)
 from ..models import (
     ChatHistoryResponse,
     ChatResponse,
@@ -61,6 +68,7 @@ _CATEGORY_MAP: dict[str, str] = {
     ".mkv": "video",
     ".webm": "video",
     ".json": "mindmap",
+    ".mmd": "diagram",
     ".jsx": "component",
     ".tsx": "component",
     ".png": "image",
@@ -126,7 +134,7 @@ def _extract_file_text(file_row: dict) -> str | None:
         return None
 
     try:
-        if ext in (".md", ".txt"):
+        if ext in (".md", ".txt", ".mmd"):
             return data.decode("utf-8", errors="replace")
         if ext == ".json":
             return data.decode("utf-8", errors="replace")
@@ -667,7 +675,7 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
 # AI artifact generation
 # ---------------------------------------------------------------------------
 
-_GEN_KINDS = ("note", "mindmap", "quiz", "flashcards")
+_GEN_KINDS = ("note", "mindmap", "quiz", "flashcards", "diagram")
 
 # Per-kind output instructions. JSON kinds carry a "title" field that is
 # stripped before saving so the stored file is exactly the shape the
@@ -706,6 +714,7 @@ _GEN_INSTRUCTIONS: dict[str, str] = {
         '"back": "answer or definition"}]}\n'
         "Write 12-20 cards. Fronts should be specific prompts, backs concise but complete."
     ),
+    "diagram": _DIAGRAM_GEN_INSTRUCTIONS,
 }
 
 
@@ -755,6 +764,12 @@ def _build_generated_artifact(kind: str, raw: str) -> tuple[str, str, str, str]:
         heading = re.search(r"^#\s+(.+)$", raw, flags=re.MULTILINE)
         title = (heading.group(1) if heading else "Generated note").strip()
         return title, raw, ".md", "text/markdown"
+
+    if kind == "diagram":
+        mermaid, _ = split_mermaid(raw)
+        if not mermaid:
+            raise ValueError("model returned no diagram")
+        return diagram_title(mermaid), mermaid, ".mmd", "text/vnd.mermaid"
 
     obj = _extract_json_object(raw)
     title = str(obj.get("title") or "").strip() or f"Generated {kind}"

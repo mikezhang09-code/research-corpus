@@ -106,11 +106,12 @@ export interface DiagramAssistResponse {
   mermaid: string;
   explanation: string;
 }
-/** Ask the AI to create or edit a Mermaid diagram. Returns the full updated source. */
-export const assistDiagram = (prompt: string, current: string) =>
+/** Ask the AI to create or edit a Mermaid diagram. Returns the full updated source.
+ *  Pass a folio `notebookId` to ground edits in that folio's files. */
+export const assistDiagram = (prompt: string, current: string, notebookId?: string | null) =>
   request<DiagramAssistResponse>("/api/diagrams/assist", {
     method: "POST",
-    body: JSON.stringify({ prompt, current }),
+    body: JSON.stringify({ prompt, current, notebook_id: notebookId ?? null }),
   });
 
 export const getChatHistory = (notebookId: string, opts?: { conversationId?: string; apiPrefix?: string }) => {
@@ -442,7 +443,7 @@ export async function uploadLibraryNotebookFile(
 /** Ask the AI to generate a new artifact from the folio's existing files. */
 export const generateLibraryArtifact = (
   notebookId: string,
-  kind: "note" | "mindmap" | "quiz" | "flashcards",
+  kind: "note" | "mindmap" | "quiz" | "flashcards" | "diagram",
   language?: string,
 ) =>
   request<LibraryFile>(`/api/library-notebooks/${notebookId}/generate`, {

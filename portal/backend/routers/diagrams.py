@@ -1,20 +1,21 @@
-"""AI assistant for the Mermaid diagram studio.
+"""AI assistant for Mermaid diagram artifacts.
 
 Stateless helper: takes a natural-language instruction plus the current
-Mermaid source and returns updated Mermaid. Reuses the shared ``ai_chat``
-helper (MiMo primary, Gemini fallback) — no diagram state is persisted here;
-the frontend owns the document.
+Mermaid source and returns updated Mermaid. When a ``notebook_id`` (folio) is
+supplied, the folio's files are folded into the prompt so edits are grounded
+in the research context. Reuses the shared ``ai_chat`` helper (MiMo primary,
+Gemini fallback) — no diagram state is persisted here; the frontend owns the
+document.
 """
 
 from __future__ import annotations
-
-import re
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..ai import ai_chat
 from ..config import get_settings
+from ..diagram_utils import ASSIST_SYSTEM, split_mermaid
 
 router = APIRouter(prefix="/api/diagrams", tags=["diagrams"])
 
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/api/diagrams", tags=["diagrams"])
 class DiagramAssistRequest(BaseModel):
     prompt: str
     current: str = ""
+    notebook_id: str | None = None  # folio id → ground edits in its files
 
 
 class DiagramAssistResponse(BaseModel):
@@ -29,37 +31,29 @@ class DiagramAssistResponse(BaseModel):
     explanation: str
 
 
-_SYSTEM = """You are a Mermaid diagram assistant embedded in a diagram editor.
+def _folio_context(notebook_id: str) -> str:
+    """Folio title + file contents block, or '' if unavailable.
 
-The user gives an instruction and the current Mermaid source (which may be \
-empty). Return the COMPLETE updated Mermaid document — never a partial diff.
+    Imported lazily to avoid a circular import between routers.
+    """
+    from uuid import UUID
 
-Hard rules:
-- Reply with exactly one fenced code block: ```mermaid ... ``` containing the \
-full diagram, and nothing before it except an optional single short sentence \
-of explanation.
-- Output valid Mermaid 11 syntax. Quote node labels that contain spaces or \
-punctuation, e.g. A["Sign in"].
-- Preserve the user's existing structure and labels unless they ask to change \
-them; apply only the requested edit.
-- If the current source is empty, create a sensible new diagram for the \
-request (default to `flowchart TD` unless another type fits better).
-- Do not use emoji or exotic glyphs in labels.
-- Never wrap the diagram in extra prose, markdown headings, or multiple code \
-blocks."""
+    from ..database import get_supabase
+    from . import library_notebooks as lib
 
-_FENCE = re.compile(r"```(?:mermaid)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
-
-
-def _split(answer: str) -> tuple[str, str]:
-    """Extract (mermaid, explanation) from the model reply."""
-    match = _FENCE.search(answer)
-    if match:
-        mermaid = match.group(1).strip()
-        explanation = (answer[: match.start()] + answer[match.end() :]).strip()
-        return mermaid, explanation
-    # No fence — assume the whole reply is the diagram.
-    return answer.strip(), ""
+    try:
+        db = get_supabase()
+        nb = lib._notebook_or_404(db, UUID(notebook_id))
+        files = lib.repo.list_files(db, UUID(notebook_id))
+    except Exception:
+        return ""
+    if not files:
+        return ""
+    return (
+        f'The user is working inside the research folio "{nb["title"]}". Its '
+        "files appear below — ground the diagram in them; do not invent facts "
+        "they don't support.\n\n" + lib._build_files_context(files)
+    )
 
 
 @router.post("/assist", response_model=DiagramAssistResponse)
@@ -70,6 +64,13 @@ async def assist(req: DiagramAssistRequest) -> DiagramAssistResponse:
 
     s = get_settings()
     current = req.current.strip()
+
+    system = ASSIST_SYSTEM
+    if req.notebook_id:
+        context = _folio_context(req.notebook_id)
+        if context:
+            system = f"{ASSIST_SYSTEM}\n\n{context}"
+
     user = (
         f"Current Mermaid source:\n```mermaid\n{current}\n```\n\n"
         if current
@@ -77,11 +78,11 @@ async def assist(req: DiagramAssistRequest) -> DiagramAssistResponse:
     ) + f"Instruction: {prompt}"
 
     try:
-        raw = await ai_chat(_SYSTEM, [{"role": "user", "content": user}], s)
+        raw = await ai_chat(system, [{"role": "user", "content": user}], s)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
 
-    mermaid, explanation = _split(raw)
+    mermaid, explanation = split_mermaid(raw)
     if not mermaid:
         raise HTTPException(502, "AI returned no diagram")
     return DiagramAssistResponse(mermaid=mermaid, explanation=explanation)

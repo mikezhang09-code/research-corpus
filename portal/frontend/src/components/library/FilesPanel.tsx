@@ -24,6 +24,7 @@ import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
+import { DiagramEditorModal } from "./DiagramEditorModal";
 import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
 import { GenerateArtifactButton, NewArtifactButton, type ArtifactKind } from "./NewArtifactButton";
@@ -117,6 +118,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
+  const [showDiagram, setShowDiagram] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -266,6 +268,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             onCreate={(kind) => {
               if (kind === "note") setShowNote(true);
               else if (kind === "mindmap") setShowMindMap(true);
+              else if (kind === "diagram") setShowDiagram(true);
               else if (kind === "flashcards") setShowFlashcards(true);
               else setShowQuiz(true);
             }}
@@ -388,6 +391,17 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowMindMap(false);
+          }}
+        />
+      )}
+
+      {showDiagram && (
+        <DiagramEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowDiagram(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowDiagram(false);
           }}
         />
       )}
