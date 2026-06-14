@@ -26,6 +26,7 @@ import {
 } from "@/lib/api";
 import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNotebookModal";
 import { TagInput } from "@/components/library/TagInput";
+import { TagFilterBar } from "@/components/library/TagFilterBar";
 import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
 import { FolioCard, pickCover, type FolioStatus } from "@/components/corpus/FolioCard";
@@ -230,7 +231,6 @@ export default function LibraryPage() {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   async function load(includeHidden = showHidden) {
-    setLoading(true);
     try {
       const res = await getLibraryNotebooks({ includeHidden });
       setNotebooks(res.items);
@@ -385,52 +385,23 @@ export default function LibraryPage() {
             <input
               type="checkbox"
               checked={showHidden}
-              onChange={(e) => setShowHidden(e.target.checked)}
+              onChange={(e) => {
+                setLoading(true);
+                setShowHidden(e.target.checked);
+              }}
               className="h-4 w-4 rounded-[1px] border-rule"
             />
             Show hidden
           </label>
         </div>
 
-        {tagOrder.length > 0 && (
-          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
-            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute shrink-0">
-              Tags
-            </span>
-            {tagOrder.map((tag) => {
-              const active = selectedTags.has(tag);
-              const count = visibleCounts.get(tag) ?? 0;
-              const dim = !active && count === 0;
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className={
-                    "inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase px-2 py-1 rounded-[1px] border transition-colors " +
-                    (active
-                      ? "border-ink bg-ink text-paper"
-                      : dim
-                        ? "border-rule/60 bg-vellum text-ink-mute opacity-50 hover:opacity-100 hover:border-ink hover:text-ink"
-                        : "border-rule bg-vellum text-ink-fade hover:border-ink hover:text-ink")
-                  }
-                >
-                  {tag}
-                  <span className={active ? "text-paper/70" : "text-ink-mute"}>{count}</span>
-                </button>
-              );
-            })}
-            {selectedTags.size > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedTags(new Set())}
-                className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink underline-offset-2 hover:underline ml-1"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        )}
+        <TagFilterBar
+          tags={tagOrder}
+          counts={visibleCounts}
+          selected={selectedTags}
+          onToggle={toggleTag}
+          onClear={() => setSelectedTags(new Set())}
+        />
 
         {actionError && (
           <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-terracotta">{actionError}</p>

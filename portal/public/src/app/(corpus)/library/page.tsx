@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, FolderOpen, ArrowUpDown, Plus, X } from "lucide-react";
+import { Search, FolderOpen, ArrowUpDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +15,7 @@ import {
 import { SectionHead } from "@/components/corpus/SectionHead";
 import { FolioCard, pickCover } from "@/components/corpus/FolioCard";
 import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNotebookModal";
+import { TagFilterBar } from "@/components/library/TagFilterBar";
 import { getLibraryNotebooks, type LibraryNotebook } from "@/lib/api";
 
 type SortKey = "recent" | "title" | "files";
@@ -149,46 +150,13 @@ export default function LibraryPage() {
         )}
 
         {/* Tag filter pills */}
-        {tagOrder.length > 0 && (
-          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
-            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute shrink-0">
-              Tags
-            </span>
-            {tagOrder.map((tag) => {
-              const active = selectedTags.has(tag);
-              const count = visibleCounts.get(tag) ?? 0;
-              const dim = !active && count === 0;
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className={
-                    "inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase px-2 py-1 rounded-[1px] border transition-colors " +
-                    (active
-                      ? "border-ink bg-ink text-paper"
-                      : dim
-                        ? "border-rule/60 bg-vellum text-ink-mute opacity-50 hover:opacity-100 hover:border-ink hover:text-ink"
-                        : "border-rule bg-vellum text-ink-fade hover:border-ink hover:text-ink")
-                  }
-                >
-                  {tag}
-                  <span className={active ? "text-paper/70" : "text-ink-mute"}>{count}</span>
-                </button>
-              );
-            })}
-            {selectedTags.size > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedTags(new Set())}
-                className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink underline-offset-2 hover:underline ml-1"
-              >
-                <X className="h-3 w-3" />
-                Clear
-              </button>
-            )}
-          </div>
-        )}
+        <TagFilterBar
+          tags={tagOrder}
+          counts={visibleCounts}
+          selected={selectedTags}
+          onToggle={toggleTag}
+          onClear={() => setSelectedTags(new Set())}
+        />
 
         {/* Grid */}
         {loading ? (
