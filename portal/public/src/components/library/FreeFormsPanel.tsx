@@ -35,6 +35,8 @@ import { QuizModal } from "./QuizModal";
 import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardsModal } from "./FlashcardsModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
+import { DiagramModal } from "./DiagramModal";
+import { DiagramEditorModal } from "./DiagramEditorModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
@@ -57,7 +59,7 @@ const CATEGORIES = [
 ];
 
 type ViewerKind =
-  | "markdown" | "docx" | "excel" | "mindmap" | "quiz" | "flashcards" | "image" | "audio"
+  | "markdown" | "docx" | "excel" | "mindmap" | "diagram" | "quiz" | "flashcards" | "image" | "audio"
   | "video" | "presentation" | "jsx";
 
 /** Pick the viewer for a file, mirroring FileCard's dispatch (notes open read-only). */
@@ -67,6 +69,7 @@ function viewerFor(file: FreeFormFile): ViewerKind | null {
   if (ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv") return "excel";
   if (ext === ".md" || ext === ".txt") return "markdown";
   if (file.file_category === "mindmap") return "mindmap";
+  if (file.file_category === "diagram") return "diagram";
   if (file.file_category === "quiz") return "quiz";
   if (file.file_category === "flashcards") return "flashcards";
   if (file.file_category === "image") return "image";
@@ -193,6 +196,8 @@ export function FreeFormsPanel() {
   const [quizEdit, setQuizEdit] = useState<FreeFormFile | null>(null);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [flashcardsEdit, setFlashcardsEdit] = useState<FreeFormFile | null>(null);
+  const [showDiagram, setShowDiagram] = useState(false);
+  const [diagramEdit, setDiagramEdit] = useState<FreeFormFile | null>(null);
   const [noteTarget, setNoteTarget] = useState<FreeFormFile | null>(null);
   const [editTarget, setEditTarget] = useState<FreeFormFile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FreeFormFile | null>(null);
@@ -312,6 +317,7 @@ export function FreeFormsPanel() {
                 if (kind === "note") setShowNote(true);
                 else if (kind === "mindmap") setShowMindMap(true);
                 else if (kind === "flashcards") setShowFlashcards(true);
+                else if (kind === "diagram") setShowDiagram(true);
                 else setShowQuiz(true);
               }}
             />
@@ -527,6 +533,28 @@ export function FreeFormsPanel() {
           }}
         />
       )}
+      {viewer?.kind === "diagram" && (
+        <DiagramModal
+          title={viewer.file.title}
+          fetchContent={() => getLibraryFileContent(null, viewer.file.id)}
+          onClose={() => setViewer(null)}
+          onEdit={() => {
+            setDiagramEdit(viewer.file);
+            setViewer(null);
+          }}
+        />
+      )}
+      {diagramEdit && (
+        <DiagramEditorModal<FreeFormFile>
+          notebookId={null}
+          file={diagramEdit}
+          onClose={() => setDiagramEdit(null)}
+          onSaved={(updated) => {
+            handleUpdated(updated);
+            setDiagramEdit(null);
+          }}
+        />
+      )}
       {viewer?.kind === "quiz" && (
         <QuizModal
           title={viewer.file.title}
@@ -644,6 +672,17 @@ export function FreeFormsPanel() {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowFlashcards(false);
+          }}
+        />
+      )}
+
+      {showDiagram && (
+        <DiagramEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowDiagram(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowDiagram(false);
           }}
         />
       )}

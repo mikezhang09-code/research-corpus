@@ -9,6 +9,8 @@ import rehypeKatex from "rehype-katex";
 import { Check, Copy, Loader2 } from "lucide-react";
 import "katex/dist/katex.min.css";
 import "./markdown-extras.css";
+import { loadMermaid } from "@/lib/mermaid";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 // Shared react-markdown configuration for every markdown surface in the
 // portal: GFM tables/strikethrough, KaTeX math, syntax-highlighted code
@@ -36,47 +38,6 @@ function flattenText(node: ReactNode): string {
     return flattenText((node as { props?: { children?: ReactNode } }).props?.children);
   }
   return "";
-}
-
-// Minimal surface of the mermaid UMD global this module uses.
-type MermaidApi = {
-  initialize(config: Record<string, unknown>): void;
-  render(id: string, source: string): Promise<{ svg: string }>;
-};
-
-declare global {
-  interface Window { mermaid?: MermaidApi }
-}
-
-const MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js";
-let mermaidLoader: Promise<MermaidApi> | null = null;
-
-// mermaid is enormous (the bundled copy pushed the public Worker past
-// Cloudflare's 3 MiB script limit), so it is never bundled: the browser pulls
-// it from the CDN, and only when a document actually contains a ```mermaid
-// fence.
-function loadMermaid(): Promise<MermaidApi> {
-  if (!mermaidLoader) {
-    mermaidLoader = new Promise<MermaidApi>((resolve, reject) => {
-      if (window.mermaid) return resolve(window.mermaid);
-      const script = document.createElement("script");
-      script.src = MERMAID_CDN;
-      script.onload = () => {
-        if (window.mermaid) {
-          window.mermaid.initialize({ startOnLoad: false, theme: "neutral", fontFamily: "inherit" });
-          resolve(window.mermaid);
-        } else {
-          reject(new Error("mermaid script loaded but window.mermaid is missing"));
-        }
-      };
-      script.onerror = () => {
-        mermaidLoader = null; // allow a retry on the next diagram
-        reject(new Error("failed to load mermaid from CDN"));
-      };
-      document.head.appendChild(script);
-    });
-  }
-  return mermaidLoader;
 }
 
 function MermaidDiagram({ source }: { source: string }) {
@@ -123,33 +84,6 @@ function MermaidDiagram({ source }: { source: string }) {
 
 type CodeProps = HTMLAttributes<HTMLElement> & { children?: ReactNode; node?: unknown };
 type PreProps = HTMLAttributes<HTMLPreElement> & { children?: ReactNode; node?: unknown };
-
-// The main portal is reached over plain http on the Tailscale IP, which is
-// not a secure context — navigator.clipboard is undefined there. Fall back
-// to the legacy execCommand path in that case.
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fall through to the legacy path
-  }
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.position = "fixed";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    ta.remove();
-  }
-}
 
 function CopyablePre({ children, node: _node, ...props }: PreProps) {
   void _node;

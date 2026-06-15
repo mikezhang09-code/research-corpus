@@ -26,6 +26,7 @@ import { NoteEditorModal } from "./NoteEditorModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
+import { DiagramEditorModal } from "./DiagramEditorModal";
 import { GenerateArtifactButton, NewArtifactButton, type ArtifactKind } from "./NewArtifactButton";
 
 const CATEGORIES = [
@@ -119,6 +120,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showMindMap, setShowMindMap] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [showDiagram, setShowDiagram] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
@@ -205,6 +207,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   }
 
   async function handleGenerate(kind: ArtifactKind) {
+    if (kind === "diagram") return; // diagrams are authored by hand (no AI)
     setGenerating(kind);
     setActionError(null);
     try {
@@ -267,6 +270,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
               if (kind === "note") setShowNote(true);
               else if (kind === "mindmap") setShowMindMap(true);
               else if (kind === "flashcards") setShowFlashcards(true);
+              else if (kind === "diagram") setShowDiagram(true);
               else setShowQuiz(true);
             }}
           />
@@ -410,6 +414,17 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowFlashcards(false);
+          }}
+        />
+      )}
+
+      {showDiagram && (
+        <DiagramEditorModal
+          notebookId={notebookId}
+          onClose={() => setShowDiagram(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowDiagram(false);
           }}
         />
       )}
