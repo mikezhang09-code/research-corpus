@@ -474,3 +474,35 @@ class GenerateDescriptionResponse(BaseModel):
 class GenerateArtifactRequest(BaseModel):
     kind: str  # "note" | "mindmap" | "quiz" | "flashcards"
     language: str | None = None  # "en" | "zh"; user's preferred output language
+
+
+# ---------------------------------------------------------------------------
+# Push Folio files → NotebookLM notebook
+# ---------------------------------------------------------------------------
+
+
+class PushToCorpusRequest(BaseModel):
+    """Push a subset of a folio's files into a NotebookLM notebook as sources.
+
+    Either target an existing notebook via `target_notebook_id`, or omit it to
+    create a new notebook (then `new_title` is required).
+    """
+
+    file_ids: list[UUID]
+    target_notebook_id: str | None = None
+    new_title: str | None = None
+    new_cover_emoji: str | None = None
+
+
+class PushFileResult(BaseModel):
+    file_id: UUID
+    title: str
+    status: str  # "pushed" | "skipped" | "error"
+    reason: str = ""
+    source_id: str | None = None
+
+
+class PushToCorpusResponse(BaseModel):
+    notebook_id: str
+    notebook_title: str
+    results: list[PushFileResult]

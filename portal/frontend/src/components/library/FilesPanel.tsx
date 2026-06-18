@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Loader2, CheckSquare, FolderPlus, Trash2, X, AlertCircle,
+  Plus, Loader2, CheckSquare, FolderPlus, Trash2, X, AlertCircle, ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import { DiagramEditorModal } from "./DiagramEditorModal";
 import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
 import { GenerateArtifactButton, NewArtifactButton, type ArtifactKind } from "./NewArtifactButton";
+import { PushToCorpusModal } from "./PushToCorpusModal";
 
 const CATEGORIES = [
   { value: "",            label: "All"          },
@@ -124,6 +125,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [showPushDialog, setShowPushDialog] = useState(false);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [generating, setGenerating] = useState<ArtifactKind | null>(null);
@@ -161,6 +163,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   }
 
   const selectedFileIds = useMemo(() => [...selectedIds], [selectedIds]);
+  const selectedFiles = useMemo(() => files.filter((f) => selectedIds.has(f.id)), [files, selectedIds]);
   const selectedCount = selectedFileIds.length;
   const allVisibleSelected = files.length > 0 && files.every((f) => selectedIds.has(f.id));
 
@@ -303,6 +306,16 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             New folio
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-7 rounded-[1px]"
+            onClick={() => setShowPushDialog(true)}
+            disabled={selectedCount === 0}
+          >
+            <ArrowUpRight className="h-3.5 w-3.5" />
+            Push to NotebookLM
+          </Button>
+          <Button
             variant="destructive"
             size="sm"
             className="gap-1.5 h-7 rounded-[1px]"
@@ -433,6 +446,14 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           count={selectedCount}
           onClose={() => setShowMoveDialog(false)}
           onCreate={handleCreateFolioFromSelection}
+        />
+      )}
+
+      {showPushDialog && (
+        <PushToCorpusModal
+          notebookId={notebookId}
+          files={selectedFiles}
+          onClose={() => setShowPushDialog(false)}
         />
       )}
 

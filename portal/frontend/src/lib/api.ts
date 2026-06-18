@@ -474,6 +474,37 @@ export const createLibraryNotebookFromFiles = (
     body: JSON.stringify(data),
   });
 
+export interface PushFileResult {
+  file_id: string;
+  title: string;
+  status: "pushed" | "skipped" | "error";
+  reason: string;
+  source_id: string | null;
+}
+
+export interface PushToCorpusResponse {
+  notebook_id: string;
+  notebook_title: string;
+  results: PushFileResult[];
+}
+
+// Copy selected folio files into a NotebookLM notebook as sources. Pass
+// target_notebook_id to push into an existing notebook, or new_title to create
+// one. The folio is left untouched.
+export const pushFolioToCorpus = (
+  notebookId: string,
+  data: {
+    file_ids: string[];
+    target_notebook_id?: string | null;
+    new_title?: string | null;
+    new_cover_emoji?: string | null;
+  },
+) =>
+  request<PushToCorpusResponse>(`/api/library-notebooks/${notebookId}/push-to-corpus`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 export const updateLibraryNotebookFile = (
   notebookId: string,
   fileId: string,

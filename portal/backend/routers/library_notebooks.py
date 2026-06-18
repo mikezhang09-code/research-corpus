@@ -36,6 +36,9 @@ from ..models import (
     LibraryNotebookListResponse,
     LibraryNotebookRead,
     LibraryNotebookUpdate,
+    PushFileResult,
+    PushToCorpusRequest,
+    PushToCorpusResponse,
 )
 from ..repositories import library_notebooks as repo
 from ..storage import delete_file, get_file_bytes, r2_key_for_upload, upload_file
@@ -145,10 +148,12 @@ def _extract_file_text(file_row: dict) -> str | None:
             return _HTML_NEWLINES_RE.sub("\n\n", text).strip()
         if ext in (".docx", ".doc"):
             import mammoth
+
             result = mammoth.extract_raw_text(BytesIO(data))
             return result.value
         if ext == ".pdf":
             import pypdf
+
             reader = pypdf.PdfReader(BytesIO(data))
             pages = []
             for i, page in enumerate(reader.pages, 1):
@@ -161,6 +166,7 @@ def _extract_file_text(file_row: dict) -> str | None:
             return "\n\n".join(pages)
         if ext in (".xlsx", ".xlsm", ".xls"):
             import openpyxl
+
             wb = openpyxl.load_workbook(BytesIO(data), read_only=True, data_only=True)
             chunks: list[str] = []
             for ws in wb.worksheets:
@@ -276,9 +282,7 @@ async def list_notebooks(
 @router.post("", response_model=LibraryNotebookRead, status_code=201)
 async def create_notebook(body: LibraryNotebookCreate):
     db = get_supabase()
-    nb = repo.create(
-        db, title=body.title, cover_emoji=body.cover_emoji, tags=body.tags or None
-    )
+    nb = repo.create(db, title=body.title, cover_emoji=body.cover_emoji, tags=body.tags or None)
     return _enrich(nb, 0)
 
 
@@ -406,7 +410,9 @@ async def bulk_delete_notebook_files(nb_id: UUID, body: LibraryFileBulkRequest):
         repo.delete_file(db, nb_id, UUID(str(f["id"])))
 
 
-@router.post("/{nb_id}/files/move-to-new-notebook", response_model=LibraryNotebookRead, status_code=201)
+@router.post(
+    "/{nb_id}/files/move-to-new-notebook", response_model=LibraryNotebookRead, status_code=201
+)
 async def move_files_to_new_notebook(nb_id: UUID, body: LibraryFilesNewNotebookRequest):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
@@ -543,9 +549,7 @@ async def update_notebook_file_content(nb_id: UUID, file_id: UUID, body: Library
 
 
 @router.put("/{nb_id}/files/{file_id}/file", response_model=LibraryFileRead)
-async def replace_notebook_file_bytes(
-    nb_id: UUID, file_id: UUID, file: UploadFile = File(...)
-):
+async def replace_notebook_file_bytes(nb_id: UUID, file_id: UUID, file: UploadFile = File(...)):
     """Overwrite a stored file's bytes in place (used by the docx editor).
 
     The item keeps its `r2_key`/`r2_url` and metadata — only the bytes and
@@ -638,7 +642,7 @@ async def chat(nb_id: UUID, body: LibraryChatRequest):
         f"{lang_directive}\n\n"
         "Answer the user's question directly and substantively, in a single turn.\n"
         "Cite information from the files when you draw on them — name the file "
-        "(e.g. \"per the 中科大.xlsx data…\"). If the files don't cover the "
+        '(e.g. "per the 中科大.xlsx data…"). If the files don\'t cover the '
         "question, fall back to your own general knowledge and say so explicitly.\n"
         'DO NOT say things like "let me check the files", "I\'ll look into", '
         '"please wait", or ask the user to provide more context — the file '
@@ -798,7 +802,11 @@ def _build_generated_artifact(kind: str, raw: str) -> tuple[str, str, str, str]:
             hint = str(q.get("hint") or "").strip()
             if question and len(opts) >= 2 and any(o["isCorrect"] for o in opts):
                 questions.append(
-                    {"question": question, **({"hint": hint} if hint else {}), "answerOptions": opts}
+                    {
+                        "question": question,
+                        **({"hint": hint} if hint else {}),
+                        "answerOptions": opts,
+                    }
                 )
         if not questions:
             raise ValueError("model returned no valid quiz questions")
@@ -958,3 +966,145 @@ async def generate_description(nb_id: UUID, body: GenerateDescriptionRequest):
     if not description:
         raise HTTPException(502, "Model returned an empty description")
     return GenerateDescriptionResponse(description=description)
+
+
+# ---------------------------------------------------------------------------
+# Push folio files → NotebookLM notebook (one-way copy; folio is untouched)
+# ---------------------------------------------------------------------------
+
+# Folio categories NotebookLM accepts as uploaded sources. Everything else
+# (video, spreadsheet, mindmap/json, diagram/mmd, quiz/flashcards, component)
+# has no NotebookLM source type and is reported as skipped.
+_NLM_SOURCE_CATEGORIES = frozenset({"report", "note", "slide", "image", "audio"})
+
+# Human-readable skip reasons by category, for the per-file results list.
+_SKIP_REASONS: dict[str, str] = {
+    "video": "Video files are not a NotebookLM source type",
+    "spreadsheet": "Spreadsheets are not a NotebookLM source type (convert to PDF/text first)",
+    "mindmap": "Mind maps are portal-native (no NotebookLM source type)",
+    "diagram": "Diagrams are portal-native (no NotebookLM source type)",
+    "quiz": "Quizzes are portal-native (no NotebookLM source type)",
+    "flashcards": "Flashcards are portal-native (no NotebookLM source type)",
+    "component": "Components are portal-native (no NotebookLM source type)",
+}
+
+
+async def _push_file_to_notebook(client, notebook_id: str, f: dict) -> PushFileResult:
+    """Route a single folio file to the right NotebookLM source-add call.
+
+    Link-only items go through add_url; supported uploads are streamed from R2
+    to a temp file and registered via add_file. Anything else is skipped with a
+    reason. Per-file failures are caught so one bad file doesn't abort the batch.
+    """
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    file_id = UUID(str(f["id"]))
+    title = f.get("title") or f.get("original_name") or "Untitled"
+    category = f.get("file_category") or "other"
+
+    # Link-only folio items → URL source.
+    if f.get("is_link_only") and f.get("external_url"):
+        try:
+            source = await client.sources.add_url(notebook_id, f["external_url"])
+        except Exception as exc:
+            return PushFileResult(file_id=file_id, title=title, status="error", reason=str(exc))
+        return PushFileResult(file_id=file_id, title=title, status="pushed", source_id=source.id)
+
+    if category not in _NLM_SOURCE_CATEGORIES:
+        reason = _SKIP_REASONS.get(category, "File type is not a NotebookLM source type")
+        return PushFileResult(file_id=file_id, title=title, status="skipped", reason=reason)
+
+    if not f.get("r2_key"):
+        return PushFileResult(
+            file_id=file_id, title=title, status="skipped", reason="File has no stored content"
+        )
+
+    # Download from R2 and replay through NotebookLM's resumable upload, keeping
+    # the original filename so NotebookLM displays it (and detects type) correctly.
+    original_name = Path(f.get("original_name") or title).name or "upload"
+    tmp_dir = tempfile.mkdtemp()
+    tmp_path = Path(tmp_dir) / original_name
+    try:
+        data = get_file_bytes(f["r2_key"])
+        tmp_path.write_bytes(data)
+        source = await client.sources.add_file(notebook_id, str(tmp_path))
+    except Exception as exc:
+        return PushFileResult(file_id=file_id, title=title, status="error", reason=str(exc))
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return PushFileResult(file_id=file_id, title=title, status="pushed", source_id=source.id)
+
+
+@router.post("/{nb_id}/push-to-corpus", response_model=PushToCorpusResponse)
+async def push_to_corpus(nb_id: UUID, body: PushToCorpusRequest):
+    """Push selected folio files into a NotebookLM notebook as sources.
+
+    Copy, not move: the folio and its files are left untouched. Target an
+    existing notebook via `target_notebook_id`, or omit it to create a new one
+    (then `new_title` is required). Returns a per-file result list so the caller
+    can show exactly what was pushed vs. skipped.
+    """
+    from datetime import datetime, timezone
+
+    db = get_supabase()
+    _notebook_or_404(db, nb_id)
+
+    if not body.file_ids:
+        raise HTTPException(400, "file_ids is required")
+
+    # Validate every requested file belongs to this folio (mirrors bulk-delete).
+    wanted = {str(fid) for fid in body.file_ids}
+    files = [f for f in repo.list_files(db, nb_id) if str(f.get("id")) in wanted]
+    if len(files) != len(wanted):
+        raise HTTPException(404, "One or more files were not found")
+
+    if not body.target_notebook_id and not (body.new_title and body.new_title.strip()):
+        raise HTTPException(400, "Provide target_notebook_id or new_title")
+
+    try:
+        from notebooklm import NotebookLMClient
+    except ImportError:
+        raise HTTPException(503, "notebooklm-py not available")
+
+    # A folio file may need fetching + server-side processing per source; the
+    # default 30s RPC timeout is too tight for a batch, so widen it (matches the
+    # research-import endpoint).
+    async with await NotebookLMClient.from_storage(timeout=180.0) as client:
+        # Resolve target notebook (create-new or existing).
+        if body.target_notebook_id:
+            notebook_id = body.target_notebook_id
+            nb_rows = db.table("notebooks").select("title").eq("id", notebook_id).execute().data
+            if not nb_rows:
+                raise HTTPException(404, f"Notebook {notebook_id} not found")
+            notebook_title = nb_rows[0]["title"]
+        else:
+            try:
+                nb = await client.notebooks.create(body.new_title.strip())  # type: ignore[union-attr]
+            except Exception as exc:
+                raise HTTPException(502, f"NotebookLM create failed: {exc}")
+            notebook_id = nb.id
+            notebook_title = nb.title
+            db.table("notebooks").upsert(
+                {
+                    "id": nb.id,
+                    "title": nb.title,
+                    "sources_count": nb.sources_count,
+                    "is_owner": nb.is_owner,
+                    "nlm_created_at": nb.created_at.isoformat() if nb.created_at else None,
+                    "last_synced_at": datetime.now(timezone.utc).isoformat(),
+                    "cover_emoji": body.new_cover_emoji,
+                },
+                on_conflict="id",
+            ).execute()
+
+        # Push files sequentially — keeps NotebookLM's upload pipeline from being
+        # hammered and makes per-file error attribution straightforward.
+        results = [await _push_file_to_notebook(client, notebook_id, f) for f in files]
+
+    return PushToCorpusResponse(
+        notebook_id=notebook_id,
+        notebook_title=notebook_title,
+        results=results,
+    )
