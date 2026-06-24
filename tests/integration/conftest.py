@@ -231,35 +231,62 @@ def _disable_keepalive_poke_for_vcr(request, monkeypatch):
 def _has_active_vcr_cassette() -> bool:
     """Return ``True`` if a VCR cassette is currently installed on httpx stubs.
 
-    VCR installs its httpx / httpcore stubs as a global side effect when a
-    cassette context enters. Detecting that installation lets the network
-    guard distinguish "test legitimately replaying a cassette" from "test
+    VCR installs its httpx stubs as a global side effect when a cassette
+    context enters. Detecting that installation lets the network guard
+    distinguish "test legitimately replaying a cassette" from "test
     accidentally leaking an unbound HTTP request out to the wire". We look
-    for vcrpy's signature class-attribute mutations rather than poking at
-    private state so this stays robust against vcrpy version bumps.
+    for vcrpy's signature ``functools.wraps`` ``__wrapped__`` attribute on
+    its stubs rather than poking at private state so this stays robust
+    against vcrpy version bumps.
 
-    The check is best-effort: if vcrpy's stubs are not detectable for any
-    reason, the guard falls open (returns ``True``) so it doesn't break
-    legitimate replay flows. The stricter ``record_mode='none'`` setting
-    on ``notebooklm_vcr`` is the primary protection — this guard is a
-    secondary belt-and-braces check for unbound requests.
+    vcrpy moved its httpx patch point across the 8.1 → 8.2 boundary:
+
+    - vcrpy <= 8.1 patched ``httpcore.AsyncConnectionPool.handle_async_request``
+      (and the sync ``ConnectionPool.handle_request``).
+    - vcrpy >= 8.2 patches httpx's transport classes directly —
+      ``httpx.AsyncHTTPTransport.handle_async_request`` and
+      ``httpx.HTTPTransport.handle_request`` — and leaves httpcore untouched.
+
+    We probe both locations so the guard works regardless of which vcrpy
+    is installed; if any patched attribute carries ``__wrapped__``, a
+    cassette context is active somewhere.
+
+    The check is best-effort: if neither vcrpy patch point is detectable
+    (e.g. httpx/httpcore not importable), the guard falls open (returns
+    ``True``) so it doesn't break legitimate replay flows. The stricter
+    ``record_mode='none'`` setting on ``notebooklm_vcr`` is the primary
+    protection — this guard is a secondary belt-and-braces check for
+    unbound requests.
     """
-    try:
-        import httpcore  # type: ignore[import-not-found]
-
-        # When a vcrpy cassette is active, httpcore's AsyncConnectionPool gets
-        # its ``handle_async_request`` patched with a vcr-aware wrapper. The
-        # wrapper has a ``__wrapped__`` reference back to the original. If we
-        # see a wrapper, a cassette context is active somewhere.
-        handle = getattr(httpcore.AsyncConnectionPool, "handle_async_request", None)
+    # ``(module, class_name, attribute)`` patch points across vcrpy versions.
+    # vcrpy uses ``functools.wraps`` (or sets ``__wrapped__``) on its stubs,
+    # so a non-None ``__wrapped__`` on any of these means a cassette is active.
+    probes = (
+        ("httpx", "AsyncHTTPTransport", "handle_async_request"),  # vcrpy >= 8.2
+        ("httpx", "HTTPTransport", "handle_request"),  # vcrpy >= 8.2
+        ("httpcore", "AsyncConnectionPool", "handle_async_request"),  # vcrpy <= 8.1
+        ("httpcore", "ConnectionPool", "handle_request"),  # vcrpy <= 8.1
+    )
+    detected_any_probe = False
+    for module_name, class_name, attr in probes:
+        try:
+            module = __import__(module_name)
+        except ImportError:
+            continue
+        cls = getattr(module, class_name, None)
+        if cls is None:
+            continue
+        handle = getattr(cls, attr, None)
         if handle is None:
+            continue
+        detected_any_probe = True
+        if getattr(handle, "__wrapped__", None) is not None:
             return True
-        # vcrpy uses ``functools.wraps`` or sets ``__wrapped__`` on its stubs.
-        return getattr(handle, "__wrapped__", None) is not None
-    except (ImportError, AttributeError):
-        # If httpcore is missing or vcr stubs aren't introspectable, fall
-        # open — we shouldn't break tests on environmental quirks.
-        return True
+    # Found at least one introspectable patch point but none was wrapped:
+    # no cassette is active, so the guard should block the unbound request.
+    # If NO probe was introspectable at all (neither library importable),
+    # fall open so environmental quirks don't break legitimate replays.
+    return not detected_any_probe
 
 
 @pytest.fixture(autouse=True)

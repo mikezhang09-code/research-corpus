@@ -34,8 +34,9 @@ Recording note (maintainers)
 As of Tier-12 PR 12.6, synthetic-error substitution lives in
 :class:`notebooklm._middleware_error_injection.ErrorInjectionMiddleware`
 at the chain layer — well above the ``httpx`` transport. VCR's record
-hook patches ``httpcore.AsyncConnectionPool.handle_async_request`` (below
-httpx), so the chain short-circuit happens before VCR ever sees the
+hook patches the httpx transport (``httpx.AsyncHTTPTransport.handle_async_request``
+in vcrpy >= 8.2; ``httpcore.AsyncConnectionPool.handle_async_request`` in
+vcrpy <= 8.1), so the chain short-circuit happens before VCR ever sees the
 request: the wrapper bypasses the record hook entirely. As a consequence
 these cassettes are hand-written from the canonical synthetic shapes in
 ``tests/cassette_patterns.py`` rather than captured by running the tests
