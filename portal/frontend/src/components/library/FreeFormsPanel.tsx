@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Plus, Loader2, AlertCircle, Pencil, Trash2, Download, ExternalLink, Search,
+  CheckSquare, Square, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  deleteFreeFormFile, getFreeFormFiles, getLibraryFileContent,
+  deleteFreeFormFile, downloadFreeFormFiles, getFreeFormFiles, getLibraryFileContent,
   updateFreeFormFile, uploadFreeFormFile, type FreeFormFile,
 } from "@/lib/api";
 import { SectionHead } from "@/components/corpus/SectionHead";
@@ -204,6 +205,9 @@ export function FreeFormsPanel() {
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ file: FreeFormFile; kind: ViewerKind } | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     getFreeFormFiles()
@@ -269,6 +273,49 @@ export function FreeFormsPanel() {
     setFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
   }
 
+  // Selection is scoped to the currently-filtered rows so "Select all" never
+  // picks up files hidden by the category/tag/search filters.
+  const selectedFileIds = useMemo(() => [...selectedIds], [selectedIds]);
+  const selectedCount = selectedFileIds.length;
+  const allVisibleSelected = filtered.length > 0 && filtered.every((f) => selectedIds.has(f.id));
+
+  function toggleSelectionMode() {
+    setSelectionMode((prev) => {
+      const next = !prev;
+      if (!next) setSelectedIds(new Set());
+      return next;
+    });
+  }
+
+  function setFileSelected(fileId: string, selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(fileId); else next.delete(fileId);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(filtered.map((f) => f.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleDownloadSelected() {
+    if (selectedCount === 0) return;
+    setDownloading(true);
+    setActionError(null);
+    try {
+      await downloadFreeFormFiles(selectedFileIds);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -312,6 +359,17 @@ export function FreeFormsPanel() {
             </button>
           ))}
           <div className="ml-auto flex items-center gap-2">
+            {files.length > 0 && (
+              <Button
+                variant={selectionMode ? "secondary" : "outline"}
+                size="sm"
+                className="gap-1.5 h-7 rounded-[1px]"
+                onClick={toggleSelectionMode}
+              >
+                {selectionMode ? <X className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}
+                {selectionMode ? "Done" : "Select"}
+              </Button>
+            )}
             <NewArtifactButton
               onCreate={(kind) => {
                 if (kind === "note") setShowNote(true);
@@ -327,6 +385,32 @@ export function FreeFormsPanel() {
             </Button>
           </div>
         </div>
+
+        {selectionMode && (
+          <div className="flex items-center gap-2 flex-wrap rounded-[2px] border border-rule bg-paper-light px-3 py-2">
+            <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-fade mr-auto">
+              {selectedCount} selected
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-[1px]"
+              onClick={allVisibleSelected ? clearSelection : selectAllVisible}
+            >
+              {allVisibleSelected ? "Clear" : "Select all"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-7 rounded-[1px]"
+              onClick={handleDownloadSelected}
+              disabled={selectedCount === 0 || downloading}
+            >
+              {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Download
+            </Button>
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative max-w-xs">
@@ -381,6 +465,18 @@ export function FreeFormsPanel() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-rule bg-paper-light">
+                  {selectionMode && (
+                    <th className="w-10 px-4 py-2.5">
+                      <button
+                        type="button"
+                        aria-label={allVisibleSelected ? "Clear selection" : "Select all"}
+                        onClick={allVisibleSelected ? clearSelection : selectAllVisible}
+                        className="text-ink-fade hover:text-ink"
+                      >
+                        {allVisibleSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                      </button>
+                    </th>
+                  )}
                   <th className="px-4 py-2.5 font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute font-normal">Name</th>
                   <th className="px-4 py-2.5 font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute font-normal hidden sm:table-cell">Type</th>
                   <th className="px-4 py-2.5 font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute font-normal hidden md:table-cell">Size</th>
@@ -397,8 +493,26 @@ export function FreeFormsPanel() {
                     month: "short", day: "numeric", year: "numeric",
                   });
                   const openable = viewerFor(file) !== null || !!file.r2_url;
+                  const isSelected = selectedIds.has(file.id);
                   return (
-                    <tr key={file.id} className="border-b border-rule last:border-b-0 hover:bg-paper-deep/50 transition-colors">
+                    <tr
+                      key={file.id}
+                      className={`border-b border-rule last:border-b-0 transition-colors ${
+                        isSelected ? "bg-terracotta/5" : "hover:bg-paper-deep/50"
+                      }`}
+                    >
+                      {selectionMode && (
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            aria-label={isSelected ? "Deselect file" : "Select file"}
+                            onClick={() => setFileSelected(file.id, !isSelected)}
+                            className={isSelected ? "text-terracotta" : "text-ink-fade hover:text-ink"}
+                          >
+                            {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                          </button>
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <span

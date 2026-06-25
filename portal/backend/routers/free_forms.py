@@ -3,12 +3,17 @@ from __future__ import annotations
 import mimetypes
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
 
 from ..database import get_supabase
-from ..models import FreeFormFileRead, FreeFormFileUpdate, LibraryFileContentUpdate
+from ..models import (
+    BulkDownloadRequest,
+    FreeFormFileRead,
+    FreeFormFileUpdate,
+    LibraryFileContentUpdate,
+)
 from ..repositories import library as repo
-from ..storage import delete_file, r2_key_for_upload, upload_file
+from ..storage import build_zip, delete_file, r2_key_for_upload, upload_file, zip_response
 from .library_notebooks import _detect_category, file_content_response
 
 router = APIRouter(prefix="/api/free-forms", tags=["free-forms"])
@@ -67,6 +72,29 @@ async def upload_free_form_file(
         "notebook_id": None,
     }
     return db.table("library_items").insert(row).execute().data[0]
+
+
+@router.post("/download")
+async def download_free_form_files(body: BulkDownloadRequest | None = Body(None)):
+    """Stream a zip of free-form files. Omit ``ids`` to download them all."""
+    db = get_supabase()
+    files = repo.list_free(db)
+
+    if body and body.ids:
+        wanted = {str(fid) for fid in body.ids}
+        files = [f for f in files if str(f.get("id")) in wanted]
+        if len(files) != len(wanted):
+            raise HTTPException(404, "One or more files were not found")
+
+    entries = [
+        (f.get("original_name") or f"{f.get('title') or 'file'}{f.get('file_ext') or ''}", f["r2_key"])
+        for f in files
+        if f.get("r2_key")
+    ]
+    if not entries:
+        raise HTTPException(404, "No downloadable files in this selection")
+
+    return zip_response(build_zip(entries), "free-forms.zip")
 
 
 @router.patch("/{file_id}", response_model=FreeFormFileRead)

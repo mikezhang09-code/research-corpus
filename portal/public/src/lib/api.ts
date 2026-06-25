@@ -18,6 +18,58 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// ---- Downloads (zip) ----
+
+/** Result of a zip download: how many requested items were skipped server-side. */
+export interface DownloadResult {
+  skipped: number;
+}
+
+/** POST a (possibly empty) payload to a zip endpoint and save the response as a
+ *  file. The filename comes from Content-Disposition; `X-Skipped-Count` reports
+ *  items left out (e.g. unsaved Corpus artifacts). */
+async function downloadZip(path: string, payload: Record<string, unknown>): Promise<DownloadResult> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  const plain = /filename="([^"]+)"/i.exec(cd);
+  const filename = star ? decodeURIComponent(star[1]) : plain ? plain[1] : "download.zip";
+  const skipped = Number(res.headers.get("X-Skipped-Count") ?? "0") || 0;
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return { skipped };
+}
+
+/** Zip-download folio files. Omit `fileIds` to download the whole folio. */
+export const downloadFolioFiles = (notebookId: string, fileIds?: string[]) =>
+  downloadZip(`/api/library-notebooks/${notebookId}/files/download`, fileIds?.length ? { ids: fileIds } : {});
+
+/** Zip-download free-form files. Omit `fileIds` to download them all. */
+export const downloadFreeFormFiles = (fileIds?: string[]) =>
+  downloadZip(`/api/free-forms/download`, fileIds?.length ? { ids: fileIds } : {});
+
+/** Zip-download a notebook's saved artifacts. Omit `artifactIds` for all saved;
+ *  `skipped` covers unsaved artifacts with no R2 file. */
+export const downloadNotebookArtifacts = (notebookId: string, artifactIds?: string[]) =>
+  downloadZip(`/api/artifacts/download`, {
+    notebook_id: notebookId,
+    ...(artifactIds?.length ? { ids: artifactIds } : {}),
+  });
+
 // ---- Library Notebooks ("My Research" folios) ----
 
 export const getLibraryNotebooks = (opts?: { includeHidden?: boolean; tags?: string[] }) => {

@@ -8,7 +8,7 @@ import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents } 
 import {
   ArrowLeft, Music, Video, FileText, Brain, StickyNote,
   Image, Layers, BarChart2, Database, CheckCircle2, XCircle,
-  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronLeft, ChevronRight, ChevronDown, Lightbulb, Trash2, Search,
+  Loader2, AlertCircle, ExternalLink, RefreshCw, X, Plus, Sparkles, MessageSquare, ChevronLeft, ChevronRight, ChevronDown, Lightbulb, Trash2, Search, Download, CheckSquare, Square,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { PresentationModal } from "@/components/corpus/PresentationModal";
-import { getLiveArtifacts, getArtifactContent, saveArtifact, deleteArtifact, type LiveArtifact } from "@/lib/api";
+import { getLiveArtifacts, getArtifactContent, saveArtifact, deleteArtifact, downloadNotebookArtifacts, type LiveArtifact } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
 import { SourcesPanel } from "@/components/notebook/SourcesPanel";
@@ -1063,12 +1063,16 @@ function ArtifactCard({
   notebookTitle,
   onSaved,
   onDeleted,
+  selected = false,
+  onSelectedChange,
 }: {
   artifact: LiveArtifact;
   notebookId: string;
   notebookTitle: string | null;
   onSaved: (updated: Partial<LiveArtifact>) => void;
   onDeleted: () => void;
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1209,7 +1213,24 @@ function ArtifactCard({
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="relative rounded-[2px] overflow-hidden border border-ink bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all">
+      <div className={`relative rounded-[2px] overflow-hidden border bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all ${
+        selected ? "border-terracotta ring-2 ring-terracotta/25" : "border-ink"
+      }`}>
+        {/* Selection checkbox (selection mode only) */}
+        {onSelectedChange && (
+          <button
+            type="button"
+            aria-label={selected ? "Deselect artifact" : "Select artifact"}
+            onClick={(e) => { e.stopPropagation(); onSelectedChange(!selected); }}
+            className={`absolute top-2 left-2 z-10 h-7 w-7 rounded-[1px] border flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink ${
+              selected
+                ? "bg-terracotta text-paper border-terracotta"
+                : "bg-paper/90 hover:bg-paper border-ink/40 text-ink-fade hover:text-ink"
+            }`}
+          >
+            {selected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+          </button>
+        )}
         {/* Type header */}
         <div
           className="flex flex-col items-center justify-center gap-2 py-8 border-b border-ink"
@@ -1298,6 +1319,18 @@ function ArtifactCard({
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   Saved
                 </div>
+                {artifact.portal_id && (
+                  <a
+                    href={`/api/artifacts/${artifact.portal_id}/content`}
+                    download={`${artifact.title}.${artifact.file_format}`}
+                    className="shrink-0"
+                    title="Download"
+                  >
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-ink-fade hover:text-ink">
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </a>
+                )}
                 {isMarkdown ? (
                   <Button
                     variant="outline"
@@ -1412,6 +1445,10 @@ export default function NotebookDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [generateType, setGenerateType] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [downloadMsg, setDownloadMsg] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatRef = useRef<ChatPanelHandle | null>(null);
 
@@ -1474,6 +1511,46 @@ export default function NotebookDetailPage() {
   }
 
   const savedCount = artifacts.filter((a) => a.download_status === "done").length;
+
+  // Only saved (done) artifacts have an R2 file, so selection is limited to
+  // those — generating/unsaved cards show no checkbox.
+  const savedArtifacts = artifacts.filter((a) => a.download_status === "done" && a.portal_id);
+  const selectedIdList = [...selectedIds];
+  const selectedCount = selectedIdList.length;
+  const allSavedSelected = savedArtifacts.length > 0 && savedArtifacts.every((a) => selectedIds.has(a.portal_id!));
+
+  function toggleSelectionMode() {
+    setSelectionMode((prev) => {
+      const next = !prev;
+      if (!next) setSelectedIds(new Set());
+      setDownloadMsg(null);
+      return next;
+    });
+  }
+
+  function setArtifactSelected(portalId: string, selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(portalId); else next.delete(portalId);
+      return next;
+    });
+  }
+
+  async function runDownload(ids?: string[]) {
+    setDownloading(true);
+    setDownloadMsg(null);
+    try {
+      const { skipped } = await downloadNotebookArtifacts(notebookId, ids);
+      if (skipped > 0) {
+        setDownloadMsg(`${skipped} unsaved artifact${skipped !== 1 ? "s" : ""} skipped — save them first to include them.`);
+      }
+    } catch (e) {
+      setDownloadMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const isMobile = useIsMobile();
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -1552,7 +1629,31 @@ export default function NotebookDetailPage() {
           </TabsList>
 
           <TabsContent value="artifacts" className="mt-4 space-y-4">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 flex-wrap">
+              {savedCount > 0 && (
+                <Button
+                  variant={selectionMode ? "secondary" : "outline"}
+                  size="sm"
+                  className="gap-2"
+                  onClick={toggleSelectionMode}
+                >
+                  {selectionMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+                  {selectionMode ? "Done" : "Select"}
+                </Button>
+              )}
+              {savedCount > 0 && !selectionMode && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => runDownload()}
+                  disabled={downloading}
+                  title="Download all saved artifacts"
+                >
+                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  Download all
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -1568,6 +1669,41 @@ export default function NotebookDetailPage() {
                 Generate
               </Button>
             </div>
+
+            {selectionMode && (
+              <div className="flex items-center gap-2 flex-wrap rounded-[2px] border border-rule bg-paper-light px-3 py-2">
+                <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-fade mr-auto">
+                  {selectedCount} selected
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 rounded-[1px]"
+                  onClick={() =>
+                    setSelectedIds(allSavedSelected ? new Set() : new Set(savedArtifacts.map((a) => a.portal_id!)))
+                  }
+                >
+                  {allSavedSelected ? "Clear" : "Select all"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-7 rounded-[1px]"
+                  onClick={() => runDownload(selectedIdList)}
+                  disabled={selectedCount === 0 || downloading}
+                >
+                  {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  Download
+                </Button>
+              </div>
+            )}
+
+            {downloadMsg && (
+              <div className="flex items-start gap-2 font-mono text-[11px] tracking-[0.08em] text-ink-fade bg-vellum border border-rule rounded-[1px] p-2.5">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-px" />
+                <span className="break-words">{downloadMsg}</span>
+              </div>
+            )}
             {loading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -1584,16 +1720,23 @@ export default function NotebookDetailPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {artifacts.map((a) => (
-                  <ArtifactCard
-                    key={a.nlm_id}
-                    artifact={a}
-                    notebookId={notebookId}
-                    notebookTitle={notebookTitle}
-                    onSaved={(update) => handleSaved(a.nlm_id, update)}
-                    onDeleted={() => handleDeleted(a.nlm_id)}
-                  />
-                ))}
+                {artifacts.map((a) => {
+                  const canSelect = selectionMode && a.download_status === "done" && !!a.portal_id;
+                  return (
+                    <ArtifactCard
+                      key={a.nlm_id}
+                      artifact={a}
+                      notebookId={notebookId}
+                      notebookTitle={notebookTitle}
+                      onSaved={(update) => handleSaved(a.nlm_id, update)}
+                      onDeleted={() => handleDeleted(a.nlm_id)}
+                      selected={!!a.portal_id && selectedIds.has(a.portal_id)}
+                      onSelectedChange={
+                        canSelect ? (sel) => setArtifactSelected(a.portal_id!, sel) : undefined
+                      }
+                    />
+                  );
+                })}
               </div>
             )}
           </TabsContent>

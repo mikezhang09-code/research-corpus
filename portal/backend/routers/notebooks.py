@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, File, HTTPException, UploadFile
 
 from ..database import get_supabase
 from ..models import (
+    BulkDownloadRequest,
     ChatHistoryResponse,
     ChatReferenceRead,
     ChatRequest,
@@ -301,6 +302,47 @@ async def get_notebook_artifacts(notebook_id: str):
         .data
     )
     return rows
+
+
+@router.post("/{notebook_id}/artifacts/download")
+async def download_notebook_artifacts(
+    notebook_id: str, body: BulkDownloadRequest | None = Body(None)
+):
+    """Stream a zip of this notebook's saved artifacts (those downloaded to R2).
+
+    Omit ``ids`` to download every saved artifact; pass ``ids`` (portal artifact
+    UUIDs) to download a subset. Unsaved artifacts have no R2 file and are
+    skipped — the count is returned in the ``X-Skipped-Count`` header so the UI
+    can tell the user how many were left out.
+    """
+    from ..storage import build_zip, zip_response
+
+    db = get_supabase()
+    rows = (
+        db.table("nlm_artifacts").select("*").eq("notebook_id", notebook_id).execute().data
+    )
+
+    if body and body.ids:
+        wanted = {str(aid) for aid in body.ids}
+        rows = [r for r in rows if str(r.get("id")) in wanted]
+        if len(rows) != len(wanted):
+            raise HTTPException(404, "One or more artifacts were not found")
+
+    requested = len(rows)
+    saved = [r for r in rows if r.get("download_status") == "done" and r.get("r2_key")]
+    if not saved:
+        raise HTTPException(404, "No saved artifacts to download — save them first")
+
+    entries = [
+        (f"{r.get('title') or r['artifact_type']}.{r.get('file_format') or 'bin'}", r["r2_key"])
+        for r in saved
+    ]
+    nb_rows = db.table("notebooks").select("title").eq("id", notebook_id).execute().data
+    zip_name = f"{(nb_rows[0]['title'] if nb_rows else notebook_id)}.zip"
+
+    resp = zip_response(build_zip(entries), zip_name)
+    resp.headers["X-Skipped-Count"] = str(requested - len(saved))
+    return resp
 
 
 @router.get("/{notebook_id}/live-artifacts", response_model=LiveArtifactsResponse)

@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse
 
 from ..config import get_settings
@@ -20,6 +20,7 @@ from ..diagram_utils import (
     split_mermaid,
 )
 from ..models import (
+    BulkDownloadRequest,
     ChatHistoryResponse,
     ChatResponse,
     ChatTurn,
@@ -41,7 +42,14 @@ from ..models import (
     PushToCorpusResponse,
 )
 from ..repositories import library_notebooks as repo
-from ..storage import delete_file, get_file_bytes, r2_key_for_upload, upload_file
+from ..storage import (
+    build_zip,
+    delete_file,
+    get_file_bytes,
+    r2_key_for_upload,
+    upload_file,
+    zip_response,
+)
 
 router = APIRouter(prefix="/api/library-notebooks", tags=["library-notebooks"])
 
@@ -408,6 +416,30 @@ async def bulk_delete_notebook_files(nb_id: UUID, body: LibraryFileBulkRequest):
             except Exception:
                 pass
         repo.delete_file(db, nb_id, UUID(str(f["id"])))
+
+
+@router.post("/{nb_id}/files/download")
+async def download_notebook_files(nb_id: UUID, body: BulkDownloadRequest | None = Body(None)):
+    """Stream a zip of this folio's files. Omit ``ids`` to download the whole folio."""
+    db = get_supabase()
+    nb = _notebook_or_404(db, nb_id)
+    files = repo.list_files(db, nb_id)
+
+    if body and body.ids:
+        wanted = {str(fid) for fid in body.ids}
+        files = [f for f in files if str(f.get("id")) in wanted]
+        if len(files) != len(wanted):
+            raise HTTPException(404, "One or more files were not found")
+
+    entries = [
+        (f.get("original_name") or f"{f.get('title') or 'file'}{f.get('file_ext') or ''}", f["r2_key"])
+        for f in files
+        if f.get("r2_key")
+    ]
+    if not entries:
+        raise HTTPException(404, "No downloadable files in this selection")
+
+    return zip_response(build_zip(entries), f"{nb.get('title') or 'folio'}.zip")
 
 
 @router.post(

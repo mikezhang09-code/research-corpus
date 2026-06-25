@@ -417,6 +417,12 @@ class LibraryFileBulkRequest(BaseModel):
     file_ids: list[UUID]
 
 
+class BulkDownloadRequest(BaseModel):
+    """Selection for a zip download. Omit/empty ``ids`` = download everything."""
+
+    ids: list[UUID] | None = None
+
+
 class FreeFormFileRead(BaseModel):
     """A standalone library file that belongs to no folio (notebook_id IS NULL)."""
 

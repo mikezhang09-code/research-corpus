@@ -122,6 +122,11 @@ class _Query:
         self._filters.append(("ilike", field, value))
         return self
 
+    def is_(self, field, value):
+        # Mirrors PostgREST `.is_(col, "null")` — the only form the repos use.
+        self._filters.append(("is", field, value))
+        return self
+
     def order(self, field, desc=False):
         self._order = (field, desc)
         return self
@@ -150,6 +155,9 @@ class _Query:
             if kind == "ilike":
                 needle = value.strip("%").lower()
                 if needle not in str(row.get(field, "")).lower():
+                    return False
+            if kind == "is" and value == "null":
+                if row.get(field) is not None:
                     return False
         return True
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Loader2, CheckSquare, FolderPlus, Trash2, X, AlertCircle, ArrowUpRight,
+  Plus, Loader2, CheckSquare, FolderPlus, Trash2, X, AlertCircle, ArrowUpRight, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  createLibraryNotebookFromFiles, deleteLibraryNotebookFiles,
+  createLibraryNotebookFromFiles, deleteLibraryNotebookFiles, downloadFolioFiles,
   generateLibraryArtifact, getLibraryNotebookFiles, type LibraryFile,
 } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
@@ -128,6 +128,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
   const [showPushDialog, setShowPushDialog] = useState(false);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [generating, setGenerating] = useState<ArtifactKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [language] = useLanguage();
@@ -206,6 +207,19 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
       setActionError(e instanceof Error ? e.message : String(e));
     } finally {
       setBulkDeleting(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (selectedCount === 0) return;
+    setDownloading(true);
+    setActionError(null);
+    try {
+      await downloadFolioFiles(notebookId, selectedFileIds);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -314,6 +328,16 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           >
             <ArrowUpRight className="h-3.5 w-3.5" />
             Push to NotebookLM
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-7 rounded-[1px]"
+            onClick={handleDownload}
+            disabled={selectedCount === 0 || downloading}
+          >
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Download
           </Button>
           <Button
             variant="destructive"
