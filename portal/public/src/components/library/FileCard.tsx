@@ -418,7 +418,14 @@ export function FileCard({
         />
       )}
       {viewer === "excel" && (
-        <ExcelModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />
+        <ExcelModal
+          notebookId={file.notebook_id}
+          fileId={file.id}
+          title={file.title}
+          editable={ext === ".xlsx" || ext === ".csv"}
+          bookType={ext === ".csv" ? "csv" : "xlsx"}
+          onClose={() => setViewer(null)}
+        />
       )}
       {viewer === "mindmap" && (
         <MindMapModal
