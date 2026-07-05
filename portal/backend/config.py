@@ -26,10 +26,12 @@ class Settings(BaseSettings):
     # NotebookLM (optional override)
     notebooklm_home: str = ""
 
-    # Claude-compatible chat API (Xiaomi MiMo proxy)
+    # Claude-compatible chat API (Xiaomi MiMo proxy).
+    # Defaults mirror portal/.env so the fallback matches the live endpoint;
+    # keep them in sync when .env changes to avoid misleading readers.
     anthropic_api_key: str = ""
-    anthropic_base_url: str = "https://token-plan-sgp.xiaomimimo.com/anthropic"
-    anthropic_model: str = "mimo-v2.5-pro"
+    anthropic_base_url: str = "https://api.xiaomimimo.com/anthropic"
+    anthropic_model: str = "mimo-v2.5"
     # MiMo emits a long `thinking` preamble that counts against this budget,
     # so anything under ~6k routinely truncates the actual answer.
     anthropic_max_tokens: int = 8192
