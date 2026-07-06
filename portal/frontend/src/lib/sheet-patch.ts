@@ -21,7 +21,7 @@
  */
 import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate";
 import type { WorkSheet } from "xlsx";
-import { coerce } from "./sheet-edit";
+import { coerce, displayAoa, isFormula } from "./sheet-edit";
 
 type XlsxModule = typeof import("xlsx");
 
@@ -76,21 +76,16 @@ export function diffSheetGrid(
   values: string[][],
 ): Omit<SheetPatch, "name"> {
   const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
-  // Same options the editor used to build the grid, so old text compares
-  // exactly against what the user started from.
-  const oldAoa = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
-    header: 1,
-    defval: "",
-    blankrows: true,
-  });
+  // Same representation the editor showed (formulas as `=…`), so an untouched
+  // formula cell isn't seen as changed and flattened to text.
+  const oldAoa = displayAoa(XLSX, ws);
   const rows = Math.max(values.length, 1);
   const cols = Math.max(values.reduce((m, r) => Math.max(m, r.length), 1), 1);
   const writes: CellWrite[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const next = values[r]?.[c] ?? "";
-      const oldVal = oldAoa[r]?.[c];
-      const oldStr = oldVal == null ? "" : String(oldVal);
+      const oldStr = oldAoa[r]?.[c] ?? "";
       if (next !== oldStr) writes.push({ r: range.s.r + r, c: range.s.c + c, text: next });
     }
   }
@@ -244,6 +239,16 @@ function patchSheetDoc(doc: Document, patch: SheetPatch): boolean {
       cellEl.removeAttribute("t");
       // A bare styled cell keeps its formatting; a fully plain empty is noise.
       if (!cellEl.getAttribute("s")) rowEl.removeChild(cellEl);
+      continue;
+    }
+    if (isFormula(w.text)) {
+      // Write a formula (no leading '='); omit the cached <v> so Excel
+      // recomputes on open. Treat as a formula change so calcChain is dropped.
+      removedFormula = true;
+      cellEl.removeAttribute("t");
+      const fEl = el("f");
+      fEl.textContent = w.text.slice(1);
+      cellEl.appendChild(fEl);
       continue;
     }
     const v = coerce(w.text);

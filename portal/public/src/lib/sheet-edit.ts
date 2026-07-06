@@ -28,6 +28,35 @@ export function coerce(v: string): string | number {
 }
 
 /**
+ * The text the editor shows for a worksheet — the single source of truth for
+ * both the grid and the save diff, so untouched cells never look "changed".
+ *
+ * Formula cells render as `=<formula>` (like Excel's edit line) instead of
+ * their cached value; everything else renders its raw value. Iterates the full
+ * used range so every row has the same width.
+ */
+export function displayAoa(XLSX: XlsxModule, ws: WorkSheet): string[][] {
+  const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+  const out: string[][] = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const row: string[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell?.f) row.push(`=${cell.f}`);
+      else if (cell && cell.v != null) row.push(String(cell.v));
+      else row.push("");
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/** A grid cell whose text starts with `=` (and has a body) is a formula. */
+export function isFormula(text: string): boolean {
+  return text.length > 1 && text[0] === "=";
+}
+
+/**
  * Write the editor grid's text back into a loaded worksheet in place.
  *
  * `values` is the full grid (row-major cell text, '' for empty). Cells whose
@@ -40,13 +69,9 @@ export function applyGridToSheet(XLSX: XlsxModule, ws: WorkSheet, values: string
   // Grid coordinates are relative to the used range's start (that's how
   // sheet_to_json built the grid), so offset by it when addressing cells.
   const start = oldRange.s;
-  // Same options the editor used to build the grid, so old text compares
-  // exactly against what the user started from.
-  const oldAoa = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
-    header: 1,
-    defval: "",
-    blankrows: true,
-  });
+  // Same representation the editor showed (formulas as `=…`), so old text
+  // compares exactly against what the user started from.
+  const oldAoa = displayAoa(XLSX, ws);
 
   const rows = Math.max(values.length, 1);
   const cols = Math.max(values.reduce((m, r) => Math.max(m, r.length), 1), 1);
@@ -54,12 +79,16 @@ export function applyGridToSheet(XLSX: XlsxModule, ws: WorkSheet, values: string
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const next = values[r]?.[c] ?? "";
-      const oldVal = oldAoa[r]?.[c];
-      const oldStr = oldVal == null ? "" : String(oldVal);
+      const oldStr = oldAoa[r]?.[c] ?? "";
       const addr = XLSX.utils.encode_cell({ r: start.r + r, c: start.c + c });
       if (next === oldStr && (next !== "" ? ws[addr] !== undefined : true)) continue;
       if (next === "") {
         delete ws[addr];
+        continue;
+      }
+      if (isFormula(next)) {
+        // Store as a formula; Excel/SheetJS recomputes the value on open.
+        ws[addr] = { t: "n", f: next.slice(1) };
         continue;
       }
       const v = coerce(next);

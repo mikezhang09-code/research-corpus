@@ -26,7 +26,7 @@ import "react-data-grid/lib/styles.css";
 import { Loader2, AlertCircle, AlertTriangle, Save, CheckCircle2, Plus, Minus } from "lucide-react";
 import type { WorkBook } from "xlsx";
 import { getLibraryFileBlob, replaceLibraryFileBytes } from "@/lib/api";
-import { applyGridToSheet } from "@/lib/sheet-edit";
+import { applyGridToSheet, displayAoa } from "@/lib/sheet-edit";
 
 type Row = { __id: number; [key: string]: string | number };
 type SheetState = { name: string; rows: Row[]; nCols: number };
@@ -112,15 +112,13 @@ export default function ExcelEditorPane({
         wbRef.current = wb;
         const parsed: SheetState[] = wb.SheetNames.map((name) => {
           const ws = wb.Sheets[name];
-          const aoa = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
-            header: 1,
-            defval: "",
-            blankrows: true,
-          });
+          // Formula cells render as `=…` (see displayAoa) so the grid matches
+          // Excel's edit line rather than showing the cached value.
+          const aoa = displayAoa(XLSX, ws);
           const nCols = Math.max(aoa.reduce((m, r) => Math.max(m, r.length), 1), 1);
           const rows: Row[] = aoa.map((r, i) => {
             const row: Row = { __id: i };
-            for (let j = 0; j < nCols; j++) row[`c${j}`] = r[j] == null ? "" : String(r[j]);
+            for (let j = 0; j < nCols; j++) row[`c${j}`] = r[j] ?? "";
             return row;
           });
           // Guarantee at least one editable row so an empty sheet is usable.
