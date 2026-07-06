@@ -56,6 +56,15 @@ export function isFormula(text: string): boolean {
   return text.length > 1 && text[0] === "=";
 }
 
+/** A recalculated formula result. */
+export type CellVal = number | string | boolean;
+
+/** Loose equality between a computed value and a worksheet's cached `.v`. */
+export function sameVal(a: CellVal, b: unknown): boolean {
+  if (typeof a === "number" && typeof b === "number") return a === b;
+  return String(a) === String(b);
+}
+
 /**
  * Write the editor grid's text back into a loaded worksheet in place.
  *
@@ -64,7 +73,12 @@ export function isFormula(text: string): boolean {
  * cells are deleted; rows/cols removed in the editor are dropped and the
  * sheet ref + autofilter/merge ranges are clamped to the new bounds.
  */
-export function applyGridToSheet(XLSX: XlsxModule, ws: WorkSheet, values: string[][]): void {
+export function applyGridToSheet(
+  XLSX: XlsxModule,
+  ws: WorkSheet,
+  values: string[][],
+  computed?: Map<string, CellVal>,
+): void {
   const oldRange = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
   // Grid coordinates are relative to the used range's start (that's how
   // sheet_to_json built the grid), so offset by it when addressing cells.
@@ -81,14 +95,23 @@ export function applyGridToSheet(XLSX: XlsxModule, ws: WorkSheet, values: string
       const next = values[r]?.[c] ?? "";
       const oldStr = oldAoa[r]?.[c] ?? "";
       const addr = XLSX.utils.encode_cell({ r: start.r + r, c: start.c + c });
+      if (isFormula(next)) {
+        // Keep the original formula + cached value when nothing changed and we
+        // have no fresh value to bake in.
+        const val = computed?.get(`${r},${c}`);
+        if (next === oldStr && val === undefined) continue;
+        const cell: WorkSheet[string] = { t: "n", f: next.slice(1) };
+        if (val !== undefined) {
+          cell.v = val;
+          if (typeof val === "string") cell.t = "str";
+          else if (typeof val === "boolean") cell.t = "b";
+        }
+        ws[addr] = cell;
+        continue;
+      }
       if (next === oldStr && (next !== "" ? ws[addr] !== undefined : true)) continue;
       if (next === "") {
         delete ws[addr];
-        continue;
-      }
-      if (isFormula(next)) {
-        // Store as a formula; Excel/SheetJS recomputes the value on open.
-        ws[addr] = { t: "n", f: next.slice(1) };
         continue;
       }
       const v = coerce(next);

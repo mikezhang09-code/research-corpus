@@ -55,10 +55,11 @@ function rebuildWithSheetJs(
   wb: WorkBook,
   grids: { name: string; values: string[][] }[],
   bookType: "xlsx" | "csv",
+  recalc: (values: string[][], name: string) => Map<string, string | number | boolean>,
 ): ArrayBuffer {
   for (const g of grids) {
     const ws = wb.Sheets[g.name];
-    if (ws) applyGridToSheet(XLSX, ws, g.values);
+    if (ws) applyGridToSheet(XLSX, ws, g.values, recalc(g.values, g.name));
   }
   return XLSX.write(wb, { type: "array", bookType, cellStyles: true }) as ArrayBuffer;
 }
@@ -253,6 +254,9 @@ export default function ExcelEditorPane({
       const bytes = bytesRef.current;
       if (!wb || !bytes) throw new Error("Workbook not loaded yet");
       const grids = textGrids(sheets);
+      // Best-effort recalc so edited formulas (and formulas depending on edited
+      // inputs) get a fresh cached value baked in for read-only viewers.
+      const { recalcSheet } = await import("@/lib/sheet-recalc");
 
       // Preferred path: patch only the changed cells inside the original file
       // so styling/themes/charts survive byte-for-byte (xlsx only).
@@ -263,7 +267,7 @@ export default function ExcelEditorPane({
           const { diffSheetGrid, patchXlsx } = await import("@/lib/sheet-patch");
           const patches = grids.flatMap((g) => {
             const ws = wb.Sheets[g.name];
-            return ws ? [{ name: g.name, ...diffSheetGrid(XLSX, ws, g.values) }] : [];
+            return ws ? [{ name: g.name, ...diffSheetGrid(XLSX, ws, g.values, recalcSheet(g.values, g.name)) }] : [];
           });
           const patched = patchXlsx(new Uint8Array(bytes), patches);
           out = patched.buffer.slice(
@@ -273,10 +277,10 @@ export default function ExcelEditorPane({
         } catch (err) {
           console.warn("[excel-editor] surgical patch failed; falling back to SheetJS rewrite:", err);
           lostStyle = true;
-          out = rebuildWithSheetJs(XLSX, wb, grids, bookType);
+          out = rebuildWithSheetJs(XLSX, wb, grids, bookType, recalcSheet);
         }
       } else {
-        out = rebuildWithSheetJs(XLSX, wb, grids, bookType);
+        out = rebuildWithSheetJs(XLSX, wb, grids, bookType, recalcSheet);
       }
 
       const mime =

@@ -21,7 +21,7 @@
  */
 import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate";
 import type { WorkSheet } from "xlsx";
-import { coerce, displayAoa, isFormula } from "./sheet-edit";
+import { coerce, displayAoa, isFormula, sameVal, type CellVal } from "./sheet-edit";
 
 type XlsxModule = typeof import("xlsx");
 
@@ -30,6 +30,8 @@ export interface CellWrite {
   r: number;
   c: number;
   text: string;
+  /** For a formula cell: the recomputed cached value to bake in (if known). */
+  value?: CellVal;
 }
 
 export interface SheetPatch {
@@ -74,6 +76,7 @@ export function diffSheetGrid(
   XLSX: XlsxModule,
   ws: WorkSheet,
   values: string[][],
+  computed?: Map<string, CellVal>,
 ): Omit<SheetPatch, "name"> {
   const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
   // Same representation the editor showed (formulas as `=…`), so an untouched
@@ -86,7 +89,18 @@ export function diffSheetGrid(
     for (let c = 0; c < cols; c++) {
       const next = values[r]?.[c] ?? "";
       const oldStr = oldAoa[r]?.[c] ?? "";
-      if (next !== oldStr) writes.push({ r: range.s.r + r, c: range.s.c + c, text: next });
+      const R = range.s.r + r;
+      const C = range.s.c + c;
+      if (isFormula(next)) {
+        // Rewrite a formula cell when its text changed, or when its recomputed
+        // value differs from the cached one (an input it depends on changed).
+        const val = computed?.get(`${r},${c}`);
+        const oldCached = ws[XLSX.utils.encode_cell({ r: R, c: C })]?.v;
+        const valueChanged = val !== undefined && !sameVal(val, oldCached);
+        if (next !== oldStr || valueChanged) writes.push({ r: R, c: C, text: next, value: val });
+      } else if (next !== oldStr) {
+        writes.push({ r: R, c: C, text: next });
+      }
     }
   }
   return { writes, endRow: range.s.r + rows - 1, endCol: range.s.c + cols - 1 };
@@ -242,13 +256,22 @@ function patchSheetDoc(doc: Document, patch: SheetPatch): boolean {
       continue;
     }
     if (isFormula(w.text)) {
-      // Write a formula (no leading '='); omit the cached <v> so Excel
-      // recomputes on open. Treat as a formula change so calcChain is dropped.
+      // Write a formula (no leading '='). Bake in the recomputed cached value
+      // when known so read-only viewers show it immediately; otherwise omit
+      // <v> and let Excel/Office recompute on open. Treat as a formula change
+      // so the stale calcChain is dropped.
       removedFormula = true;
       cellEl.removeAttribute("t");
       const fEl = el("f");
       fEl.textContent = w.text.slice(1);
       cellEl.appendChild(fEl);
+      if (w.value !== undefined) {
+        if (typeof w.value === "string") cellEl.setAttribute("t", "str");
+        else if (typeof w.value === "boolean") cellEl.setAttribute("t", "b");
+        const vEl = el("v");
+        vEl.textContent = typeof w.value === "boolean" ? (w.value ? "1" : "0") : String(w.value);
+        cellEl.appendChild(vEl);
+      }
       continue;
     }
     const v = coerce(w.text);

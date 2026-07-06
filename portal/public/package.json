@@ -19,6 +19,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "docx-preview": "^0.3.7",
+    "fast-formula-parser": "^1.0.19",
     "fflate": "^0.8.3",
     "jszip": "^3.10.1",
     "katex": "^0.17.0",
