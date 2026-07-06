@@ -26,11 +26,59 @@ import "react-data-grid/lib/styles.css";
 import { Loader2, AlertCircle, AlertTriangle, Save, CheckCircle2, Plus, Minus } from "lucide-react";
 import type { WorkBook } from "xlsx";
 import { getLibraryFileBlob, replaceLibraryFileBytes } from "@/lib/api";
-import { applyGridToSheet, displayAoa } from "@/lib/sheet-edit";
+import { applyGridToSheet, displayAoa, isFormula, type CellVal } from "@/lib/sheet-edit";
 
+// A grid row holds two values per column: `c{j}` is the editable text (a
+// formula `=…` or the raw value — the source of truth we diff and save) and
+// `d{j}` is the read-only display text (the formatted result Excel would show).
 type Row = { __id: number; [key: string]: string | number };
-type SheetState = { name: string; rows: Row[]; nCols: number };
+type Formats = (string | number | undefined)[][];
+type SheetState = { name: string; rows: Row[]; nCols: number; formats: Formats };
 type XlsxModule = typeof import("xlsx");
+type Recalc = (values: string[][], name: string) => Map<string, CellVal>;
+
+function safeFmt(XLSX: XlsxModule, z: string | number, n: number): string {
+  try {
+    return XLSX.SSF.format(z, n);
+  } catch {
+    return String(n);
+  }
+}
+
+// What a cell shows when it's not being edited: a formula → its formatted
+// computed result; a plain number → formatted by the cell's number format;
+// anything else → the raw text.
+function displayText(
+  XLSX: XlsxModule,
+  editText: string,
+  computed: CellVal | undefined,
+  z: string | number | undefined,
+  prev: string,
+): string {
+  if (editText === "") return "";
+  if (isFormula(editText)) {
+    if (computed == null) return prev; // couldn't evaluate — keep the last known value
+    return z != null && typeof computed === "number" ? safeFmt(XLSX, z, computed) : String(computed);
+  }
+  if (z != null) {
+    const n = Number(editText);
+    if (editText.trim() !== "" && Number.isFinite(n)) return safeFmt(XLSX, z, n);
+  }
+  return editText;
+}
+
+/** Recompute every `d{j}` display value for one sheet's rows. */
+function withDisplay(XLSX: XlsxModule, recalc: Recalc, rows: Row[], nCols: number, name: string, formats: Formats): Row[] {
+  const values = rows.map((r) => Array.from({ length: nCols }, (_, j) => String(r[`c${j}`] ?? "")));
+  const computed = recalc(values, name);
+  return rows.map((r, ri) => {
+    const nr: Row = { ...r };
+    for (let j = 0; j < nCols; j++) {
+      nr[`d${j}`] = displayText(XLSX, String(r[`c${j}`] ?? ""), computed.get(`${ri},${j}`), formats[ri]?.[j], String(r[`d${j}`] ?? ""));
+    }
+    return nr;
+  });
+}
 
 // Excel-style A, B, … Z, AA column header for a 0-based index.
 function colName(i: number): string {
@@ -95,6 +143,9 @@ export default function ExcelEditorPane({
   const nextId = useRef(1_000_000);
   // Latest selected cell (for block copy/paste), tracked outside render.
   const selected = useRef<{ rowIdx: number; colIdx: number } | null>(null);
+  // xlsx + recalc, loaded lazily on the first edit (keeps the initial open fast;
+  // display values then refresh formula/formatted results after each commit).
+  const deps = useRef<{ XLSX: XlsxModule; recalc: Recalc } | null>(null);
 
   // The pane is mounted fresh per file (the modal unmounts it on close), so
   // initial state covers the reset; the effect only fills in async results.
@@ -113,18 +164,32 @@ export default function ExcelEditorPane({
         wbRef.current = wb;
         const parsed: SheetState[] = wb.SheetNames.map((name) => {
           const ws = wb.Sheets[name];
-          // Formula cells render as `=…` (see displayAoa) so the grid matches
-          // Excel's edit line rather than showing the cached value.
+          // `c{j}` = editable text: formulas as `=…` (Excel's edit line); the
+          // cell's cached formatted text (`.w`) seeds the `d{j}` display so the
+          // grid shows values, not formulas, until edited.
           const aoa = displayAoa(XLSX, ws);
+          const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
           const nCols = Math.max(aoa.reduce((m, r) => Math.max(m, r.length), 1), 1);
+          const formats: Formats = [];
           const rows: Row[] = aoa.map((r, i) => {
             const row: Row = { __id: i };
-            for (let j = 0; j < nCols; j++) row[`c${j}`] = r[j] ?? "";
+            const fr: (string | number | undefined)[] = [];
+            for (let j = 0; j < nCols; j++) {
+              const cell = ws[XLSX.utils.encode_cell({ r: range.s.r + i, c: range.s.c + j })];
+              const edit = r[j] ?? "";
+              row[`c${j}`] = edit;
+              row[`d${j}`] = cell?.w ?? (cell?.v != null ? String(cell.v) : edit);
+              fr.push(typeof cell?.z === "string" || typeof cell?.z === "number" ? cell.z : undefined);
+            }
+            formats.push(fr);
             return row;
           });
           // Guarantee at least one editable row so an empty sheet is usable.
-          if (rows.length === 0) rows.push(emptyRow(0));
-          return { name, rows, nCols };
+          if (rows.length === 0) {
+            rows.push(emptyRow(0));
+            formats.push([]);
+          }
+          return { name, rows, nCols, formats };
         });
         if (cancelled) return;
         if (parsed.length === 0) setError("Workbook has no sheets");
@@ -158,11 +223,33 @@ export default function ExcelEditorPane({
         editable: true,
         resizable: true,
         width: 130,
+        // Show the formatted display value; the editor still edits `c{j}`.
+        renderCell: ({ row, column }) => String(row[`d${column.key.slice(1)}`] ?? ""),
         renderEditCell: renderTextEditor,
       });
     }
     return cols;
   }, [current?.nCols]);
+
+  // Recompute the active sheet's `d{j}` display values (formulas + number
+  // formats) after an edit. Runs on commit (Enter/blur/paste), not per
+  // keystroke, so it stays cheap; loads xlsx + recalc lazily the first time.
+  const refreshDisplay = useCallback(() => {
+    void (async () => {
+      if (!deps.current) {
+        const [XLSX, mod] = await Promise.all([import("xlsx"), import("@/lib/sheet-recalc")]);
+        deps.current = { XLSX, recalc: mod.recalcSheet };
+      }
+      const { XLSX, recalc } = deps.current;
+      setSheets((prev) => {
+        if (!prev) return prev;
+        const sheet = prev[active];
+        const copy = prev.slice();
+        copy[active] = { ...sheet, rows: withDisplay(XLSX, recalc, sheet.rows, sheet.nCols, sheet.name, sheet.formats) };
+        return copy;
+      });
+    })();
+  }, [active]);
 
   const onRowsChange = useCallback(
     (rows: Row[]) => {
@@ -172,8 +259,9 @@ export default function ExcelEditorPane({
         copy[active] = { ...copy[active], rows };
         return copy;
       });
+      refreshDisplay();
     },
-    [active],
+    [active, refreshDisplay],
   );
 
   const onSelectedCellChange = useCallback((args: CellSelectArgs<Row>) => {
@@ -213,6 +301,7 @@ export default function ExcelEditorPane({
       copy[active] = sheet;
       return copy;
     });
+    refreshDisplay();
   }
 
   // Copy the single selected cell (range copy isn't supported by the grid).
