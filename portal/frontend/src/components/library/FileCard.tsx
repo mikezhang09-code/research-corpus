@@ -424,6 +424,7 @@ export function FileCard({
           title={file.title}
           editable={ext === ".xlsx" || ext === ".csv"}
           bookType={ext === ".csv" ? "csv" : "xlsx"}
+          fileUrl={file.r2_url ?? undefined}
           onClose={() => setViewer(null)}
         />
       )}

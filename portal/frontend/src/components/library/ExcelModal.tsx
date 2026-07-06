@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { X, Loader2, AlertCircle, Pencil, Eye } from "lucide-react";
+import { X, Loader2, AlertCircle, Pencil, Eye, Table, FileSpreadsheet, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getLibraryFileBlob } from "@/lib/api";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
@@ -17,17 +17,28 @@ const ExcelEditorPane = dynamic(() => import("./ExcelEditorPane"), {
   ),
 });
 
+// Microsoft's free Office Online viewer renders .xlsx/.xls in an iframe with
+// full fidelity (fills, fonts, borders, charts, merges) — same as the PPT
+// viewer (PresentationModal). It fetches `src` server-side, so the URL must be
+// publicly reachable; the portal's R2 bucket is a public r2.dev domain, so
+// `r2_url` works directly. CSV isn't an Office format, so it stays on the
+// SheetJS "Plain" table.
+const OFFICE_EMBED = "https://view.officeapps.live.com/op/embed.aspx?src=";
+
 type Sheet = { name: string; html: string; rows: number; cols: number };
 
 // SheetJS reads xlsx/xls/csv client-side and emits HTML per sheet — we wrap
-// each in a tab so the viewer handles multi-sheet workbooks. When `editable`,
-// an Edit toggle swaps in a react-spreadsheet grid that writes changes back.
+// each in a tab so the "Plain" view handles multi-sheet workbooks. Excel files
+// with a public URL default to the higher-fidelity Office viewer; a toggle
+// falls back to the Plain table. When `editable`, an Edit toggle swaps in a
+// react-spreadsheet grid that writes changes back.
 export function ExcelModal({
   notebookId,
   fileId,
   title,
   editable = false,
   bookType = "xlsx",
+  fileUrl,
   onClose,
 }: {
   /** Folio id, or null for a free-form file. */
@@ -38,18 +49,30 @@ export function ExcelModal({
   editable?: boolean;
   /** Serialization format the editor writes back; only meaningful when editable. */
   bookType?: "xlsx" | "csv";
+  /** Public R2 URL — enables the formatted Office Online preview (non-CSV only). */
+  fileUrl?: string;
   onClose: () => void;
 }) {
+  // Office viewer needs a public URL and only handles Excel formats, not CSV.
+  const officeCapable = !!fileUrl && bookType !== "csv";
+
   const [sheets, setSheets] = useState<Sheet[] | null>(null);
   const [active, setActive] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<"view" | "edit">("view");
-  // Bumped after a save so returning to view refetches the edited bytes.
+  // Formatted = Office Online iframe; plain = SheetJS table. Default to the
+  // high-fidelity view when we can, else the only option we have.
+  const [preview, setPreview] = useState<"formatted" | "plain">(officeCapable ? "formatted" : "plain");
+  const [officeLoaded, setOfficeLoaded] = useState(false);
+  // Bumped after a save so returning to view refetches the edited bytes and
+  // cache-busts the Office iframe.
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Only download + parse the workbook when the Plain table is actually shown;
+  // the Office viewer fetches the file itself.
   useEffect(() => {
-    if (mode !== "view") return;
+    if (mode !== "view" || preview !== "plain") return;
     let cancelled = false;
     (async () => {
       try {
@@ -80,7 +103,7 @@ export function ExcelModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [notebookId, fileId, mode, reloadKey]);
+  }, [notebookId, fileId, mode, preview, reloadKey]);
 
   function startEditing() {
     setExpanded(true); // the grid wants room
@@ -89,14 +112,25 @@ export function ExcelModal({
 
   function backToView() {
     // Reset here (an event handler) so the effect body stays setState-free;
-    // bumping reloadKey refetches so any saved edits show in the viewer.
+    // bumping reloadKey refetches the table and cache-busts the Office iframe.
     setSheets(null);
     setError(null);
+    setOfficeLoaded(false);
     setReloadKey((k) => k + 1);
     setMode("view");
   }
 
   const current = sheets?.[active];
+  const showPlain = mode === "view" && preview === "plain";
+
+  // Cache-bust the Office iframe after an edit so Microsoft refetches the file.
+  const officeSrc =
+    officeCapable && fileUrl
+      ? reloadKey > 0
+        ? `${fileUrl}${fileUrl.includes("?") ? "&" : "?"}v=${reloadKey}`
+        : fileUrl
+      : "";
+  const embedUrl = officeSrc ? `${OFFICE_EMBED}${encodeURIComponent(officeSrc)}` : "";
 
   return (
     <div
@@ -108,13 +142,37 @@ export function ExcelModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-rule shrink-0">
           <div className="min-w-0">
             <h2 className="font-serif-display text-[22px] leading-tight tracking-tight text-ink line-clamp-1">{title}</h2>
-            {sheets && mode === "view" && (
+            {showPlain && sheets && (
               <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute mt-1">
                 {sheets.length} sheet{sheets.length !== 1 ? "s" : ""}
               </p>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {officeCapable && mode === "view" && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8 rounded-[1px] mr-1"
+                  onClick={() => setPreview((p) => (p === "formatted" ? "plain" : "formatted"))}
+                  title={preview === "formatted" ? "Switch to a plain table" : "Switch to the formatted Excel view"}
+                >
+                  {preview === "formatted" ? (
+                    <><Table className="h-3.5 w-3.5" /> Plain</>
+                  ) : (
+                    <><FileSpreadsheet className="h-3.5 w-3.5" /> Formatted</>
+                  )}
+                </Button>
+                {preview === "formatted" && fileUrl && (
+                  <a href={fileUrl} target="_blank" rel="noopener noreferrer" title="Download original">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink">
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  </a>
+                )}
+              </>
+            )}
             {editable && (
               <Button
                 variant="outline"
@@ -136,8 +194,8 @@ export function ExcelModal({
           </div>
         </div>
 
-        {/* Sheet tabs */}
-        {mode === "view" && sheets && sheets.length > 1 && (
+        {/* Sheet tabs (plain table only) */}
+        {showPlain && sheets && sheets.length > 1 && (
           <div className="flex items-center gap-1 px-6 pt-3 shrink-0 overflow-x-auto border-b border-rule bg-paper-light">
             {sheets.map((s, i) => (
               <button
@@ -166,28 +224,44 @@ export function ExcelModal({
               bookType={bookType}
             />
           </div>
-        ) : (
-        <div className="overflow-auto flex-1">
-          {error ? (
-            <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase p-6">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              Failed to load: {error}
-            </div>
-          ) : !current ? (
-            <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase p-6">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </div>
-          ) : (
-            <div
-              className="excel-sheet"
-              dangerouslySetInnerHTML={{ __html: current.html }}
+        ) : preview === "formatted" ? (
+          <div className="relative flex-1 min-h-0 bg-paper-light">
+            {!officeLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading formatted view…
+              </div>
+            )}
+            <iframe
+              key={embedUrl}
+              src={embedUrl}
+              title={title}
+              className="w-full h-full border-0"
+              onLoad={() => setOfficeLoaded(true)}
+              allowFullScreen
             />
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="overflow-auto flex-1">
+            {error ? (
+              <div className="flex items-center gap-2 text-terracotta font-mono text-[11px] tracking-[0.1em] uppercase p-6">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                Failed to load: {error}
+              </div>
+            ) : !current ? (
+              <div className="flex items-center gap-2 text-ink-fade font-mono text-[11px] tracking-[0.1em] uppercase p-6">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            ) : (
+              <div
+                className="excel-sheet"
+                dangerouslySetInnerHTML={{ __html: current.html }}
+              />
+            )}
+          </div>
         )}
 
-        {/* Footer */}
-        {mode === "view" && current && (
+        {/* Footer (plain table only) */}
+        {showPlain && current && (
           <div className="px-6 py-3 border-t border-rule shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute flex items-center justify-between">
             <span>{current.name}</span>
             <span>{current.rows} row{current.rows !== 1 ? "s" : ""} · {current.cols} col{current.cols !== 1 ? "s" : ""}</span>
