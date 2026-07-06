@@ -66,6 +66,18 @@ export function sameVal(a: CellVal, b: unknown): boolean {
 }
 
 /**
+ * The format-carrying fields of a cell (style index + number format), so a
+ * rewritten cell keeps its appearance — e.g. a percentage cell stays a
+ * percentage after its value/formula changes.
+ */
+function keepFormat(cell: WorkSheet[string] | undefined): { s?: unknown; z?: string | number } {
+  const out: { s?: unknown; z?: string | number } = {};
+  if (cell && "s" in cell && cell.s !== undefined) out.s = cell.s;
+  if (cell?.z !== undefined) out.z = cell.z;
+  return out;
+}
+
+/**
  * Write the editor grid's text back into a loaded worksheet in place.
  *
  * `values` is the full grid (row-major cell text, '' for empty). Cells whose
@@ -100,7 +112,8 @@ export function applyGridToSheet(
         // have no fresh value to bake in.
         const val = computed?.get(`${r},${c}`);
         if (next === oldStr && val === undefined) continue;
-        const cell: WorkSheet[string] = { t: "n", f: next.slice(1) };
+        // Preserve the cell's number format / style across the rewrite.
+        const cell: WorkSheet[string] = { ...keepFormat(ws[addr]), t: "n", f: next.slice(1) };
         if (val !== undefined) {
           cell.v = val;
           if (typeof val === "string") cell.t = "str";
@@ -114,8 +127,9 @@ export function applyGridToSheet(
         delete ws[addr];
         continue;
       }
+      const fmt = keepFormat(ws[addr]);
       const v = coerce(next);
-      ws[addr] = typeof v === "number" ? { t: "n", v } : { t: "s", v: next };
+      ws[addr] = typeof v === "number" ? { ...fmt, t: "n", v } : { ...fmt, t: "s", v: next };
     }
   }
 
