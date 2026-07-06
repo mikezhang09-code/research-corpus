@@ -412,24 +412,33 @@
     font-size: 10px;
   }
 
-  /* Excel editor — react-spreadsheet self-injects default styles; we only
-     retint its CSS variables to the vellum/ink palette so it matches the
-     read-only viewer. */
-  .excel-editor .Spreadsheet {
-    --background-color: var(--color-vellum);
-    --text-color: var(--color-ink);
-    --readonly-text-color: var(--color-ink-fade);
-    --border-color: var(--color-rule);
-    --outline-color: var(--color-ink);
-    --header-background-color: var(--color-paper-deep);
+  /* Excel editor — retint react-data-grid's CSS variables to the vellum/ink
+     palette so the editable grid matches the read-only viewer. */
+  .excel-editor .rdg {
+    --rdg-color: var(--color-ink);
+    --rdg-background-color: var(--color-vellum);
+    --rdg-header-background-color: var(--color-paper-deep);
+    --rdg-row-hover-background-color: var(--color-paper-light);
+    --rdg-selection-color: var(--color-ink);
+    --rdg-border-color: var(--color-rule);
+    --rdg-summary-border-color: var(--color-rule);
+    --rdg-font-size: 12px;
+    block-size: 100%;
     font-family: var(--font-mono);
-    font-size: 12px;
+    border: none;
   }
-  .excel-editor .Spreadsheet__header {
+  .excel-editor .rdg [role="columnheader"] {
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 10px;
     color: var(--color-ink-mute);
+  }
+  /* Row-number gutter column. */
+  .excel-editor .rdg .rdg-rownum {
+    background: var(--color-paper-deep);
+    color: var(--color-ink-mute);
+    text-align: center;
+    font-size: 10px;
   }
 
   /* docx-preview viewer — give the rendered page room to breathe inside

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { getLibraryFileBlob } from "@/lib/api";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 
-// react-spreadsheet + SheetJS write path — heavy, so loaded only when Edit is clicked.
+// react-data-grid + SheetJS write path — heavy, so loaded only when Edit is clicked.
 const ExcelEditorPane = dynamic(() => import("./ExcelEditorPane"), {
   ssr: false,
   loading: () => (

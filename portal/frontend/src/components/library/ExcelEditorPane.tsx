@@ -1,37 +1,52 @@
 "use client";
 
-// In-app spreadsheet editor — wraps react-spreadsheet for the grid UI and uses
-// SheetJS (xlsx) for the file round-trip. Loads the workbook bytes, edits cell
-// values in place, and saves by PUT-ing the result back over the same R2
-// object, so the file keeps its id/url and viewers stay valid.
+// In-app spreadsheet editor — a virtualized react-data-grid for the grid UI
+// plus SheetJS (xlsx) for the file round-trip. Loads the workbook bytes, edits
+// cell values, and saves by PUT-ing the result back over the same R2 object so
+// the file keeps its id/url and viewers stay valid.
+//
+// Why react-data-grid: the previous react-spreadsheet grid re-synced and
+// re-evaluated its whole model on every keystroke (it carries a formula
+// engine), so typing lagged even on small sheets. react-data-grid is canvas-
+// light, virtualized, and edits a single cell without re-rendering the sheet,
+// so typing is instant. It has no built-in multi-cell range paste, so block
+// copy/paste (TSV from Excel) is wired here against the selected cell.
 //
 // Scope: .xlsx saves patch only the changed cells inside the original file's
-// ZIP (see lib/sheet-patch.ts), so styling (fills/fonts/themes), autofilters,
-// merges, widths, charts, and untouched formulas all survive. If patching
-// fails on an unusual file, we fall back to a SheetJS rewrite that keeps
-// values + structure but strips styling — and say so. CSV (no styling) always
-// uses the SheetJS path. Editing is gated upstream to .xlsx and .csv.
+// ZIP (see lib/sheet-patch.ts), so styling/charts/formulas survive; on an
+// unusual file we fall back to a SheetJS rewrite (values only) and say so. CSV
+// always uses the SheetJS path. Gated upstream to .xlsx and .csv.
 //
 // Heavy dependency — always load this module lazily (next/dynamic, ssr:false)
 // so the main bundle stays lean.
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import Spreadsheet, { type Matrix, type CellBase } from "react-spreadsheet";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DataGrid, renderTextEditor, type Column, type CellSelectArgs } from "react-data-grid";
+import "react-data-grid/lib/styles.css";
 import { Loader2, AlertCircle, AlertTriangle, Save, CheckCircle2, Plus, Minus } from "lucide-react";
 import type { WorkBook } from "xlsx";
 import { getLibraryFileBlob, replaceLibraryFileBytes } from "@/lib/api";
 import { applyGridToSheet } from "@/lib/sheet-edit";
 
-type Cell = CellBase<string>;
-type SheetState = { name: string; data: Matrix<Cell> };
+type Row = { __id: number; [key: string]: string | number };
+type SheetState = { name: string; rows: Row[]; nCols: number };
 type XlsxModule = typeof import("xlsx");
 
-/** Grid state flattened to plain text for diffing/serialization. */
+// Excel-style A, B, … Z, AA column header for a 0-based index.
+function colName(i: number): string {
+  let s = "", x = i;
+  do { s = String.fromCharCode(65 + (x % 26)) + s; x = Math.floor(x / 26) - 1; } while (x >= 0);
+  return s;
+}
+
+const emptyRow = (id: number): Row => ({ __id: id });
+
+/** One sheet's grid rows flattened to text[][] for diffing/serialization. */
+function sheetValues(s: SheetState): string[][] {
+  return s.rows.map((r) => Array.from({ length: s.nCols }, (_, j) => String(r[`c${j}`] ?? "")));
+}
 function textGrids(sheets: SheetState[]): { name: string; values: string[][] }[] {
-  return sheets.map((s) => ({
-    name: s.name,
-    values: s.data.map((row) => row.map((cell) => cell?.value ?? "")),
-  }));
+  return sheets.map((s) => ({ name: s.name, values: sheetValues(s) }));
 }
 
 /** Style-stripping fallback: write the grids into the SheetJS model and re-serialize. */
@@ -69,13 +84,16 @@ export default function ExcelEditorPane({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  // True when the last save fell back to a SheetJS rewrite (styling stripped).
   const [styleLoss, setStyleLoss] = useState(false);
-  // The file as last loaded/saved: raw bytes (source of truth the surgical
-  // save patches) plus the SheetJS parse (the diff baseline for "what
-  // changed"). Both are re-anchored after every successful save.
+  // Raw bytes + SheetJS parse of the file as last loaded/saved (surgical-save
+  // source of truth + diff baseline); re-anchored after every successful save.
   const bytesRef = useRef<ArrayBuffer | null>(null);
   const wbRef = useRef<WorkBook | null>(null);
+  // Monotonic id for rows added after load — starts well past the initial
+  // 0..n-1 ids so it never collides within a sheet.
+  const nextId = useRef(1_000_000);
+  // Latest selected cell (for block copy/paste), tracked outside render.
+  const selected = useRef<{ rowIdx: number; colIdx: number } | null>(null);
 
   // The pane is mounted fresh per file (the modal unmounts it on close), so
   // initial state covers the reset; the effect only fills in async results.
@@ -99,15 +117,15 @@ export default function ExcelEditorPane({
             defval: "",
             blankrows: true,
           });
-          const cols = aoa.reduce((m, r) => Math.max(m, r.length), 1);
-          const data: Matrix<Cell> = aoa.map((row) =>
-            Array.from({ length: cols }, (_, c) => ({
-              value: row[c] == null ? "" : String(row[c]),
-            })),
-          );
+          const nCols = Math.max(aoa.reduce((m, r) => Math.max(m, r.length), 1), 1);
+          const rows: Row[] = aoa.map((r, i) => {
+            const row: Row = { __id: i };
+            for (let j = 0; j < nCols; j++) row[`c${j}`] = r[j] == null ? "" : String(r[j]);
+            return row;
+          });
           // Guarantee at least one editable row so an empty sheet is usable.
-          if (data.length === 0) data.push(Array.from({ length: cols }, () => ({ value: "" })));
-          return { name, data };
+          if (rows.length === 0) rows.push(emptyRow(0));
+          return { name, rows, nCols };
         });
         if (cancelled) return;
         if (parsed.length === 0) setError("Workbook has no sheets");
@@ -121,25 +139,97 @@ export default function ExcelEditorPane({
 
   const current = sheets?.[active];
 
-  const onChange = useCallback(
-    (next: Matrix<Cell>) => {
+  const columns = useMemo<Column<Row>[]>(() => {
+    const n = current?.nCols ?? 0;
+    const cols: Column<Row>[] = [
+      {
+        key: "__row",
+        name: "",
+        frozen: true,
+        width: 52,
+        resizable: false,
+        cellClass: "rdg-rownum",
+        renderCell: ({ rowIdx }) => rowIdx + 1,
+      },
+    ];
+    for (let j = 0; j < n; j++) {
+      cols.push({
+        key: `c${j}`,
+        name: colName(j),
+        editable: true,
+        resizable: true,
+        width: 130,
+        renderEditCell: renderTextEditor,
+      });
+    }
+    return cols;
+  }, [current?.nCols]);
+
+  const onRowsChange = useCallback(
+    (rows: Row[]) => {
       setSheets((prev) => {
         if (!prev) return prev;
         const copy = prev.slice();
-        copy[active] = { ...copy[active], data: next };
+        copy[active] = { ...copy[active], rows };
         return copy;
       });
     },
     [active],
   );
 
+  const onSelectedCellChange = useCallback((args: CellSelectArgs<Row>) => {
+    const key = args.column?.key ?? "";
+    selected.current = { rowIdx: args.rowIdx, colIdx: key.startsWith("c") ? Number(key.slice(1)) : -1 };
+  }, []);
+
+  // Block paste: parse clipboard TSV and write it starting at the selected
+  // cell, growing rows/cols as needed (react-data-grid has no native
+  // multi-cell paste).
+  function handlePaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData("text/plain");
+    const sel = selected.current;
+    if (!text || !sel || sel.colIdx < 0) return;
+    e.preventDefault();
+    const block = text.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n").map((l) => l.split("\t"));
+    setSheets((prev) => {
+      if (!prev) return prev;
+      const copy = prev.slice();
+      const sheet = { ...copy[active] };
+      const rows = sheet.rows.slice();
+      let nCols = sheet.nCols;
+      while (rows.length < sel.rowIdx + block.length) rows.push(emptyRow(nextId.current++));
+      for (let i = 0; i < block.length; i++) {
+        const r = sel.rowIdx + i;
+        const line = block[i];
+        const patch: Row = { ...rows[r] };
+        for (let j = 0; j < line.length; j++) {
+          const c = sel.colIdx + j;
+          if (c + 1 > nCols) nCols = c + 1;
+          patch[`c${c}`] = line[j];
+        }
+        rows[r] = patch;
+      }
+      sheet.rows = rows;
+      sheet.nCols = nCols;
+      copy[active] = sheet;
+      return copy;
+    });
+  }
+
+  // Copy the single selected cell (range copy isn't supported by the grid).
+  function handleCopy(e: React.ClipboardEvent) {
+    const sel = selected.current;
+    if (!sel || sel.colIdx < 0 || !current) return;
+    e.clipboardData.setData("text/plain", String(current.rows[sel.rowIdx]?.[`c${sel.colIdx}`] ?? ""));
+    e.preventDefault();
+  }
+
   const addRow = useCallback(() => {
     setSheets((prev) => {
       if (!prev) return prev;
       const copy = prev.slice();
       const sheet = copy[active];
-      const cols = sheet.data[0]?.length ?? 1;
-      copy[active] = { ...sheet, data: [...sheet.data, Array.from({ length: cols }, () => ({ value: "" }))] };
+      copy[active] = { ...sheet, rows: [...sheet.rows, emptyRow(nextId.current++)] };
       return copy;
     });
   }, [active]);
@@ -149,8 +239,8 @@ export default function ExcelEditorPane({
       if (!prev) return prev;
       const copy = prev.slice();
       const sheet = copy[active];
-      if (sheet.data.length <= 1) return prev;
-      copy[active] = { ...sheet, data: sheet.data.slice(0, -1) };
+      if (sheet.rows.length <= 1) return prev;
+      copy[active] = { ...sheet, rows: sheet.rows.slice(0, -1) };
       return copy;
     });
   }, [active]);
@@ -196,8 +286,7 @@ export default function ExcelEditorPane({
           ? "text/csv"
           : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       await replaceLibraryFileBytes(notebookId, fileId, out, `${title || "workbook"}.${bookType}`, mime);
-      // Re-anchor the diff baseline on what we just persisted, so the next
-      // save diffs against the saved file rather than the original load.
+      // Re-anchor the diff baseline on what we just persisted.
       bytesRef.current = out;
       wbRef.current = XLSX.read(out, { type: "array", cellStyles: true });
       setStyleLoss(lostStyle);
@@ -209,16 +298,6 @@ export default function ExcelEditorPane({
       setSaving(false);
     }
   }
-
-  const columnLabels = useMemo(() => {
-    const n = current?.data[0]?.length ?? 0;
-    // Excel-style A, B, … Z, AA, AB column headers.
-    return Array.from({ length: n }, (_, i) => {
-      let s = "", x = i;
-      do { s = String.fromCharCode(65 + (x % 26)) + s; x = Math.floor(x / 26) - 1; } while (x >= 0);
-      return s;
-    });
-  }, [current]);
 
   if (error && !sheets) {
     return (
@@ -292,8 +371,18 @@ export default function ExcelEditorPane({
       )}
 
       {/* Grid */}
-      <div className="excel-editor overflow-auto flex-1 p-4 bg-paper-light">
-        <Spreadsheet data={current.data} onChange={onChange} columnLabels={columnLabels} darkMode={false} />
+      <div className="excel-editor flex-1 min-h-0" onPaste={handlePaste} onCopy={handleCopy}>
+        <DataGrid
+          className="rdg-light"
+          columns={columns}
+          rows={current.rows}
+          rowKeyGetter={(r) => r.__id}
+          onRowsChange={onRowsChange}
+          onSelectedCellChange={onSelectedCellChange}
+          rowHeight={28}
+          headerRowHeight={30}
+          style={{ height: "100%" }}
+        />
       </div>
     </div>
   );
