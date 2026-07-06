@@ -2,33 +2,50 @@
 
 // In-app spreadsheet editor — wraps react-spreadsheet for the grid UI and uses
 // SheetJS (xlsx) for the file round-trip. Loads the workbook bytes, edits cell
-// values in place, and saves by rebuilding the workbook and PUT-ing it back over
-// the same R2 object, so the file keeps its id/url and viewers stay valid.
+// values in place, and saves by PUT-ing the result back over the same R2
+// object, so the file keeps its id/url and viewers stay valid.
 //
-// Scope: values + formulas survive; rich cell styling does not (SheetJS
-// community build). Intended for minor edits, not formatting-heavy workbooks.
-// Editing is gated upstream to .xlsx and .csv (see ExcelModal `editable`).
+// Scope: .xlsx saves patch only the changed cells inside the original file's
+// ZIP (see lib/sheet-patch.ts), so styling (fills/fonts/themes), autofilters,
+// merges, widths, charts, and untouched formulas all survive. If patching
+// fails on an unusual file, we fall back to a SheetJS rewrite that keeps
+// values + structure but strips styling — and say so. CSV (no styling) always
+// uses the SheetJS path. Editing is gated upstream to .xlsx and .csv.
 //
 // Heavy dependency — always load this module lazily (next/dynamic, ssr:false)
 // so the main bundle stays lean.
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Spreadsheet, { type Matrix, type CellBase } from "react-spreadsheet";
-import { Loader2, AlertCircle, Save, CheckCircle2, Plus, Minus } from "lucide-react";
+import { Loader2, AlertCircle, AlertTriangle, Save, CheckCircle2, Plus, Minus } from "lucide-react";
+import type { WorkBook } from "xlsx";
 import { getLibraryFileBlob, replaceLibraryFileBytes } from "@/lib/api";
+import { applyGridToSheet } from "@/lib/sheet-edit";
 
 type Cell = CellBase<string>;
 type SheetState = { name: string; data: Matrix<Cell> };
+type XlsxModule = typeof import("xlsx");
 
-// Coerce a text cell back to a number only for plain integers/decimals — never
-// for strings with leading zeros (ids, zip codes) or thousands separators, so we
-// don't silently corrupt identifiers. Everything else stays a string.
-const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?$/;
-function coerce(v: string): string | number {
-  const t = v.trim();
-  if (t === "" || !NUMERIC.test(t)) return v;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : v;
+/** Grid state flattened to plain text for diffing/serialization. */
+function textGrids(sheets: SheetState[]): { name: string; values: string[][] }[] {
+  return sheets.map((s) => ({
+    name: s.name,
+    values: s.data.map((row) => row.map((cell) => cell?.value ?? "")),
+  }));
+}
+
+/** Style-stripping fallback: write the grids into the SheetJS model and re-serialize. */
+function rebuildWithSheetJs(
+  XLSX: XlsxModule,
+  wb: WorkBook,
+  grids: { name: string; values: string[][] }[],
+  bookType: "xlsx" | "csv",
+): ArrayBuffer {
+  for (const g of grids) {
+    const ws = wb.Sheets[g.name];
+    if (ws) applyGridToSheet(XLSX, ws, g.values);
+  }
+  return XLSX.write(wb, { type: "array", bookType, cellStyles: true }) as ArrayBuffer;
 }
 
 export default function ExcelEditorPane({
@@ -52,15 +69,29 @@ export default function ExcelEditorPane({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  // True when the last save fell back to a SheetJS rewrite (styling stripped).
+  const [styleLoss, setStyleLoss] = useState(false);
+  // The file as last loaded/saved: raw bytes (source of truth the surgical
+  // save patches) plus the SheetJS parse (the diff baseline for "what
+  // changed"). Both are re-anchored after every successful save.
+  const bytesRef = useRef<ArrayBuffer | null>(null);
+  const wbRef = useRef<WorkBook | null>(null);
 
+  // The pane is mounted fresh per file (the modal unmounts it on close), so
+  // initial state covers the reset; the effect only fills in async results.
   useEffect(() => {
     let cancelled = false;
+    bytesRef.current = null;
+    wbRef.current = null;
     (async () => {
       try {
         const buf = await getLibraryFileBlob(notebookId, fileId);
         if (cancelled) return;
         const XLSX = await import("xlsx");
-        const wb = XLSX.read(buf, { type: "array" });
+        // cellStyles keeps column widths / row heights on the parsed sheets.
+        const wb = XLSX.read(buf, { type: "array", cellStyles: true });
+        bytesRef.current = buf;
+        wbRef.current = wb;
         const parsed: SheetState[] = wb.SheetNames.map((name) => {
           const ws = wb.Sheets[name];
           const aoa = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
@@ -130,19 +161,46 @@ export default function ExcelEditorPane({
     setError(null);
     try {
       const XLSX = await import("xlsx");
-      // Rebuild the workbook fresh from state — sheet order and names are
-      // preserved because `sheets` keeps them; cell styling is not (see header).
-      const wb = XLSX.utils.book_new();
-      for (const sheet of sheets) {
-        const aoa = sheet.data.map((row) => row.map((cell) => coerce(cell?.value ?? "")));
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheet.name.slice(0, 31));
+      const wb = wbRef.current;
+      const bytes = bytesRef.current;
+      if (!wb || !bytes) throw new Error("Workbook not loaded yet");
+      const grids = textGrids(sheets);
+
+      // Preferred path: patch only the changed cells inside the original file
+      // so styling/themes/charts survive byte-for-byte (xlsx only).
+      let out: ArrayBuffer;
+      let lostStyle = false;
+      if (bookType === "xlsx") {
+        try {
+          const { diffSheetGrid, patchXlsx } = await import("@/lib/sheet-patch");
+          const patches = grids.flatMap((g) => {
+            const ws = wb.Sheets[g.name];
+            return ws ? [{ name: g.name, ...diffSheetGrid(XLSX, ws, g.values) }] : [];
+          });
+          const patched = patchXlsx(new Uint8Array(bytes), patches);
+          out = patched.buffer.slice(
+            patched.byteOffset,
+            patched.byteOffset + patched.byteLength,
+          ) as ArrayBuffer;
+        } catch (err) {
+          console.warn("[excel-editor] surgical patch failed; falling back to SheetJS rewrite:", err);
+          lostStyle = true;
+          out = rebuildWithSheetJs(XLSX, wb, grids, bookType);
+        }
+      } else {
+        out = rebuildWithSheetJs(XLSX, wb, grids, bookType);
       }
-      const out = XLSX.write(wb, { type: "array", bookType }) as ArrayBuffer;
+
       const mime =
         bookType === "csv"
           ? "text/csv"
           : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       await replaceLibraryFileBytes(notebookId, fileId, out, `${title || "workbook"}.${bookType}`, mime);
+      // Re-anchor the diff baseline on what we just persisted, so the next
+      // save diffs against the saved file rather than the original load.
+      bytesRef.current = out;
+      wbRef.current = XLSX.read(out, { type: "array", cellStyles: true });
+      setStyleLoss(lostStyle);
       setSavedAt(Date.now());
       onSaved?.();
     } catch (e) {
@@ -202,11 +260,15 @@ export default function ExcelEditorPane({
         <button type="button" onClick={removeRow} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-[1px] border border-rule hover:border-ink text-ink-fade hover:text-ink font-mono text-[10px] tracking-[0.14em] uppercase transition-colors">
           <Minus className="h-3.5 w-3.5" /> Row
         </button>
-        {error && (
+        {error ? (
           <span className="inline-flex items-center gap-1.5 text-terracotta font-mono text-[10px] tracking-[0.1em] uppercase">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {error}
           </span>
-        )}
+        ) : savedAt && styleLoss ? (
+          <span className="inline-flex items-center gap-1.5 text-ochre font-mono text-[10px] tracking-[0.1em] uppercase">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Saved — cell formatting couldn’t be preserved
+          </span>
+        ) : null}
       </div>
 
       {/* Sheet tabs */}

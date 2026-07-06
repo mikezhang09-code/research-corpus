@@ -1,0 +1,99 @@
+/**
+ * Pure workbook-mutation helpers for the in-app Excel editor.
+ *
+ * The editor grid only sees cell text, so saving by rebuilding a fresh
+ * workbook (aoa_to_sheet) would drop everything else in the file: autofilter,
+ * merged cells, column widths, number formats, and formulas. Instead we
+ * mutate the originally-loaded worksheet in place — only cells whose text the
+ * user actually changed are overwritten; everything untouched keeps its
+ * original cell object (formula, format, hyperlink) and all sheet-level
+ * features ride along into the rewrite.
+ *
+ * The SheetJS module is passed in (not imported) so this file stays out of
+ * the lazy xlsx chunk's dependency graph.
+ */
+import type { WorkSheet } from "xlsx";
+
+type XlsxModule = typeof import("xlsx");
+
+// Coerce a text cell back to a number only for plain integers/decimals — never
+// for strings with leading zeros (ids, zip codes) or thousands separators, so we
+// don't silently corrupt identifiers. Everything else stays a string.
+const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?$/;
+export function coerce(v: string): string | number {
+  const t = v.trim();
+  if (t === "" || !NUMERIC.test(t)) return v;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : v;
+}
+
+/**
+ * Write the editor grid's text back into a loaded worksheet in place.
+ *
+ * `values` is the full grid (row-major cell text, '' for empty). Cells whose
+ * text matches what the sheet already renders are left untouched; cleared
+ * cells are deleted; rows/cols removed in the editor are dropped and the
+ * sheet ref + autofilter/merge ranges are clamped to the new bounds.
+ */
+export function applyGridToSheet(XLSX: XlsxModule, ws: WorkSheet, values: string[][]): void {
+  const oldRange = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+  // Grid coordinates are relative to the used range's start (that's how
+  // sheet_to_json built the grid), so offset by it when addressing cells.
+  const start = oldRange.s;
+  // Same options the editor used to build the grid, so old text compares
+  // exactly against what the user started from.
+  const oldAoa = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
+    header: 1,
+    defval: "",
+    blankrows: true,
+  });
+
+  const rows = Math.max(values.length, 1);
+  const cols = Math.max(values.reduce((m, r) => Math.max(m, r.length), 1), 1);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const next = values[r]?.[c] ?? "";
+      const oldVal = oldAoa[r]?.[c];
+      const oldStr = oldVal == null ? "" : String(oldVal);
+      const addr = XLSX.utils.encode_cell({ r: start.r + r, c: start.c + c });
+      if (next === oldStr && (next !== "" ? ws[addr] !== undefined : true)) continue;
+      if (next === "") {
+        delete ws[addr];
+        continue;
+      }
+      const v = coerce(next);
+      ws[addr] = typeof v === "number" ? { t: "n", v } : { t: "s", v: next };
+    }
+  }
+
+  // Drop cells beyond the new bounds (rows/cols removed in the editor).
+  for (let r = start.r; r <= oldRange.e.r; r++) {
+    for (let c = start.c; c <= oldRange.e.c; c++) {
+      if (r < start.r + rows && c < start.c + cols) continue;
+      delete ws[XLSX.utils.encode_cell({ r, c })];
+    }
+  }
+
+  const range = { s: start, e: { r: start.r + rows - 1, c: start.c + cols - 1 } };
+  ws["!ref"] = XLSX.utils.encode_range(range);
+
+  // Clamp ranged sheet features to the new bounds so Excel doesn't reject
+  // references past the end of a shrunken sheet.
+  const autofilter = ws["!autofilter"];
+  if (autofilter?.ref) {
+    const af = XLSX.utils.decode_range(autofilter.ref);
+    af.e.r = Math.min(af.e.r, range.e.r);
+    af.e.c = Math.min(af.e.c, range.e.c);
+    if (af.s.r > af.e.r || af.s.c > af.e.c) delete ws["!autofilter"];
+    else ws["!autofilter"] = { ref: XLSX.utils.encode_range(af) };
+  }
+  if (ws["!merges"]) {
+    ws["!merges"] = ws["!merges"]
+      .filter((m) => m.s.r <= range.e.r && m.s.c <= range.e.c)
+      .map((m) => ({
+        s: m.s,
+        e: { r: Math.min(m.e.r, range.e.r), c: Math.min(m.e.c, range.e.c) },
+      }));
+  }
+}
