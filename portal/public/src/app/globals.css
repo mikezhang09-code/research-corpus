@@ -414,7 +414,8 @@
 
   /* Excel editor — retint react-data-grid's CSS variables to the vellum/ink
      palette so the editable grid matches the read-only viewer. */
-  .excel-editor .rdg {
+  .excel-editor .rdg,
+  .json-table .rdg {
     --rdg-color: var(--color-ink);
     --rdg-background-color: var(--color-vellum);
     --rdg-header-background-color: var(--color-paper-deep);
@@ -427,14 +428,16 @@
     font-family: var(--font-mono);
     border: none;
   }
-  .excel-editor .rdg [role="columnheader"] {
+  .excel-editor .rdg [role="columnheader"],
+  .json-table .rdg [role="columnheader"] {
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 10px;
     color: var(--color-ink-mute);
   }
   /* Row-number gutter column. */
-  .excel-editor .rdg .rdg-rownum {
+  .excel-editor .rdg .rdg-rownum,
+  .json-table .rdg .rdg-rownum {
     background: var(--color-paper-deep);
     color: var(--color-ink-mute);
     text-align: center;

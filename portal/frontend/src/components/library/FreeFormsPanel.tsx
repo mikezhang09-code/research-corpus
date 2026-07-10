@@ -27,17 +27,19 @@ import { CATEGORY_OPTIONS, categoryLabel } from "./file-categories";
 import { AddFileModal } from "./AddFileModal";
 import { DocxModal } from "./DocxModal";
 import { ExcelModal } from "./ExcelModal";
+import { JsonModal } from "./JsonModal";
+import { looksLikeMindMap } from "@/lib/json-table";
 import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
 import { MindMapModal } from "./MindMapModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
-import { DiagramModal } from "./DiagramModal";
-import { DiagramEditorModal } from "./DiagramEditorModal";
 import { QuizModal } from "./QuizModal";
 import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardsModal } from "./FlashcardsModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
+import { DiagramModal } from "./DiagramModal";
+import { DiagramEditorModal } from "./DiagramEditorModal";
 import { NewArtifactButton } from "./NewArtifactButton";
 import { JsxModal } from "./JsxModal";
 import { NoteEditorModal } from "./NoteEditorModal";
@@ -60,7 +62,7 @@ const CATEGORIES = [
 ];
 
 type ViewerKind =
-  | "markdown" | "docx" | "excel" | "mindmap" | "diagram" | "quiz" | "flashcards" | "image" | "audio"
+  | "markdown" | "docx" | "excel" | "json" | "mindmap" | "diagram" | "quiz" | "flashcards" | "image" | "audio"
   | "video" | "presentation" | "jsx";
 
 /** Pick the viewer for a file, mirroring FileCard's dispatch (notes open read-only). */
@@ -69,10 +71,11 @@ function viewerFor(file: FreeFormFile): ViewerKind | null {
   if (ext === ".docx" || ext === ".doc") return "docx";
   if (ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv") return "excel";
   if (ext === ".md" || ext === ".txt") return "markdown";
-  if (file.file_category === "mindmap") return "mindmap";
   if (file.file_category === "diagram") return "diagram";
   if (file.file_category === "quiz") return "quiz";
   if (file.file_category === "flashcards") return "flashcards";
+  // Generic .json (and the greedy "mindmap" default) → sniffed in openFile.
+  if (ext === ".json" || file.file_category === "mindmap") return "json";
   if (file.file_category === "image") return "image";
   if (file.file_category === "audio") return "audio";
   if (file.file_category === "video") return "video";
@@ -192,13 +195,13 @@ export function FreeFormsPanel() {
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showMindMap, setShowMindMap] = useState(false);
-  const [showDiagram, setShowDiagram] = useState(false);
   const [mindMapEdit, setMindMapEdit] = useState<FreeFormFile | null>(null);
-  const [diagramEdit, setDiagramEdit] = useState<FreeFormFile | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizEdit, setQuizEdit] = useState<FreeFormFile | null>(null);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [flashcardsEdit, setFlashcardsEdit] = useState<FreeFormFile | null>(null);
+  const [showDiagram, setShowDiagram] = useState(false);
+  const [diagramEdit, setDiagramEdit] = useState<FreeFormFile | null>(null);
   const [noteTarget, setNoteTarget] = useState<FreeFormFile | null>(null);
   const [editTarget, setEditTarget] = useState<FreeFormFile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FreeFormFile | null>(null);
@@ -331,9 +334,19 @@ export function FreeFormsPanel() {
     }
   }
 
-  function openFile(file: FreeFormFile) {
+  async function openFile(file: FreeFormFile) {
     if (file.file_category === "note") { setNoteTarget(file); return; }
     const kind = viewerFor(file);
+    if (kind === "json") {
+      // Sniff: a mind-map node tree opens the mind-map viewer, else a data table.
+      try {
+        const data = JSON.parse(await getLibraryFileContent(null, file.id));
+        setViewer({ file, kind: looksLikeMindMap(data) ? "mindmap" : "json" });
+      } catch {
+        setViewer({ file, kind: "json" });
+      }
+      return;
+    }
     if (kind) setViewer({ file, kind });
     else if (file.r2_url) window.open(file.r2_url, "_blank", "noopener,noreferrer");
   }
@@ -374,8 +387,8 @@ export function FreeFormsPanel() {
               onCreate={(kind) => {
                 if (kind === "note") setShowNote(true);
                 else if (kind === "mindmap") setShowMindMap(true);
-                else if (kind === "diagram") setShowDiagram(true);
                 else if (kind === "flashcards") setShowFlashcards(true);
+                else if (kind === "diagram") setShowDiagram(true);
                 else setShowQuiz(true);
               }}
             />
@@ -524,7 +537,7 @@ export function FreeFormsPanel() {
                           <div className="min-w-0">
                             <button
                               type="button"
-                              onClick={() => openFile(file)}
+                              onClick={() => void openFile(file)}
                               disabled={!openable}
                               className="block max-w-full truncate font-serif text-[15px] text-ink text-left hover:underline underline-offset-2 disabled:no-underline disabled:cursor-default"
                               title={file.title}
@@ -565,7 +578,7 @@ export function FreeFormsPanel() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-ink-fade hover:text-ink"
-                              onClick={() => openFile(file)}
+                              onClick={() => void openFile(file)}
                               title={file.file_category === "audio" || file.file_category === "video" ? "Play" : "View"}
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
@@ -632,6 +645,9 @@ export function FreeFormsPanel() {
           fileUrl={viewer.file.r2_url ?? undefined}
           onClose={() => setViewer(null)}
         />
+      )}
+      {viewer?.kind === "json" && (
+        <JsonModal notebookId={null} fileId={viewer.file.id} title={viewer.file.title} onClose={() => setViewer(null)} />
       )}
       {viewer?.kind === "mindmap" && (
         <MindMapModal
@@ -776,17 +792,6 @@ export function FreeFormsPanel() {
         />
       )}
 
-      {showDiagram && (
-        <DiagramEditorModal<FreeFormFile>
-          notebookId={null}
-          onClose={() => setShowDiagram(false)}
-          onSaved={(newFile) => {
-            setFiles((prev) => [newFile, ...prev]);
-            setShowDiagram(false);
-          }}
-        />
-      )}
-
       {showQuiz && (
         <QuizEditorModal<FreeFormFile>
           notebookId={null}
@@ -805,6 +810,17 @@ export function FreeFormsPanel() {
           onSaved={(newFile) => {
             setFiles((prev) => [newFile, ...prev]);
             setShowFlashcards(false);
+          }}
+        />
+      )}
+
+      {showDiagram && (
+        <DiagramEditorModal<FreeFormFile>
+          notebookId={null}
+          onClose={() => setShowDiagram(false)}
+          onSaved={(newFile) => {
+            setFiles((prev) => [newFile, ...prev]);
+            setShowDiagram(false);
           }}
         />
       )}

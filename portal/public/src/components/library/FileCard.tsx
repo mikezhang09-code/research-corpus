@@ -23,6 +23,8 @@ import { PresentationModal } from "@/components/corpus/PresentationModal";
 import { CATEGORY_OPTIONS } from "./file-categories";
 import { DocxModal } from "./DocxModal";
 import { ExcelModal } from "./ExcelModal";
+import { JsonModal } from "./JsonModal";
+import { looksLikeMindMap } from "@/lib/json-table";
 import { ImageModal } from "./ImageModal";
 import { AudioModal } from "./AudioModal";
 import { VideoModal } from "./VideoModal";
@@ -351,7 +353,7 @@ export function FileCard({
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "mindmap" | "mindmap-edit" | "diagram" | "diagram-edit" | "quiz" | "quiz-edit" | "flashcards" | "flashcards-edit" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "json" | "mindmap" | "mindmap-edit" | "diagram" | "diagram-edit" | "quiz" | "quiz-edit" | "flashcards" | "flashcards-edit" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
@@ -359,6 +361,7 @@ export function FileCard({
   const isDocx = ext === ".docx" || ext === ".doc";
   const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
   const isPresentation = ext === ".ppt" || ext === ".pptx";
+  const isJson = ext === ".json";
   const isMindMap = file.file_category === "mindmap";
   const isDiagram = file.file_category === "diagram";
   const isQuiz = file.file_category === "quiz";
@@ -369,7 +372,7 @@ export function FileCard({
   const isVideo = file.file_category === "video";
   // The presentation viewer (Office Online embed) needs a public file URL.
   const hasViewer =
-    isMarkdown || isDocx || isExcel || isMindMap || isDiagram || isQuiz || isFlashcards || isImage ||
+    isMarkdown || isDocx || isExcel || isJson || isMindMap || isDiagram || isQuiz || isFlashcards || isImage ||
     isAudio || isVideo || isComponent || (isPresentation && !!file.r2_url);
 
   const added = new Date(file.added_at).toLocaleDateString("en-US", {
@@ -387,15 +390,26 @@ export function FileCard({
     }
   }
 
+  // A generic .json defaults to category "mindmap", colliding with real
+  // mind-map artifacts. Sniff the content: node-tree → mind map, else data table.
+  async function openJson() {
+    try {
+      const data = JSON.parse(await getLibraryFileContent(file.notebook_id, file.id));
+      setViewer(looksLikeMindMap(data) ? "mindmap" : "json");
+    } catch {
+      setViewer("json"); // JsonModal surfaces the parse/load error + raw text
+    }
+  }
+
   function openViewer() {
     if (isNote) { setNoteOpen(true); return; }
     if (isDocx) setViewer("docx");
     else if (isExcel) setViewer("excel");
     else if (isMarkdown) setViewer("markdown");
-    else if (isMindMap) setViewer("mindmap");
     else if (isDiagram) setViewer("diagram");
     else if (isQuiz) setViewer("quiz");
     else if (isFlashcards) setViewer("flashcards");
+    else if (isJson || isMindMap) void openJson();
     else if (isImage) setViewer("image");
     else if (isAudio) setViewer("audio");
     else if (isVideo) setViewer("video");
@@ -427,6 +441,9 @@ export function FileCard({
           fileUrl={file.r2_url ?? undefined}
           onClose={() => setViewer(null)}
         />
+      )}
+      {viewer === "json" && (
+        <JsonModal notebookId={file.notebook_id} fileId={file.id} title={file.title} onClose={() => setViewer(null)} />
       )}
       {viewer === "mindmap" && (
         <MindMapModal
