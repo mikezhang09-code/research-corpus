@@ -257,8 +257,10 @@ function parseSheet(ws: ExcelJS.Worksheet, ctx: ColorContext): RichSheet {
       cells[r]![colNumber - 1] = { ...(v !== null || !f ? { v } : {}), ...(f ? { f } : {}), ...(style ? { style } : {}) };
     });
   });
-  // normalize sparse arrays
-  const maxCols = Math.max(0, ...cells.map((r) => r?.length ?? 0));
+  // normalize sparse arrays. `cells` is sparse when the sheet has a blank row
+  // in its used range (eachRow skips it), so use reduce — spreading a sparse
+  // array's holes into Math.max(...) yields undefined → NaN → zero columns.
+  const maxCols = cells.reduce((m, r) => Math.max(m, r?.length ?? 0), 0);
   const dense: (RichCell | null)[][] = [];
   for (let r = 0; r < cells.length; r++) {
     const row: (RichCell | null)[] = [];
