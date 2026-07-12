@@ -640,9 +640,7 @@ export function FreeFormsPanel() {
           notebookId={null}
           fileId={viewer.file.id}
           title={viewer.file.title}
-          editable={[".xlsx", ".csv"].includes((viewer.file.file_ext ?? "").toLowerCase())}
-          bookType={(viewer.file.file_ext ?? "").toLowerCase() === ".csv" ? "csv" : "xlsx"}
-          fileUrl={viewer.file.r2_url ?? undefined}
+          ext={(viewer.file.file_ext ?? "").toLowerCase()}
           onClose={() => setViewer(null)}
         />
       )}
