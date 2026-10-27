@@ -7,7 +7,7 @@
 import { type HTMLAttributes, type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
-import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents } from "@/components/markdown/markdown-extras";
+import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents, markdownUrlTransform } from "@/components/markdown/markdown-extras";
 import {
   Music, Video, FileText, Brain, StickyNote, Image, Layers, BarChart2, Database,
   CheckCircle2, XCircle, Loader2, AlertCircle, X, ChevronLeft, ChevronRight, ChevronDown, Lightbulb, RefreshCw, Search,
@@ -209,6 +209,7 @@ function MarkdownBody({ content, fontSize, idPrefix }: { content: string; fontSi
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}
+        urlTransform={markdownUrlTransform}
         components={{ ...markdownCodeComponents, h1: heading(1), h2: heading(2), h3: heading(3), h4: heading(4) }}
       >
         {content}

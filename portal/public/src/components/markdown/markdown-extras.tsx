@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState, type HTMLAttributes, type ReactNode } from "react";
-import type { Components, Options } from "react-markdown";
+import { defaultUrlTransform, type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
@@ -28,6 +28,16 @@ export const markdownRehypePlugins: Options["rehypePlugins"] = [
   rehypeHighlight,
   rehypeKatex,
 ];
+
+// react-markdown's default urlTransform drops every `data:` URL, which blanks
+// images embedded as base64 (`![chart](data:image/png;base64,...)`) — the
+// form pandoc/Typora/Obsidian exports use. Let raster/SVG image data URIs
+// through (an <img> never executes SVG scripts) and defer everything else to
+// the default allowlist.
+const DATA_IMAGE_RE = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml)[;,]/i;
+
+export const markdownUrlTransform: Options["urlTransform"] = (url, key) =>
+  key === "src" && DATA_IMAGE_RE.test(url.trim()) ? url.trim() : defaultUrlTransform(url);
 
 const MERMAID_RE = /\blanguage-mermaid\b/;
 

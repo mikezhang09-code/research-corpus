@@ -7,7 +7,7 @@ import {
   Link, Code, SquareCode, Table, Sigma, Workflow,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents } from "@/components/markdown/markdown-extras";
+import { markdownRemarkPlugins, markdownRehypePlugins, markdownCodeComponents, markdownUrlTransform } from "@/components/markdown/markdown-extras";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
@@ -228,6 +228,7 @@ export function NoteEditorModal<T extends { id: string; title: string } = Librar
                   <ReactMarkdown
                     remarkPlugins={markdownRemarkPlugins}
                     rehypePlugins={markdownRehypePlugins}
+                    urlTransform={markdownUrlTransform}
                     components={markdownCodeComponents}
                   >
                     {body}
