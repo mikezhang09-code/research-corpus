@@ -10,6 +10,8 @@ case-insensitive fragment of the title.
     folio upload Xtep ~/Downloads/*.pdf   upload files / globs / folders
     folio upload Xtep                     pick files interactively (cwd)
     folio upload                          pick the folio too
+    folio files                           pick a folio (any command: omit it or use -)
+    folio files li                        several matches? pick among them
     folio --help / folio <cmd> --help     everything else
 
 API base: $FOLIO_API (default http://127.0.0.1:8000/api). From another machine
@@ -116,21 +118,42 @@ def upload_multipart(path: str, file: Path, fields: dict[str, str]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _match(items: list[dict], query: str, kind: str, keys=("title",)) -> dict:
-    q = query.strip().lower()
-    for it in items:
-        if str(it["id"]) == query or str(it["id"]).startswith(q) and len(q) >= 8:
-            return it
-    exact = [it for it in items if any((it.get(k) or "").lower() == q for k in keys)]
-    if len(exact) == 1:
-        return exact[0]
-    partial = exact or [it for it in items if any(q in (it.get(k) or "").lower() for k in keys)]
-    if len(partial) == 1:
-        return partial[0]
-    if not partial:
-        raise CliError(f"no {kind} matches {query!r}")
-    names = "\n".join(f"  {it['id']}  {it['title']}" for it in partial[:15])
-    raise CliError(f"{query!r} matches {len(partial)} {kind}s — be more specific:\n{names}")
+PICK = "-"  # stand-in for a folio/file argument meaning "let me pick"
+
+
+def _match(items: list[dict], query: str | None, kind: str, label, keys=("title",)) -> dict:
+    """Resolve by id, exact title, or unique fragment; fall back to a picker.
+
+    The picker opens when the query is omitted or ``-`` (over every item), or
+    when a fragment matches several items (over just those).
+    """
+    candidates = items
+    if query is not None and query != PICK:
+        q = query.strip().lower()
+        for it in items:
+            if str(it["id"]) == query or str(it["id"]).startswith(q) and len(q) >= 8:
+                return it
+        exact = [it for it in items if any((it.get(k) or "").lower() == q for k in keys)]
+        if len(exact) == 1:
+            return exact[0]
+        candidates = exact or [
+            it for it in items if any(q in (it.get(k) or "").lower() for k in keys)
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+        if not candidates:
+            raise CliError(f"no {kind} matches {query!r}")
+        if not sys.stdin.isatty():
+            names = "\n".join(f"  {it['id']}  {it['title']}" for it in candidates[:15])
+            raise CliError(
+                f"{query!r} matches {len(candidates)} {kind}s — be more specific:\n{names}"
+            )
+    if not candidates:
+        raise CliError(f"no {kind}s to pick from")
+    picked = pick([label(it) for it in candidates], kind, multi=False)
+    if not picked:
+        raise CliError(f"no {kind} selected")
+    return candidates[picked[0]]
 
 
 def list_folios(include_hidden: bool = False, tags: list[str] | None = None) -> list[dict]:
@@ -140,25 +163,36 @@ def list_folios(include_hidden: bool = False, tags: list[str] | None = None) -> 
     return api("GET", f"/library-notebooks{q}")["items"]
 
 
+def _folio_label(f: dict) -> str:
+    return f"{f.get('cover_emoji') or '  '} {f['title']}  ({f['file_count']} files)"
+
+
+def _file_label(f: dict) -> str:
+    return f"{f['file_category']:<11} {human_size(f.get('file_size_bytes') or 0):>9}\t{f['title']}"
+
+
 def resolve_folio(query: str | None) -> dict:
-    folios = list_folios(include_hidden=True)
-    if query is None:
-        picked = pick(
-            [f"{f['title']}  ({f['file_count']} files)" for f in folios], "folio", multi=False
-        )
-        if not picked:
-            raise CliError("no folio selected")
-        return folios[picked[0]]
-    return _match(folios, query, "folio")
+    return _match(list_folios(include_hidden=True), query, "folio", _folio_label)
 
 
 def list_files(folio: dict) -> list[dict]:
     return api("GET", f"/library-notebooks/{folio['id']}/files")
 
 
-def resolve_files(folio: dict, queries: list[str]) -> list[dict]:
+def resolve_files(folio: dict, queries: list[str | None]) -> list[dict]:
     files = list_files(folio)
-    return [_match(files, q, "file", keys=("title", "original_name")) for q in queries]
+    return [_match(files, q, "file", _file_label, keys=("title", "original_name")) for q in queries]
+
+
+def select_files(folio: dict, queries: list[str], what: str, default_all: bool) -> list[dict]:
+    """Files for a multi-file command: named ones, a multi-pick for ``-``
+    (or when nothing is named and ``default_all`` is off), else all of them."""
+    if queries and queries != [PICK]:
+        return resolve_files(folio, queries)
+    files = list_files(folio)
+    if not queries and default_all:
+        return files
+    return [files[i] for i in pick([_file_label(f) for f in files], what)]
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +508,9 @@ def cmd_cat(a):
 
 def cmd_get(a):
     folio = resolve_folio(a.folio)
-    files = resolve_files(folio, a.files) if a.files else list_files(folio)
+    files = select_files(folio, a.files, "files to download", default_all=True)
+    if not files:
+        return print("nothing selected")
     if len(files) == 1 and not a.zip:
         f = files[0]
         out = Path(a.output or f["original_name"] or f["title"])
@@ -485,7 +521,7 @@ def cmd_get(a):
         )
     else:
         out = Path(a.output or f"{folio['title']}.zip")
-        body = json.dumps({"ids": [f["id"] for f in files]} if a.files else {}).encode()
+        body = json.dumps({"ids": [f["id"] for f in files]}).encode()
         out.write_bytes(
             _request(
                 "POST",
@@ -500,16 +536,7 @@ def cmd_get(a):
 
 def cmd_rmf(a):
     folio = resolve_folio(a.folio)
-    if a.files:
-        files = resolve_files(folio, a.files)
-    else:
-        all_files = list_files(folio)
-        files = [
-            all_files[i]
-            for i in pick(
-                [f"{f['file_category']:<11} {f['title']}" for f in all_files], "files to delete"
-            )
-        ]
+    files = select_files(folio, a.files, "files to delete", default_all=False)
     if not files:
         return print("nothing selected")
     for f in files:
@@ -568,7 +595,9 @@ def cmd_ask(a):
 
 def cmd_push(a):
     folio = resolve_folio(a.folio)
-    files = resolve_files(folio, a.files) if a.files else list_files(folio)
+    files = select_files(folio, a.files, "files to push", default_all=True)
+    if not files:
+        return print("nothing selected")
     if not a.to and not a.new_title:
         raise CliError("pass --to <NotebookLM notebook id> or --new-title <title>")
     print(f"pushing {len(files)} file(s) to NotebookLM …", file=sys.stderr)
@@ -613,7 +642,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
 
     s = add("files", cmd_files, "list a folio's files", aliases=["show"])
-    s.add_argument("folio", nargs="?", help="folio id/title (omit to pick)")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
     s.add_argument("--category", help="only this category (report, slide, note, …)")
     s.add_argument("--json", action="store_true")
 
@@ -624,7 +653,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
 
     s = add("edit", cmd_edit, "rename / retag a folio")
-    s.add_argument("folio")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
     s.add_argument("--title")
     s.add_argument("--description")
     s.add_argument("--emoji")
@@ -636,10 +665,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     for action in ("hide", "restore"):
         s = add(action, lambda a, action=action: cmd_hide(a, action), f"{action} a folio")
-        s.add_argument("folio")
+        s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
 
     s = add("rm", cmd_rm, "delete a folio and all its files")
-    s.add_argument("folio")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
     s.add_argument("-y", "--yes", action="store_true")
 
     s = add(
@@ -672,8 +701,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("-y", "--yes", action="store_true", help="don't ask for confirmation")
 
     s = add("cat", cmd_cat, "print a file's content")
-    s.add_argument("folio")
-    s.add_argument("file")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
+    s.add_argument("file", nargs="?", help="file id/title/fragment (omit or - to pick)")
 
     s = add(
         "get",
@@ -681,19 +710,21 @@ def build_parser() -> argparse.ArgumentParser:
         "download files (one file as-is, several or all as a zip)",
         aliases=["download"],
     )
-    s.add_argument("folio")
-    s.add_argument("files", nargs="*", help="files to download (default: whole folio as zip)")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
+    s.add_argument(
+        "files", nargs="*", help="files to download, - to pick (default: whole folio as zip)"
+    )
     s.add_argument("-o", "--output")
     s.add_argument("--zip", action="store_true", help="zip even a single file")
 
     s = add("rmf", cmd_rmf, "delete files from a folio (omit files to pick)")
-    s.add_argument("folio")
-    s.add_argument("files", nargs="*")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
+    s.add_argument("files", nargs="*", help="files to delete (omit or - to pick)")
     s.add_argument("-y", "--yes", action="store_true")
 
     s = add("mv", cmd_mv, "rename / recategorise a file")
-    s.add_argument("folio")
-    s.add_argument("file")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
+    s.add_argument("file", nargs="?", help="file id/title/fragment (omit or - to pick)")
     s.add_argument("--title")
     s.add_argument("--description")
     s.add_argument("--category")
@@ -701,20 +732,20 @@ def build_parser() -> argparse.ArgumentParser:
     s = add(
         "generate", cmd_generate, "AI-generate an artifact from the folio's files", aliases=["gen"]
     )
-    s.add_argument("folio")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
     s.add_argument("kind", choices=GEN_KINDS)
     s.add_argument("--lang", choices=("en", "zh"))
     s.add_argument("--json", action="store_true")
 
     s = add("ask", cmd_ask, "ask the folio a question")
-    s.add_argument("folio")
+    s.add_argument("folio", help="folio id/title/fragment, or - to pick")
     s.add_argument("question", nargs="+")
     s.add_argument("--lang", choices=("en", "zh"))
     s.add_argument("--json", action="store_true")
 
     s = add("push", cmd_push, "push folio files to a NotebookLM notebook")
-    s.add_argument("folio")
-    s.add_argument("files", nargs="*", help="files to push (default: all)")
+    s.add_argument("folio", nargs="?", help="folio id/title/fragment (omit or - to pick)")
+    s.add_argument("files", nargs="*", help="files to push, - to pick (default: all)")
     s.add_argument("--to", metavar="NOTEBOOK_ID", help="existing NotebookLM notebook")
     s.add_argument("--new-title", help="create a new NotebookLM notebook with this title")
     s.add_argument("--json", action="store_true")
