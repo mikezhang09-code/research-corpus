@@ -58,6 +58,11 @@ def _make_capturing_async_client(
             captured.append(kwargs.get("timeout"))  # type: ignore[arg-type]
             super().__init__(*args, **kwargs)  # type: ignore[arg-type]
 
+        async def send(self, *args: object, **kwargs: object) -> httpx.Response:
+            # Fail before any network I/O so the helpers raise deterministically
+            # regardless of CI egress or how Google answers a real request.
+            raise httpx.ConnectError("network disabled in upload-timeout test")
+
     return CapturingClient
 
 

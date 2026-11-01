@@ -295,6 +295,11 @@ export const getArtifacts = (params: Record<string, string | number> = {}) => {
   return request<ArtifactListResponse>(`/api/artifacts${q ? `?${q}` : ""}`);
 };
 
+/** Same-origin URL for a saved Corpus artifact's bytes — streamed from R2 by
+ *  our own route handler, so client-side readers (the PDF viewer) avoid the
+ *  cross-origin fetch that the public r2.dev URL would need. */
+export const artifactContentUrl = (id: string) => `${BASE}/api/artifacts/${id}/content`;
+
 export async function getArtifactContent(id: string): Promise<string> {
   const res = await fetch(`${BASE}/api/artifacts/${id}/content`);
   if (!res.ok) throw new Error(`API ${res.status}`);
