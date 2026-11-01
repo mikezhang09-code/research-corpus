@@ -93,7 +93,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # ubuntu-24.04, not -latest: the pinned Playwright can't install
+        # chromium on the ubuntu-latest (26.04) image.
+        os: [ubuntu-24.04, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     env:
       # Pin Playwright's browser install dir to a single workspace-relative
