@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT:** Follow documentation rules in [CONTRIBUTING.md](CONTRIBUTING.md) - especially the file creation and naming conventions.
 
+**Working on `portal/`?** Read [docs/portal-notes.md](docs/portal-notes.md) first — scope, deployments (VM services + Cloudflare Worker), AI providers, Supabase access, and what a cloud session can't do.
+
 ## Project Overview
 
 `notebooklm-py` is an unofficial Python client for Google NotebookLM that uses undocumented RPC APIs. The library enables programmatic automation of NotebookLM features including notebook management, source integration, AI querying, and studio artifact generation (podcasts, videos, quizzes, etc.).
@@ -408,6 +410,7 @@ All docs use lowercase-kebab naming in `docs/`:
 - `docs/rpc-development.md` - RPC capture and debugging
 - `docs/rpc-reference.md` - RPC payload structures
 - `docs/releasing.md` — Release checklist
+- `docs/portal-notes.md` — Portal conventions, deployments, and gotchas
 - `docs/scratch/` — Temporary investigation logs (agent scratchpad)
 
 ## When to Suggest CLI vs API
