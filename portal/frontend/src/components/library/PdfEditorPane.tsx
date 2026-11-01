@@ -22,7 +22,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getLibraryFileBlob, replaceLibraryFileBytes } from "@/lib/api";
-import { downloadBytes, openPdf, PDF_MIME, pdfFilename, renderDpr } from "@/lib/pdf";
+import {
+  RenderPriority, acquireRenderSlot, downloadBytes, openPdf, outputScale, PDF_MIME, pdfFilename,
+  preloadPdfJs,
+} from "@/lib/pdf";
 import {
   deletePages, duplicatePages, extractPages, flattenAnnotations, importPages,
   insertBlankPage, moveSelection, readMetadata, reorderPages, rotatePages, writeMetadata,
@@ -31,6 +34,8 @@ import {
 import PdfAnnotatePane from "./PdfAnnotatePane";
 
 const UNDO_LIMIT = 20;
+/** Page tile width in the Pages grid, in CSS px. */
+const TILE_WIDTH = 150;
 const EMPTY_META: PdfMetadata = {
   title: "", author: "", subject: "", keywords: "", creator: "", producer: "",
 };
@@ -38,54 +43,81 @@ const EMPTY_META: PdfMetadata = {
 type Tab = "pages" | "annotate" | "document";
 
 // ---- page thumbnail ----
+//
+// Lazy, like the viewer's rail: a tile renders when it scrolls into the grid,
+// at thumbnail priority, so a long document doesn't start one render per page
+// the moment the editor opens.
 
 function PageTile({
   doc,
   pageNumber,
   selected,
+  rootRef,
   onToggle,
 }: {
   doc: PDFDocumentProxy;
   pageNumber: number;
   selected: boolean;
+  rootRef: React.RefObject<HTMLDivElement | null>;
   onToggle: (e: React.MouseEvent) => void;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const [ready, setReady] = useState(false);
+  const [visible, setVisible] = useState(false);
+  // Which document the canvas currently shows. Every edit opens a new pdf.js
+  // document, so a rotate (same page count, same key) must still repaint.
+  const [renderedFor, setRenderedFor] = useState<PDFDocumentProxy | null>(null);
+  const ready = renderedFor === doc;
 
   useEffect(() => {
-    let cancelled = false;
+    const el = ref.current;
+    if (!el || ready) return;
+    const io = new IntersectionObserver(
+      (entries) => setVisible(entries.some((e) => e.isIntersecting)),
+      { root: rootRef.current, rootMargin: "300px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [rootRef, ready]);
+
+  useEffect(() => {
+    if (!visible || ready) return;
+    const ac = new AbortController();
     let task: RenderTask | null = null;
     (async () => {
+      let release: (() => void) | null = null;
       try {
+        release = await acquireRenderSlot(RenderPriority.thumb, ac.signal);
+        if (ac.signal.aborted) return;
         const page = await doc.getPage(pageNumber);
-        if (cancelled) return;
+        if (ac.signal.aborted) return;
         const base = page.getViewport({ scale: 1, rotation: page.rotate });
-        const scale = 150 / base.width;
+        const scale = TILE_WIDTH / base.width;
         const viewport = page.getViewport({ scale, rotation: page.rotate });
         const canvas = ref.current;
         if (!canvas) return;
-        const dpr = renderDpr();
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
+        const out = outputScale(viewport.width, viewport.height);
+        canvas.width = Math.floor(viewport.width * out);
+        canvas.height = Math.floor(viewport.height * out);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
         task = page.render({
           canvas,
           viewport,
-          transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
+          transform: out === 1 ? undefined : [out, 0, 0, out, 0, 0],
         });
         await task.promise;
-        if (!cancelled) setReady(true);
+        if (!ac.signal.aborted) setRenderedFor(doc);
       } catch {
         /* a cancelled thumbnail needs no handling */
+      } finally {
+        release?.();
       }
     })();
     return () => {
-      cancelled = true;
+      ac.abort();
       task?.cancel();
     };
-  }, [doc, pageNumber]);
+  }, [doc, pageNumber, visible, ready]);
 
   return (
     <button
@@ -99,7 +131,13 @@ function PageTile({
           selected ? "border-terracotta ring-2 ring-terracotta/30" : "border-rule hover:border-ink"
         }`}
       >
-        <canvas ref={ref} className="block" style={{ opacity: ready ? 1 : 0.2 }} />
+        <canvas
+          ref={ref}
+          width={TILE_WIDTH}
+          height={Math.round(TILE_WIDTH * 1.414)}
+          className="block"
+          style={{ opacity: ready ? 1 : 0.2 }}
+        />
       </span>
       <span
         className={`font-mono text-[10px] tracking-[0.14em] uppercase ${
@@ -146,6 +184,7 @@ export default function PdfEditorPane({
   const [notice, setNotice] = useState<string | null>(null);
 
   const importRef = useRef<HTMLInputElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const lastClickedRef = useRef<number | null>(null);
 
   const pendingMarks = Object.values(annotations).reduce((n, l) => n + (l?.length ?? 0), 0);
@@ -156,6 +195,7 @@ export default function PdfEditorPane({
     let cancelled = false;
     (async () => {
       try {
+        preloadPdfJs(); // boot pdf.js while the bytes download
         const buf = await getLibraryFileBlob(notebookId, fileId);
         if (cancelled) return;
         setBytes(new Uint8Array(buf.slice(0)));
@@ -312,15 +352,7 @@ export default function PdfEditorPane({
   async function applyMarks() {
     if (!pendingMarks) return;
     const pending = annotations;
-    await apply("Apply marks", async (b) => {
-      const { bytes: out, droppedChars } = await flattenAnnotations(b, pending);
-      if (droppedChars > 0) {
-        setNotice(
-          `${droppedChars} character${droppedChars === 1 ? "" : "s"} could not be written with Helvetica and became "?".`,
-        );
-      }
-      return out;
-    });
+    await apply("Apply marks", async (b) => (await flattenAnnotations(b, pending)).bytes);
     setAnnotations({});
   }
 
@@ -548,7 +580,7 @@ export default function PdfEditorPane({
             </span>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto bg-paper-deep/50 p-5">
+          <div ref={gridRef} className="flex-1 min-h-0 overflow-auto bg-paper-deep/50 p-5">
             <div className="flex flex-wrap gap-5 justify-center">
               {order.map((i) => (
                 <PageTile
@@ -556,6 +588,7 @@ export default function PdfEditorPane({
                   doc={doc}
                   pageNumber={i + 1}
                   selected={selected.includes(i)}
+                  rootRef={gridRef}
                   onToggle={(e) => toggle(i, e)}
                 />
               ))}

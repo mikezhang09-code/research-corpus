@@ -125,34 +125,69 @@ binding) directly — **not** through the VM backend.
   (`markdownUrlTransform`); react-markdown's default strips them, which blanked
   base64-embedded images from Word/Docs exports.
 - **PDF viewer/editor** (`components/library/Pdf*.tsx`, `lib/pdf.ts`,
-  `lib/pdf-edit.ts`) replaced the old "open `r2_url` in a new tab and let the
-  browser render it" path. Everything runs in the browser — the public viewer
-  is a Cloudflare Worker and the VM's Next server has no PDF toolchain, so a
-  server-side tool like Stirling-PDF (Java/PDFBox) was not an option; its
-  feature list was used as the scope reference instead.
-  - **pdf.js** (`pdfjs-dist`) renders: continuous scroll with lazy page
-    rendering, fit-width / fit-page / stepped zoom, view rotation, a real text
-    layer (select + copy), whole-document search with hit highlighting, a
+  `lib/pdf-edit.ts`, `lib/pdf-text.ts`) replaced the old "open `r2_url` in a
+  new tab and let the browser render it" path. Everything runs in the browser —
+  the public viewer is a Cloudflare Worker and the VM's Next server has no PDF
+  toolchain, so a server-side tool like Stirling-PDF (Java/PDFBox) was not an
+  option; its feature list was used as the scope reference instead.
+  - **pdf.js** (`pdfjs-dist`, **legacy build** — the modern one calls
+    `Map#getOrInsertComputed`, missing before the very latest browsers) renders:
+    continuous scroll, fit-width / fit-page / stepped zoom, view rotation, a real
+    text layer (select + copy), whole-document search with hit highlighting, a
     thumbnail rail, the document outline, print and download.
   - **pdf-lib** powers the editor: arrange / rotate / delete / duplicate /
     insert / merge / extract pages, document metadata, and flattened mark-up
-    (text, highlight, freehand). Each operation re-serialises the whole file,
-    which makes undo a stack of buffers and keeps the thumbnails honest.
-    Saving PUTs over the same R2 object, so the file keeps its id, URL and
-    category.
-  - **Worker wiring**: pdf.js is pointed at `GlobalWorkerOptions.workerSrc`
-    built from `new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url)`
-    — the bundler emits it under `_next/static/media/`, same-origin, which both
-    the Cloudflare Access gate and the admin-password gate require. Do **not**
-    switch it to `workerPort`: that shares one worker across documents and the
-    first `loadingTask.destroy()` kills it for everyone ("PDFWorker.create -
-    the worker is being destroyed").
+    (text, highlight, freehand, edited text). Each operation re-serialises the
+    whole file, which makes undo a stack of buffers and keeps the thumbnails
+    honest. Saving PUTs over the same R2 object, so the file keeps its id, URL
+    and category.
+  - **Runtime data** — `scripts/copy-pdfjs-assets.mjs` (run by `npm run dev` /
+    `npm run build`, output gitignored) copies pdf.js's `cmaps/`,
+    `standard_fonts/`, `wasm/` and `iccs/` into `public/pdfjs/`, and `openPdf`
+    passes their URLs. These are not optional: without `cMapUrl`, text set in a
+    non-embedded CJK font (predefined CMaps like `UniGB-UCS2-H`) renders as
+    *nothing*, and without `wasmUrl` every JPEG 2000 / JBIG2 image — the usual
+    encoding of scanned papers — decodes to a blank. Files load lazily, only
+    when a document needs one. The public app's middleware excludes `/pdfjs/`
+    (Cloudflare serves assets ahead of the Worker anyway).
+  - **Worker** — one `PDFWorker` is created once and passed to every
+    `getDocument` via the `worker` option. pdf.js only destroys a worker on
+    `loadingTask.destroy()` when it created that worker itself, so sharing it
+    this way is safe. Do **not** use `GlobalWorkerOptions.workerPort` instead:
+    pdf.js treats a port as its own, and the first `destroy()` kills it for
+    every document ("PDFWorker.create - the worker is being destroyed").
+    `workerSrc` comes from `new URL(..., import.meta.url)` so it is emitted
+    under `_next/static/media/`, same-origin, as both auth gates require.
+  - **Render pipeline** (measured on a 200-page file; the numbers are in the PR
+    that introduced it): pages outside the prerender window shrink their
+    canvas to 0×0 — the only way to free a bitmap — and drop the text layer;
+    renders go through a 2-slot priority queue in `lib/pdf.ts` (pages before
+    thumbnails, queued pages that scroll away never start, and a slot is
+    released on abort because `getPage()` on a destroyed document never
+    settles); bitmaps render off-screen and swap in when done; zoom re-renders
+    only after it settles (`ZOOM_SETTLE_MS`), and the text layer follows zoom
+    through `--total-scale-factor` without being rebuilt; one canvas is capped
+    at 4096² pixels (iOS Safari's limit); thumbnails and editor tiles render
+    lazily as they scroll into view.
+  - **Edit text** (Annotate tab) is cover-and-redraw: click a line, change it,
+    and on Apply the line is painted over in its sampled background colour and
+    the new text drawn on the original baseline, in the original direction
+    (even on `/Rotate` pages). It is visually exact, but the old glyphs stay in
+    the content stream, so search and copy still find the old words — truly
+    deleting them means rewriting Tj/TJ operators, which no client-side library
+    does reliably. Lines are pdf.js text items merged along a baseline.
+  - **Non-Latin text** (edited lines and free-text notes): WinAnsi text is real
+    text in Helvetica / Times / Courier; anything else — Chinese above all — is
+    rendered by the browser with a system font and embedded as a 288 dpi image.
+    No font download, any script the reader's machine can show; the trade-off
+    is that such text is not selectable. Embedding a CJK font (fontkit + a
+    hosted TTF) would make it selectable at the cost of a ~10 MB asset.
   - **Text-layer CSS** lives in `globals.css` (`.pdf-text-layer`), trimmed from
     `pdfjs-dist/web/pdf_viewer.css` — importing that file whole would pull in
     ~165 KB of annotation/editor styles we don't use.
   - **Known limits**: encrypted PDFs are refused (pdf-lib cannot decrypt);
-    flattened text uses standard Helvetica, so non-Latin characters become `?`
-    (reported in the UI); printing rasterises pages and is capped at 80.
+    printing rasterises pages and is capped at 80; edited text keeps the old
+    words searchable underneath (see above).
   - Wired into folio cards, Free Forms, and — read-only, through
     `/api/artifacts/{id}/content` rather than the public R2 URL — the
     NotebookLM Corpus artifact cards.

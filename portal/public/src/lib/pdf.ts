@@ -11,8 +11,10 @@ import type { PDFDocumentProxy, PageViewport } from "pdfjs-dist";
 export const PDF_MIME = "application/pdf";
 
 type PdfJs = typeof import("pdfjs-dist");
+type PdfWorker = InstanceType<PdfJs["PDFWorker"]>;
 
 let pdfjsPromise: Promise<PdfJs> | null = null;
+let sharedWorker: PdfWorker | null = null;
 
 /**
  * Load pdf.js and point it at its web worker, once per page load.
@@ -39,16 +41,61 @@ export function loadPdfJs(): Promise<PdfJs> {
         import.meta.url,
       ).href;
     }
+    // Start the worker now, so it boots while the caller is still fetching.
+    workerFor(pdfjs);
     return pdfjs;
   })();
   return pdfjsPromise;
 }
 
-/** Open a PDF from raw bytes. Copies the buffer — pdf.js detaches what it is given. */
+/**
+ * One worker shared by every document, passed to getDocument explicitly.
+ *
+ * Safe where `workerPort` was not: pdf.js only tears a worker down on
+ * `loadingTask.destroy()` when it created that worker itself; a worker handed
+ * in through the `worker` option is left running and only that document's
+ * transport is closed. Sharing it saves a worker start-up — compiling the
+ * ~1 MB worker script — on every open, which the editor pays after every edit
+ * because each one re-opens the document.
+ */
+function workerFor(pdfjs: PdfJs): PdfWorker {
+  if (!sharedWorker || sharedWorker.destroyed) sharedWorker = new pdfjs.PDFWorker();
+  return sharedWorker;
+}
+
+/** Begin loading pdf.js and booting its worker without waiting for either. */
+export function preloadPdfJs(): void {
+  void loadPdfJs();
+}
+
+/** Absolute URL for a file under public/pdfjs (see scripts/copy-pdfjs-assets.mjs). */
+function pdfjsAsset(path: string): string {
+  return new URL(`/pdfjs/${path}`, window.location.origin).href;
+}
+
+/**
+ * Open a PDF from raw bytes. Copies the buffer — pdf.js transfers (detaches)
+ * what it is given, and callers such as the editor keep using their bytes.
+ *
+ * The four URLs point pdf.js at its runtime data, served from our own origin.
+ * They are not optional extras: without `cMapUrl`, text set in a non-embedded
+ * CJK font (predefined CMaps such as UniGB-UCS2-H) silently fails to render,
+ * and without `wasmUrl` every JPEG 2000 / JBIG2 image — the usual encoding of
+ * scanned papers — decodes to nothing ("OpenJPEG failed to initialize").
+ * Each file is fetched lazily, only when a document actually needs it.
+ */
 export async function openPdf(bytes: ArrayBuffer | Uint8Array): Promise<PDFDocumentProxy> {
   const pdfjs = await loadPdfJs();
   const data = bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes.slice(0));
-  return pdfjs.getDocument({ data }).promise;
+  return pdfjs.getDocument({
+    data,
+    worker: workerFor(pdfjs),
+    cMapUrl: pdfjsAsset("cmaps/"),
+    cMapPacked: true,
+    standardFontDataUrl: pdfjsAsset("standard_fonts/"),
+    wasmUrl: pdfjsAsset("wasm/"),
+    iccUrl: pdfjsAsset("iccs/"),
+  }).promise;
 }
 
 // ---- geometry ----
@@ -64,6 +111,117 @@ export const MAX_RENDER_DPR = 2;
 export function renderDpr(): number {
   if (typeof window === "undefined") return 1;
   return Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR);
+}
+
+/**
+ * Largest bitmap one page canvas may use: 4096², which is also iOS Safari's
+ * hard limit (beyond it the canvas silently draws nothing). At 400% zoom an A4
+ * page at dpr 2 would otherwise be ~31 MP / 124 MB for a single page.
+ */
+export const MAX_CANVAS_PIXELS = 4096 * 4096;
+
+/** Bitmap pixels per CSS pixel for a page of the given CSS size. */
+export function outputScale(cssWidth: number, cssHeight: number): number {
+  const cap = Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, cssWidth * cssHeight));
+  return Math.min(renderDpr(), cap);
+}
+
+// ---- render scheduling ----
+//
+// pdf.js parses in its worker, but *drawing* runs on the main thread in
+// ~15 ms slices. Ten pages rendering at once don't render in parallel — they
+// interleave, so all ten finish late and scrolling stutters throughout. A
+// small cap lets the visible pages finish first, and pages scrolled past while
+// still queued drop out without ever starting.
+
+const MAX_CONCURRENT_RENDERS = 2;
+
+/** Higher runs first. Thumbnails yield to the pages being read. */
+export const RenderPriority = { page: 2, thumb: 1 } as const;
+
+interface Waiter {
+  priority: number;
+  grant: () => void;
+}
+
+let activeRenders = 0;
+const renderQueue: Waiter[] = [];
+
+/** Give a slot we hold to the next waiter, or free it if nobody is waiting. */
+function passSlotOn(): void {
+  const next = renderQueue.shift();
+  if (next) next.grant();
+  else activeRenders--;
+}
+
+/**
+ * Wait for a render slot; resolves with its release function. Rejects if
+ * `signal` aborts while waiting. On release the slot is handed straight to the
+ * next waiter rather than freed and re-taken, so the cap holds even when an
+ * acquire races a release.
+ *
+ * A held slot is also released when `signal` aborts. Callers release in a
+ * `finally`, but that never runs if the awaited pdf.js call never settles —
+ * and `getPage()` on a document destroyed mid-request does exactly that. The
+ * editor destroys its document after every edit, so without this the two
+ * slots leaked within a few edits and every later render waited forever.
+ */
+export function acquireRenderSlot(priority: number, signal: AbortSignal): Promise<() => void> {
+  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    signal.removeEventListener("abort", release);
+    passSlotOn();
+  };
+  const hold = () => {
+    signal.addEventListener("abort", release, { once: true });
+    return release;
+  };
+  if (activeRenders < MAX_CONCURRENT_RENDERS) {
+    activeRenders++;
+    return Promise.resolve(hold());
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      const i = renderQueue.indexOf(waiter);
+      if (i !== -1) renderQueue.splice(i, 1);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const waiter: Waiter = {
+      priority,
+      grant: () => {
+        signal.removeEventListener("abort", onAbort);
+        // Defensive: abort normally removes a waiter before it can be granted,
+        // but if one ever is, pass the slot on rather than strand it.
+        if (signal.aborted) {
+          passSlotOn();
+          reject(new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        resolve(hold());
+      },
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    // Keep the queue ordered by priority, FIFO within a priority.
+    let at = renderQueue.length;
+    while (at > 0 && renderQueue[at - 1].priority < priority) at--;
+    renderQueue.splice(at, 0, waiter);
+  });
+}
+
+/** True for the errors a cancelled render or an aborted slot wait produce. */
+export function isCancellation(e: unknown): boolean {
+  const name = typeof e === "object" && e !== null ? (e as { name?: unknown }).name : undefined;
+  return name === "RenderingCancelledException" || name === "AbortError";
+}
+
+/** Drop a canvas's backing store. Only shrinking it to 0×0 frees the bitmap. */
+export function releaseCanvas(canvas: HTMLCanvasElement | null | undefined): void {
+  if (!canvas) return;
+  canvas.width = 0;
+  canvas.height = 0;
 }
 
 // ---- formatting ----
