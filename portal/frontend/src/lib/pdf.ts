@@ -29,10 +29,13 @@ let pdfjsPromise: Promise<PdfJs> | null = null;
  */
 export function loadPdfJs(): Promise<PdfJs> {
   pdfjsPromise ??= (async () => {
-    const pdfjs = await import("pdfjs-dist");
+    // Legacy build: it polyfills newer built-ins pdf.js 6 relies on (e.g.
+    // Map#getOrInsertComputed), which the modern build assumes and which
+    // older Safari/Chrome lack — pages there would fail to render.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     if (!pdfjs.GlobalWorkerOptions.workerSrc) {
       pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
+        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
         import.meta.url,
       ).href;
     }

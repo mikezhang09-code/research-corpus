@@ -153,7 +153,7 @@ function PdfPage({
           host.style.setProperty("--total-scale-factor", String(viewport.scale));
           host.style.setProperty("--scale-round-x", "1px");
           host.style.setProperty("--scale-round-y", "1px");
-          const { TextLayer } = await import("pdfjs-dist");
+          const { TextLayer } = await import("pdfjs-dist/legacy/build/pdf.mjs");
           if (cancelled) return;
           const layer = new TextLayer({
             textContentSource: page.streamTextContent(),
