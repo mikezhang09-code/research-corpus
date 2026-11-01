@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { PresentationModal } from "@/components/corpus/PresentationModal";
+import { PdfModal } from "@/components/library/PdfModal";
 import { getLiveArtifacts, getArtifactContent, saveArtifact, deleteArtifact, downloadNotebookArtifacts, type LiveArtifact } from "@/lib/api";
 import { GenerateActionSheet } from "@/components/generate/GenerateActionSheet";
 import { GenerateModal } from "@/components/generate/GenerateModal";
@@ -1085,6 +1086,7 @@ function ArtifactCard({
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
+  const [showPdf, setShowPdf] = useState(false);
   const cfg = TYPE_CONFIG[artifact.artifact_type] ?? DEFAULT_CONFIG;
   const Icon = cfg.icon;
 
@@ -1100,6 +1102,7 @@ function ArtifactCard({
   const isFlashcards = artifact.artifact_type === "flashcards";
   const isQuiz = artifact.artifact_type === "quiz";
   const isPresentation = artifact.file_format === "pptx" || artifact.file_format === "ppt";
+  const isPdf = artifact.file_format === "pdf";
   const isSlideDeck = artifact.artifact_type === "slide_deck";
 
   async function handleSave(fmt?: string) {
@@ -1183,6 +1186,16 @@ function ArtifactCard({
           src={artifact.r2_url}
           title={artifact.title}
           onClose={() => setShowPresentation(false)}
+        />
+      )}
+      {/* Corpus artifacts are read-only — the viewer streams them through our
+          own /content route rather than the public R2 URL. */}
+      {showPdf && artifact.portal_id && (
+        <PdfModal
+          contentUrl={`/api/artifacts/${artifact.portal_id}/content`}
+          downloadUrl={artifact.r2_url}
+          title={artifact.title}
+          onClose={() => setShowPdf(false)}
         />
       )}
 
@@ -1391,6 +1404,16 @@ function ArtifactCard({
                   >
                     <Layers className="h-3 w-3" />
                     View
+                  </Button>
+                ) : isPdf && artifact.portal_id ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8 text-xs shrink-0"
+                    onClick={() => setShowPdf(true)}
+                  >
+                    <FileText className="h-3 w-3" />
+                    Read
                   </Button>
                 ) : artifact.r2_url ? (
                   <a href={artifact.r2_url} target="_blank" rel="noopener noreferrer" className="shrink-0">

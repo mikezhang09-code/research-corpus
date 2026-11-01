@@ -459,6 +459,67 @@
     padding: 4px 8px;
     vertical-align: top;
   }
+
+  /* ── PDF viewer (pdf.js) ────────────────────────────────────────────────
+     The selectable text layer pdf.js builds over each page canvas. Adapted
+     from pdfjs-dist/web/pdf_viewer.css — we only need the text-layer rules,
+     not the 160 KB of annotation/editor styles that ship with it.
+     `--total-scale-factor` is set per page by PdfViewerPane; the spans
+     position themselves in percentages, so the host just needs a size. */
+  .pdf-text-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    overflow: clip;
+    text-align: initial;
+    line-height: 1;
+    letter-spacing: normal;
+    word-spacing: normal;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    --total-scale-factor: 1;
+    --scale-round-x: 1px;
+    --scale-round-y: 1px;
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+  }
+  .pdf-text-layer :is(span, br) {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+  .pdf-text-layer > :not(.markedContent),
+  .pdf-text-layer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+  .pdf-text-layer .markedContent { display: contents; }
+  .pdf-text-layer ::selection {
+    background: color-mix(in srgb, var(--color-sky), transparent 55%);
+    color: transparent;
+  }
+  /* Search hits are nested inside an already-positioned span, so they must
+     stay in flow — hence the explicit `position: static`. */
+  .pdf-text-layer span.pdf-hl {
+    position: static;
+    transform: none;
+    border-radius: 2px;
+    padding: 1px;
+    margin: -1px;
+    background: color-mix(in srgb, var(--color-ochre), transparent 50%);
+  }
+  .pdf-text-layer span.pdf-hl-active {
+    background: color-mix(in srgb, var(--color-terracotta), transparent 35%);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

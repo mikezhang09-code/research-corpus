@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PresentationModal } from "@/components/corpus/PresentationModal";
+import { PdfModal } from "@/components/library/PdfModal";
 import {
   TYPE_CONFIG,
   DEFAULT_CONFIG,
@@ -16,9 +17,9 @@ import {
   FlashcardsModal,
   QuizModal,
 } from "@/components/notebook/artifact-viewers";
-import { getArtifacts, downloadNotebookArtifacts, type NLMArtifact } from "@/lib/api";
+import { artifactContentUrl, getArtifacts, downloadNotebookArtifacts, type NLMArtifact } from "@/lib/api";
 
-type ViewerKind = "markdown" | "csv" | "mindmap" | "flashcards" | "quiz" | "presentation";
+type ViewerKind = "markdown" | "csv" | "mindmap" | "flashcards" | "quiz" | "presentation" | "pdf";
 
 // Pick the inline viewer for a saved artifact, or null if it can only be
 // downloaded. Mirrors the routing in portal/frontend's artifact cards.
@@ -29,6 +30,7 @@ function viewerFor(a: NLMArtifact): ViewerKind | null {
   if (a.file_format === "md") return "markdown";
   if (a.file_format === "csv") return "csv";
   if (a.file_format === "pptx" || a.file_format === "ppt") return "presentation";
+  if (a.file_format === "pdf") return "pdf";
   return null;
 }
 
@@ -60,8 +62,11 @@ function ArtifactCard({
   const dateStr = formatDate(artifact.nlm_created_at ?? artifact.portal_added_at);
 
   const canPresent = kind === "presentation" && !!artifact.r2_url;
+  // The Corpus is read-only, so PDFs open in the viewer straight from R2.
+  const canReadPdf = kind === "pdf" && !!artifact.r2_url;
   const hasModalViewer =
-    kind === "markdown" || kind === "csv" || kind === "mindmap" || kind === "flashcards" || kind === "quiz" || canPresent;
+    kind === "markdown" || kind === "csv" || kind === "mindmap" || kind === "flashcards" || kind === "quiz" ||
+    canPresent || canReadPdf;
   const actionLabel =
     kind === "markdown" ? "Read" : kind === "flashcards" ? "Study" : kind === "quiz" ? "Take quiz" : "View";
 
@@ -84,6 +89,14 @@ function ArtifactCard({
       )}
       {viewer === "presentation" && artifact.r2_url && (
         <PresentationModal src={artifact.r2_url} title={artifact.title} onClose={() => setViewer(null)} />
+      )}
+      {viewer === "pdf" && artifact.r2_url && (
+        <PdfModal
+          contentUrl={artifactContentUrl(artifact.id)}
+          downloadUrl={artifact.r2_url}
+          title={artifact.title}
+          onClose={() => setViewer(null)}
+        />
       )}
 
       <div className={`relative rounded-[2px] overflow-hidden border bg-vellum shadow-[2px_2px_0_rgb(42_36_24_/_0.08)] hover:shadow-[3px_3px_0_rgb(42_36_24_/_0.14)] hover:-translate-y-px transition-all ${

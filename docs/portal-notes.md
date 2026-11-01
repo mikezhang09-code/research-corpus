@@ -124,6 +124,38 @@ binding) directly — **not** through the VM backend.
 - **Markdown viewer** allows `data:image/*` URLs via a custom `urlTransform`
   (`markdownUrlTransform`); react-markdown's default strips them, which blanked
   base64-embedded images from Word/Docs exports.
+- **PDF viewer/editor** (`components/library/Pdf*.tsx`, `lib/pdf.ts`,
+  `lib/pdf-edit.ts`) replaced the old "open `r2_url` in a new tab and let the
+  browser render it" path. Everything runs in the browser — the public viewer
+  is a Cloudflare Worker and the VM's Next server has no PDF toolchain, so a
+  server-side tool like Stirling-PDF (Java/PDFBox) was not an option; its
+  feature list was used as the scope reference instead.
+  - **pdf.js** (`pdfjs-dist`) renders: continuous scroll with lazy page
+    rendering, fit-width / fit-page / stepped zoom, view rotation, a real text
+    layer (select + copy), whole-document search with hit highlighting, a
+    thumbnail rail, the document outline, print and download.
+  - **pdf-lib** powers the editor: arrange / rotate / delete / duplicate /
+    insert / merge / extract pages, document metadata, and flattened mark-up
+    (text, highlight, freehand). Each operation re-serialises the whole file,
+    which makes undo a stack of buffers and keeps the thumbnails honest.
+    Saving PUTs over the same R2 object, so the file keeps its id, URL and
+    category.
+  - **Worker wiring**: pdf.js is pointed at `GlobalWorkerOptions.workerSrc`
+    built from `new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url)`
+    — the bundler emits it under `_next/static/media/`, same-origin, which both
+    the Cloudflare Access gate and the admin-password gate require. Do **not**
+    switch it to `workerPort`: that shares one worker across documents and the
+    first `loadingTask.destroy()` kills it for everyone ("PDFWorker.create -
+    the worker is being destroyed").
+  - **Text-layer CSS** lives in `globals.css` (`.pdf-text-layer`), trimmed from
+    `pdfjs-dist/web/pdf_viewer.css` — importing that file whole would pull in
+    ~165 KB of annotation/editor styles we don't use.
+  - **Known limits**: encrypted PDFs are refused (pdf-lib cannot decrypt);
+    flattened text uses standard Helvetica, so non-Latin characters become `?`
+    (reported in the UI); printing rasterises pages and is capped at 80.
+  - Wired into folio cards, Free Forms, and — read-only, through
+    `/api/artifacts/{id}/content` rather than the public R2 URL — the
+    NotebookLM Corpus artifact cards.
 
 ## Upstream (`teng-lin/notebooklm-py`)
 

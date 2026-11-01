@@ -22,6 +22,7 @@ import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { PresentationModal } from "@/components/corpus/PresentationModal";
 import { CATEGORY_OPTIONS } from "./file-categories";
 import { DocxModal } from "./DocxModal";
+import { PdfModal } from "./PdfModal";
 import { ExcelModal } from "./ExcelModal";
 import { JsonModal } from "./JsonModal";
 import { looksLikeMindMap } from "@/lib/json-table";
@@ -354,12 +355,13 @@ export function FileCard({
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [viewer, setViewer] = useState<"markdown" | "docx" | "excel" | "json" | "mindmap" | "mindmap-edit" | "diagram" | "diagram-edit" | "quiz" | "quiz-edit" | "flashcards" | "flashcards-edit" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
+  const [viewer, setViewer] = useState<"markdown" | "docx" | "pdf" | "excel" | "json" | "mindmap" | "mindmap-edit" | "diagram" | "diagram-edit" | "quiz" | "quiz-edit" | "flashcards" | "flashcards-edit" | "image" | "audio" | "video" | "presentation" | "jsx" | null>(null);
 
   const ext = (file.file_ext ?? "").toLowerCase();
   const isMarkdown = ext === ".md" || ext === ".txt";
   const isComponent = ext === ".jsx" || ext === ".tsx";
   const isDocx = ext === ".docx" || ext === ".doc";
+  const isPdf = ext === ".pdf";
   const isExcel = ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv";
   const isPresentation = ext === ".ppt" || ext === ".pptx";
   const isJson = ext === ".json";
@@ -373,7 +375,7 @@ export function FileCard({
   const isVideo = file.file_category === "video";
   // The presentation viewer (Office Online embed) needs a public file URL.
   const hasViewer =
-    isMarkdown || isDocx || isExcel || isJson || isMindMap || isDiagram || isQuiz || isFlashcards || isImage ||
+    isMarkdown || isDocx || isPdf || isExcel || isJson || isMindMap || isDiagram || isQuiz || isFlashcards || isImage ||
     isAudio || isVideo || isComponent || (isPresentation && !!file.r2_url);
 
   const added = new Date(file.added_at).toLocaleDateString("en-US", {
@@ -405,6 +407,7 @@ export function FileCard({
   function openViewer() {
     if (isNote) { setNoteOpen(true); return; }
     if (isDocx) setViewer("docx");
+    else if (isPdf) setViewer("pdf");
     else if (isExcel) setViewer("excel");
     else if (isMarkdown) setViewer("markdown");
     else if (isDiagram) setViewer("diagram");
@@ -429,6 +432,15 @@ export function FileCard({
           fileId={file.id}
           title={file.title}
           editable={ext === ".docx"}
+          onClose={() => setViewer(null)}
+        />
+      )}
+      {viewer === "pdf" && (
+        <PdfModal
+          notebookId={file.notebook_id}
+          fileId={file.id}
+          title={file.title}
+          editable
           onClose={() => setViewer(null)}
         />
       )}

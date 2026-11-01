@@ -26,6 +26,7 @@ import { FILE_CATEGORY_CONFIG, MarkdownModal, formatBytes, type CatKey } from ".
 import { CATEGORY_OPTIONS, categoryLabel } from "./file-categories";
 import { AddFileModal } from "./AddFileModal";
 import { DocxModal } from "./DocxModal";
+import { PdfModal } from "./PdfModal";
 import { ExcelModal } from "./ExcelModal";
 import { JsonModal } from "./JsonModal";
 import { looksLikeMindMap } from "@/lib/json-table";
@@ -62,13 +63,14 @@ const CATEGORIES = [
 ];
 
 type ViewerKind =
-  | "markdown" | "docx" | "excel" | "json" | "mindmap" | "diagram" | "quiz" | "flashcards" | "image" | "audio"
-  | "video" | "presentation" | "jsx";
+  | "markdown" | "docx" | "pdf" | "excel" | "json" | "mindmap" | "diagram" | "quiz" | "flashcards" | "image"
+  | "audio" | "video" | "presentation" | "jsx";
 
 /** Pick the viewer for a file, mirroring FileCard's dispatch (notes open read-only). */
 function viewerFor(file: FreeFormFile): ViewerKind | null {
   const ext = (file.file_ext ?? "").toLowerCase();
   if (ext === ".docx" || ext === ".doc") return "docx";
+  if (ext === ".pdf") return "pdf";
   if (ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".csv") return "excel";
   if (ext === ".md" || ext === ".txt") return "markdown";
   if (file.file_category === "diagram") return "diagram";
@@ -632,6 +634,15 @@ export function FreeFormsPanel() {
           fileId={viewer.file.id}
           title={viewer.file.title}
           editable={(viewer.file.file_ext ?? "").toLowerCase() === ".docx"}
+          onClose={() => setViewer(null)}
+        />
+      )}
+      {viewer?.kind === "pdf" && (
+        <PdfModal
+          notebookId={null}
+          fileId={viewer.file.id}
+          title={viewer.file.title}
+          editable
           onClose={() => setViewer(null)}
         />
       )}
