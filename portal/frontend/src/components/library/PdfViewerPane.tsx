@@ -13,15 +13,15 @@
 // Heavy (pdf.js) — always mount through `next/dynamic` with `ssr: false`.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import {
   AlertCircle, ChevronLeft, ChevronRight, ChevronUp, Download, Loader2, Maximize,
   Minus, Plus, Printer, RotateCw, Search, List, Image as ImageIcon, X, ArrowDownToLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  downloadBytes, findMatches, openPdf, paintMatches, pdfFilename, renderDpr,
-  type TextMatch,
+  RenderPriority, acquireRenderSlot, downloadBytes, findMatches, isCancellation, openPdf,
+  outputScale, paintMatches, pdfFilename, preloadPdfJs, releaseCanvas, type TextMatch,
 } from "@/lib/pdf";
 
 // ---- constants ----
@@ -33,6 +33,12 @@ const GUTTER = 24;
 const PRERENDER_MARGIN = 600;
 /** Printing rasterises every page — refuse beyond this to avoid freezing the tab. */
 const PRINT_PAGE_LIMIT = 80;
+/** Thumbnail width in the rail, in CSS px. */
+const THUMB_WIDTH = 110;
+/** Zoom must hold still this long before pages re-render at the new size. */
+const ZOOM_SETTLE_MS = 160;
+/** Page sizes beyond the first are read in batches of this many. */
+const GEOMETRY_BATCH = 16;
 
 type Zoom = number | "fit-width" | "fit-page";
 type Side = "thumbs" | "outline" | null;
@@ -66,12 +72,30 @@ function sizeOf(geom: PageGeom, scale: number, rotation: number): { w: number; h
 }
 
 // ---- one page ----
+//
+// Rendering pipeline, tuned after measuring a 200-page document:
+//
+//  • Only pages inside the prerender window hold anything. Leaving it shrinks
+//    the canvas to 0×0 — the only way to free a bitmap — and drops the text
+//    layer. Before this, every page ever scrolled past kept its full-resolution
+//    bitmap (≈4 GB after one pass through 200 pages at dpr 2).
+//  • Bitmaps render into a detached canvas and are swapped in when complete,
+//    so the previous one stays on screen (CSS-stretched) during a zoom instead
+//    of the page blanking.
+//  • `scale` (live) sizes the page box at once; `renderScale` (settled after
+//    the user stops zooming) decides the bitmap resolution, so a burst of zoom
+//    clicks or a window drag renders once at the end, not once per step.
+//  • The text layer is laid out in percentages and sized by the
+//    `--total-scale-factor` CSS variable, so it follows zoom without being
+//    rebuilt; it is rebuilt only for a new page or rotation.
+//  • Every render goes through the shared slot queue in lib/pdf.
 
 function PdfPage({
   doc,
   pageNumber,
   geom,
   scale,
+  renderScale,
   rotation,
   scrollRef,
   matches,
@@ -81,7 +105,10 @@ function PdfPage({
   doc: PDFDocumentProxy;
   pageNumber: number;
   geom: PageGeom;
+  /** Live zoom: sizes the page box immediately. */
   scale: number;
+  /** Settled zoom: the resolution the bitmap is rendered at. */
+  renderScale: number;
   rotation: number;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   /** Search hits on this page, in document order. */
@@ -91,106 +118,154 @@ function PdfPage({
   onElement: (pageNumber: number, el: HTMLDivElement | null) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLDivElement | null>(null);
-  const [near, setNear] = useState(false);
-  const [painted, setPainted] = useState(false);
   // Text layer output, kept so search repaints don't need a re-render.
   const layerRef = useRef<{ divs: HTMLElement[]; items: string[] } | null>(null);
+  const [near, setNear] = useState(false);
+  const [painted, setPainted] = useState(false);
+  const [textReady, setTextReady] = useState(false);
 
   const { w, h } = sizeOf(geom, scale, rotation);
 
-  // Only render pages that are on (or near) screen.
+  // Free the bitmap and the text layer's DOM.
+  const releaseAll = useCallback(() => {
+    const host = canvasHostRef.current;
+    if (host) {
+      for (const c of host.querySelectorAll("canvas")) releaseCanvas(c);
+      host.replaceChildren();
+    }
+    textRef.current?.replaceChildren();
+    layerRef.current = null;
+  }, []);
+
+  // Render near the viewport; release when the page leaves that window.
   useEffect(() => {
     const el = hostRef.current;
     const root = scrollRef.current;
     if (!el || !root) return;
     const io = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) setNear(e.isIntersecting);
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setNear(true);
+          } else {
+            setNear(false);
+            setPainted(false);
+            setTextReady(false);
+            releaseAll();
+          }
+        }
       },
       { root, rootMargin: `${PRERENDER_MARGIN}px 0px` },
     );
     io.observe(el);
-    return () => io.disconnect();
-  }, [scrollRef]);
+    return () => {
+      io.disconnect();
+      releaseAll();
+    };
+  }, [scrollRef, releaseAll]);
 
-  // Paint the canvas + text layer.
+  // Bitmap.
   useEffect(() => {
     if (!near) return;
-    let cancelled = false;
+    const ac = new AbortController();
     let task: RenderTask | null = null;
-    let page: PDFPageProxy | null = null;
+    let pending: HTMLCanvasElement | null = null;
+
+    (async () => {
+      let release: (() => void) | null = null;
+      try {
+        release = await acquireRenderSlot(RenderPriority.page, ac.signal);
+        if (ac.signal.aborted) return;
+        const page = await doc.getPage(pageNumber);
+        if (ac.signal.aborted) return;
+        const viewport = page.getViewport({
+          scale: renderScale,
+          rotation: (page.rotate + rotation) % 360,
+        });
+        const out = outputScale(viewport.width, viewport.height);
+        pending = document.createElement("canvas");
+        pending.width = Math.floor(viewport.width * out);
+        pending.height = Math.floor(viewport.height * out);
+        pending.className = "block w-full h-full";
+        pending.setAttribute("aria-label", `Page ${pageNumber}`);
+        task = page.render({
+          canvas: pending,
+          viewport,
+          transform: out === 1 ? undefined : [out, 0, 0, out, 0, 0],
+        });
+        await task.promise;
+        const host = canvasHostRef.current;
+        if (ac.signal.aborted || !host) return;
+        // Swap in one step: the old bitmap stays visible right up to here.
+        for (const c of host.querySelectorAll("canvas")) releaseCanvas(c);
+        host.replaceChildren(pending);
+        pending = null;
+        setPainted(true);
+      } catch (e) {
+        if (!isCancellation(e)) console.error(`PDF page ${pageNumber} failed to render`, e);
+      } finally {
+        release?.();
+        releaseCanvas(pending); // a cancelled render's unused bitmap
+      }
+    })();
+
+    return () => {
+      ac.abort();
+      task?.cancel();
+    };
+  }, [doc, pageNumber, renderScale, rotation, near]);
+
+  // Text layer — after the bitmap, so pixels come first. Built at scale 1:
+  // its spans are positioned in percentages and sized by the CSS variable.
+  useEffect(() => {
+    if (!near || !painted) return;
+    let cancelled = false;
+    let layer: { cancel: () => void } | null = null;
 
     (async () => {
       try {
-        page = await doc.getPage(pageNumber);
-        if (cancelled) return;
-        const viewport = page.getViewport({ scale, rotation: (page.rotate + rotation) % 360 });
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        const dpr = renderDpr();
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-
-        task = page.render({
-          canvas,
-          viewport,
-          transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
-        });
-        await task.promise;
-        if (cancelled) return;
-
-        // Text layer — selection, copy, and search highlighting.
+        const page = await doc.getPage(pageNumber);
         const host = textRef.current;
-        if (host) {
-          host.textContent = "";
-          host.style.width = `${Math.floor(viewport.width)}px`;
-          host.style.height = `${Math.floor(viewport.height)}px`;
-          host.style.setProperty("--total-scale-factor", String(viewport.scale));
-          host.style.setProperty("--scale-round-x", "1px");
-          host.style.setProperty("--scale-round-y", "1px");
-          const { TextLayer } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-          if (cancelled) return;
-          const layer = new TextLayer({
-            textContentSource: page.streamTextContent(),
-            container: host,
-            viewport,
-          });
-          await layer.render();
-          if (cancelled) return;
-          // setLayerDimensions() sizes the host with a CSS round() expression;
-          // pin it to the canvas instead so the two always line up exactly.
-          host.style.width = `${Math.floor(viewport.width)}px`;
-          host.style.height = `${Math.floor(viewport.height)}px`;
-          layerRef.current = { divs: layer.textDivs, items: layer.textContentItemsStr };
-        }
-        setPainted(true);
+        if (cancelled || !host) return;
+        const viewport = page.getViewport({ scale: 1, rotation: (page.rotate + rotation) % 360 });
+        const { TextLayer } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (cancelled) return;
+        host.replaceChildren();
+        const tl = new TextLayer({
+          textContentSource: page.streamTextContent(),
+          container: host,
+          viewport,
+        });
+        layer = tl;
+        await tl.render();
+        if (cancelled) return;
+        // setLayerDimensions() sized the host in px for scale 1; let it fill
+        // the page box instead, so it tracks zoom with the canvas.
+        host.style.width = "100%";
+        host.style.height = "100%";
+        layerRef.current = { divs: tl.textDivs, items: tl.textContentItemsStr };
+        setTextReady(true);
       } catch (e) {
-        // A cancelled render throws RenderingCancelledException — not an error.
-        if (!cancelled && !(e instanceof Error && e.name === "RenderingCancelledException")) {
-          console.error(`PDF page ${pageNumber} failed to render`, e);
+        if (!cancelled && !isCancellation(e)) {
+          console.error(`PDF page ${pageNumber} text layer failed`, e);
         }
       }
     })();
 
     return () => {
       cancelled = true;
-      task?.cancel();
-      layerRef.current = null;
-      setPainted(false);
+      layer?.cancel();
     };
-  }, [doc, pageNumber, scale, rotation, near]);
+  }, [doc, pageNumber, rotation, near, painted]);
 
   // Repaint search highlights without re-rendering the page.
   useEffect(() => {
     const layer = layerRef.current;
-    if (!painted || !layer) return;
+    if (!textReady || !layer) return;
     paintMatches(layer.divs, layer.items, matches, activeMatch);
-  }, [painted, matches, activeMatch]);
+  }, [textReady, matches, activeMatch]);
 
   return (
     <div
@@ -199,11 +274,15 @@ function PdfPage({
         onElement(pageNumber, el);
       }}
       data-page={pageNumber}
-      className="relative shrink-0 bg-white border border-ink shadow-[2px_2px_0_rgb(42_36_24_/_0.12)]"
+      className="relative shrink-0 bg-white ring-1 ring-ink shadow-[2px_2px_0_rgb(42_36_24_/_0.12)]"
       style={{ width: w, height: h }}
     >
-      <canvas ref={canvasRef} className="block" aria-label={`Page ${pageNumber}`} />
-      <div ref={textRef} className="pdf-text-layer" />
+      <div ref={canvasHostRef} className="absolute inset-0" />
+      <div
+        ref={textRef}
+        className="pdf-text-layer"
+        style={{ "--total-scale-factor": scale } as React.CSSProperties}
+      />
       {!painted && (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
@@ -216,46 +295,70 @@ function PdfPage({
 }
 
 // ---- thumbnail rail ----
+//
+// Lazy: a thumbnail renders when it scrolls into the rail, at low priority.
+// It used to render all of them the moment the rail opened — 200 renders
+// competing with the page the reader was looking at.
 
 function Thumb({
   doc,
   pageNumber,
   active,
+  rootRef,
   onClick,
 }: {
   doc: PDFDocumentProxy;
   pageNumber: number;
   active: boolean;
+  rootRef: React.RefObject<HTMLDivElement | null>;
   onClick: () => void;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const [visible, setVisible] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    const el = ref.current;
+    if (!el || done) return;
+    const io = new IntersectionObserver(
+      (entries) => setVisible(entries.some((e) => e.isIntersecting)),
+      { root: rootRef.current, rootMargin: "200px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [rootRef, done]);
+
+  useEffect(() => {
+    if (!visible || done) return;
+    const ac = new AbortController();
     let task: RenderTask | null = null;
     (async () => {
+      let release: (() => void) | null = null;
       try {
+        release = await acquireRenderSlot(RenderPriority.thumb, ac.signal);
+        if (ac.signal.aborted) return;
         const page = await doc.getPage(pageNumber);
-        if (cancelled) return;
+        if (ac.signal.aborted) return;
         const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: 110 / base.width });
+        const viewport = page.getViewport({ scale: THUMB_WIDTH / base.width });
         const canvas = ref.current;
         if (!canvas) return;
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
         task = page.render({ canvas, viewport });
         await task.promise;
-        if (!cancelled) setDone(true);
+        if (!ac.signal.aborted) setDone(true);
       } catch {
-        /* a cancelled thumbnail is not worth reporting */
+        /* a cancelled thumbnail needs no handling */
+      } finally {
+        release?.();
       }
     })();
     return () => {
-      cancelled = true;
+      ac.abort();
       task?.cancel();
     };
-  }, [doc, pageNumber]);
+  }, [doc, pageNumber, visible, done]);
 
   return (
     <button
@@ -268,6 +371,8 @@ function Thumb({
     >
       <canvas
         ref={ref}
+        width={THUMB_WIDTH}
+        height={Math.round(THUMB_WIDTH * 1.414)}
         className={`block bg-white border ${
           active ? "border-terracotta ring-2 ring-terracotta/30" : "border-rule group-hover:border-ink"
         }`}
@@ -316,12 +421,16 @@ export default function PdfViewerPane({
   const [matches, setMatches] = useState<TextMatch[]>([]);
   const [activeMatch, setActiveMatch] = useState(-1);
   const [searching, setSearching] = useState(false);
+  // The query `matches` were found for. While it differs from what is typed,
+  // the results on screen are stale and the counter says so.
+  const [searchedFor, setSearchedFor] = useState("");
 
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [printing, setPrinting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
   const pageEls = useRef(new Map<number, HTMLDivElement>());
   const bytesRef = useRef<Uint8Array | null>(null);
   const textCache = useRef(new Map<number, string[]>());
@@ -336,9 +445,13 @@ export default function PdfViewerPane({
 
     (async () => {
       try {
+        // Load pdf.js and boot its worker while the bytes are still downloading.
+        preloadPdfJs();
         const buf = await fetchBytes();
         if (cancelled) return;
-        bytesRef.current = new Uint8Array(buf.slice(0));
+        // Kept for Download; openPdf makes its own copy for the worker, so
+        // there is no need to duplicate the buffer here as well.
+        bytesRef.current = new Uint8Array(buf);
         const next = await openPdf(bytesRef.current);
         if (cancelled) {
           void next.loadingTask.destroy();
@@ -346,18 +459,44 @@ export default function PdfViewerPane({
         }
         opened = next;
 
-        const pages = await Promise.all(
-          Array.from({ length: next.numPages }, (_, i) => next.getPage(i + 1)),
-        );
+        // Lay out every page with the first page's size and show the document
+        // straight away, then read the real sizes in batches. Waiting for all
+        // of them first cost ~0.75 s on a 200-page file before anything drew;
+        // most documents are uniform, so the correction is usually a no-op.
+        const geomOf = (p: { rotate: number; getViewport: (o: { scale: number; rotation: number }) => { width: number; height: number } }): PageGeom => {
+          const vp = p.getViewport({ scale: 1, rotation: 0 });
+          return { rotate: p.rotate, width: vp.width, height: vp.height };
+        };
+        const first = geomOf(await next.getPage(1));
         if (cancelled) return;
-        setGeoms(
-          pages.map((p) => {
-            const vp = p.getViewport({ scale: 1, rotation: 0 });
-            return { rotate: p.rotate, width: vp.width, height: vp.height };
-          }),
-        );
+        const all: PageGeom[] = Array.from({ length: next.numPages }, () => first);
+        setGeoms(all);
         setDoc(next);
         onDocumentLoaded?.({ pages: next.numPages });
+
+        void (async () => {
+          let changed = false;
+          for (let i = 2; i <= next.numPages && !cancelled; i += GEOMETRY_BATCH) {
+            const n = Math.min(GEOMETRY_BATCH, next.numPages - i + 1);
+            const batch = await Promise.all(
+              Array.from({ length: n }, (_, k) => next.getPage(i + k)),
+            );
+            batch.forEach((p, k) => {
+              const g = geomOf(p);
+              const at = i - 1 + k;
+              if (g.width !== all[at].width || g.height !== all[at].height || g.rotate !== all[at].rotate) {
+                all[at] = g;
+                changed = true;
+              }
+            });
+            if (changed && !cancelled) {
+              setGeoms(all.slice());
+              changed = false;
+            }
+          }
+        })().catch(() => {
+          /* the document was closed mid-read */
+        });
 
         const raw = await next.getOutline();
         if (cancelled || !raw) return;
@@ -419,6 +558,17 @@ export default function PdfViewerPane({
     const byHeight = (box.h - GUTTER * 2) / maxH;
     return clamp(Math.min(byWidth, byHeight), 0.1, 6);
   }, [zoom, geoms, box, rotation]);
+
+  // The resolution pages render at. It follows `scale` once zooming has held
+  // still for ZOOM_SETTLE_MS, so a burst of +/- clicks or a window drag renders
+  // once at the end; meanwhile pages show their last bitmap stretched to the new
+  // size. The first value is taken at once, as soon as the fit size is known.
+  const [renderScale, setRenderScale] = useState<number | null>(null);
+  useEffect(() => {
+    if (!box.w || !geoms.length || renderScale === scale) return;
+    const t = setTimeout(() => setRenderScale(scale), renderScale === null ? 0 : ZOOM_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [scale, renderScale, box.w, geoms.length]);
 
   // ---- current page from scroll position ----
   // "Current" is the page showing the most of itself, not the one under some
@@ -495,6 +645,7 @@ export default function PdfViewerPane({
         setMatches([]);
         setActiveMatch(-1);
         setSearching(false);
+        setSearchedFor(q);
         return;
       }
       setSearching(true);
@@ -517,6 +668,7 @@ export default function PdfViewerPane({
         setMatches(found);
         setActiveMatch(found.length ? 0 : -1);
         setSearching(false);
+        setSearchedFor(q);
       })().catch(() => {
         if (searchRunRef.current === run) setSearching(false);
       });
@@ -870,10 +1022,10 @@ export default function PdfViewerPane({
             className="flex-1 min-w-0 h-7 px-2 bg-paper-light border border-rule rounded-[1px] font-mono text-[11px] text-ink placeholder-ink-mute/50 focus:outline-none focus:border-ink"
           />
           <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-mute whitespace-nowrap">
-            {searching
-              ? "Searching…"
-              : query.trim().length < 2
-                ? "2+ characters"
+            {query.trim().length < 2
+              ? "2+ characters"
+              : searching || searchedFor !== query.trim()
+                ? "Searching…"
                 : matches.length
                   ? `${activeMatch + 1} / ${matches.length}`
                   : "No matches"}
@@ -923,13 +1075,17 @@ export default function PdfViewerPane({
       {/* Body */}
       <div className="flex flex-1 min-h-0">
         {side === "thumbs" && (
-          <div className="w-[9.5rem] shrink-0 border-r border-rule bg-paper-deep/30 overflow-y-auto px-3 py-2">
+          <div
+            ref={railRef}
+            className="w-[9.5rem] shrink-0 border-r border-rule bg-paper-deep/30 overflow-y-auto px-3 py-2"
+          >
             {Array.from({ length: numPages }, (_, i) => (
               <Thumb
                 key={i + 1}
                 doc={doc}
                 pageNumber={i + 1}
                 active={page === i + 1}
+                rootRef={railRef}
                 onClick={() => scrollToPage(i + 1)}
               />
             ))}
@@ -956,7 +1112,7 @@ export default function PdfViewerPane({
             scroller, which both the pager and scrollToPage rely on. */}
         <div ref={scrollRef} className="relative flex-1 min-w-0 overflow-auto bg-paper-deep/60">
           <div className="flex flex-col items-center" style={{ gap: GUTTER, padding: GUTTER }}>
-            {geoms.map((geom, i) => {
+            {renderScale !== null && geoms.map((geom, i) => {
               const entry = matchesByPage.get(i);
               return (
                 <PdfPage
@@ -965,6 +1121,7 @@ export default function PdfViewerPane({
                   pageNumber={i + 1}
                   geom={geom}
                   scale={scale}
+                  renderScale={renderScale}
                   rotation={rotation}
                   scrollRef={scrollRef}
                   matches={entry?.list ?? []}

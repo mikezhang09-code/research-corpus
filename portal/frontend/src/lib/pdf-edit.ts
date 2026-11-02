@@ -11,8 +11,11 @@
 // flattened mark-up. Encryption, OCR and format conversion need a server and are
 // not pretended at here.
 
-import { LineCapStyle, PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import {
+  LineCapStyle, PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage,
+} from "pdf-lib";
 import { openPdf } from "./pdf";
+import { rasterizeText, type FontKind, type TextRun } from "./pdf-text";
 
 export interface PdfMetadata {
   title: string;
@@ -36,7 +39,26 @@ export type PdfAnnotation =
       text: string;
     }
   | { kind: "highlight"; x: number; y: number; w: number; h: number; color: string }
-  | { kind: "ink"; points: [number, number][]; color: string; width: number };
+  | { kind: "ink"; points: [number, number][]; color: string; width: number }
+  | {
+      /** Cover an existing text run and draw new text on its baseline. */
+      kind: "replace";
+      /** The run edited (`TextRun.key`), so editing it again replaces this edit. */
+      runKey: string;
+      original: string;
+      /** New text; empty deletes the run. */
+      text: string;
+      fontKind: FontKind;
+      /** The run's em size in points; the replacement shrinks to fit if needed. */
+      size: number;
+      color: string;
+      background: string;
+      /** Normalised display box and on-screen rotation, for the preview. */
+      box: TextRun["box"];
+      rotate: number;
+      /** User-space ink box and baseline start, for drawing. */
+      pdf: TextRun["pdf"];
+    };
 
 /** Annotations awaiting flattening, keyed by 0-based page index. */
 export type AnnotationsByPage = Record<number, PdfAnnotation[]>;
@@ -218,18 +240,68 @@ function toRgb(hex: string) {
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 }
 
-// WinAnsi is all the standard Helvetica can encode, so anything outside it
-// (CJK above all) has to be replaced rather than silently corrupt the save.
-const WIN_ANSI_SAFE = /[ -~ -ÿ€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ\n]/;
+// WinAnsi is all the standard 14 PDF fonts can encode. Text outside it — CJK
+// above all — is drawn as an image instead (see lib/pdf-text), not mangled.
+const WIN_ANSI_SAFE = /^[\u0020-\u007E\u00A0-\u00FF\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178\n]*$/;
 
-export function sanitizeForStandardFont(text: string): { text: string; dropped: number } {
-  let dropped = 0;
-  const out = Array.from(text, (ch) => {
-    if (WIN_ANSI_SAFE.test(ch)) return ch;
-    dropped++;
-    return "?";
-  }).join("");
-  return { text: out, dropped };
+/** True when `text` can be written with a standard PDF font. */
+export function isWinAnsi(text: string): boolean {
+  return WIN_ANSI_SAFE.test(text);
+}
+
+/** How far the cover rectangle extends past a run's ink box, in ems. */
+export const COVER_PAD_EM = 0.05;
+
+/** Font size that makes `naturalWidth` (measured at `size`) fit `maxWidth`. */
+export function fitSize(size: number, naturalWidth: number, maxWidth: number): number {
+  return naturalWidth > maxWidth && naturalWidth > 0 ? size * (maxWidth / naturalWidth) : size;
+}
+
+const STANDARD_FACE: Record<FontKind, StandardFonts> = {
+  sans: StandardFonts.Helvetica,
+  serif: StandardFonts.TimesRoman,
+  mono: StandardFonts.Courier,
+};
+
+/**
+ * Draw `text` with its first baseline starting at user-space (x, y), rotated
+ * `angle` degrees counter-clockwise. Real text in a standard font when WinAnsi
+ * allows it; otherwise a browser-rendered image placed so its baseline lands on
+ * the same point.
+ */
+async function drawTextAt(
+  doc: PDFDocument,
+  page: PDFPage,
+  fontFor: (kind: FontKind) => Promise<PDFFont>,
+  text: string,
+  o: { x: number; y: number; size: number; color: string; kind: FontKind; angle: number },
+): Promise<void> {
+  if (isWinAnsi(text)) {
+    page.drawText(text, {
+      x: o.x,
+      y: o.y,
+      size: o.size,
+      font: await fontFor(o.kind),
+      color: toRgb(o.color),
+      lineHeight: o.size * 1.2,
+      rotate: degrees(o.angle),
+    });
+    return;
+  }
+  const img = await rasterizeText(text, { size: o.size, color: o.color, kind: o.kind });
+  const png = await doc.embedPng(img.png);
+  const t = (o.angle * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(t), Math.sin(t)];
+  // Bottom-left corner: down from the baseline by `belowBaseline`, and left by
+  // the bitmap's 1 px (¼ pt) margin, both along the rotated axes.
+  const pad = 0.25;
+  page.drawImage(png, {
+    x: o.x + img.belowBaseline * sin - pad * cos,
+    y: o.y - img.belowBaseline * cos - pad * sin,
+    width: img.width,
+    height: img.height,
+    rotate: degrees(o.angle),
+  });
 }
 
 /**
@@ -237,8 +309,10 @@ export function sanitizeForStandardFont(text: string): { text: string; dropped: 
  *
  * Coordinates arrive normalised against the page *as displayed* (rotation
  * applied, y measured from the top). pdf.js's viewport does the conversion back
- * to PDF user space, so pages with a /Rotate land in the right place; text is
- * additionally pre-rotated by the page rotation so it reads upright on screen.
+ * to PDF user space, so pages with a /Rotate land in the right place; free text
+ * is additionally pre-rotated by the page rotation so it reads upright on
+ * screen. Replacements instead keep the original run's direction — they carry
+ * user-space geometry and are drawn unrotated, exactly like the text they cover.
  *
  * The result is ordinary page content, not PDF annotation objects — it prints
  * and renders everywhere, and is not separately editable afterwards.
@@ -246,16 +320,23 @@ export function sanitizeForStandardFont(text: string): { text: string; dropped: 
 export async function flattenAnnotations(
   bytes: Uint8Array,
   byPage: AnnotationsByPage,
-): Promise<{ bytes: Uint8Array; droppedChars: number }> {
+): Promise<{ bytes: Uint8Array }> {
   const pageIndices = Object.keys(byPage)
     .map(Number)
     .filter((i) => byPage[i]?.length);
-  if (!pageIndices.length) return { bytes, droppedChars: 0 };
+  if (!pageIndices.length) return { bytes };
 
   const doc = await load(bytes);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fonts = new Map<FontKind, Promise<PDFFont>>();
+  const fontFor = (kind: FontKind) => {
+    let f = fonts.get(kind);
+    if (!f) {
+      f = doc.embedFont(STANDARD_FACE[kind]);
+      fonts.set(kind, f);
+    }
+    return f;
+  };
   const pdfjsDoc = await openPdf(bytes);
-  let droppedChars = 0;
 
   try {
     for (const index of pageIndices) {
@@ -274,18 +355,36 @@ export async function flattenAnnotations(
 
       for (const a of byPage[index]) {
         if (a.kind === "text") {
-          const { text, dropped } = sanitizeForStandardFont(a.text);
-          droppedChars += dropped;
-          if (!text.trim()) continue;
+          if (!a.text.trim()) continue;
           const [x, y] = toUser(a.x, a.y);
-          page.drawText(text, {
-            x,
-            y,
-            size: a.size,
-            font,
-            color: toRgb(a.color),
-            lineHeight: a.size * 1.2,
-            rotate: degrees(rotation),
+          await drawTextAt(doc, page, fontFor, a.text, {
+            x, y, size: a.size, color: a.color, kind: "sans", angle: rotation,
+          });
+        } else if (a.kind === "replace") {
+          const pad = a.size * COVER_PAD_EM;
+          const { x1, y1, x2, y2, baseX, baseY } = a.pdf;
+          page.drawRectangle({
+            x: x1 - pad,
+            y: y1 - pad,
+            width: x2 - x1 + pad * 2,
+            height: y2 - y1 + pad * 2,
+            color: toRgb(a.background),
+            borderWidth: 0,
+          });
+          const text = a.text.replace(/\s+$/, "");
+          if (!text) continue; // an emptied run is simply erased
+          // Shrink to the original width rather than spill over the words
+          // that follow, which are not covered.
+          const natural = isWinAnsi(text)
+            ? (await fontFor(a.fontKind)).widthOfTextAtSize(text, a.size)
+            : (await rasterizeText(text, { size: a.size, color: a.color, kind: a.fontKind })).width;
+          await drawTextAt(doc, page, fontFor, text, {
+            x: baseX,
+            y: baseY,
+            size: fitSize(a.size, natural, x2 - x1 + pad),
+            color: a.color,
+            kind: a.fontKind,
+            angle: 0,
           });
         } else if (a.kind === "highlight") {
           const [x1, y1] = toUser(a.x, a.y);
@@ -317,5 +416,5 @@ export async function flattenAnnotations(
     void pdfjsDoc.loadingTask.destroy();
   }
 
-  return { bytes: await save(doc), droppedChars };
+  return { bytes: await save(doc) };
 }

@@ -36,6 +36,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Everything except the login surface and Next's static assets.
-  matcher: ["/((?!login|api/login|_next/static|_next/image|favicon\\.ico).*)"],
+  // Everything except the login surface and static assets. `pdfjs/` holds the
+  // pdf.js runtime data (CMaps, fonts, wasm decoders) copied from
+  // node_modules — public library files that Cloudflare's asset layer already
+  // serves ahead of the Worker in production; excluding them keeps `next start`
+  // and `next dev` behaving the same.
+  matcher: ["/((?!login|api/login|_next/static|_next/image|pdfjs/|favicon\\.ico).*)"],
 };
