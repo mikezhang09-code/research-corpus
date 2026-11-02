@@ -57,6 +57,18 @@ interface OutlineItem {
   depth: number;
 }
 
+/** A clickable link annotation, positioned in percentages of the page box. */
+interface PageLink {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** In-document target (named or explicit destination). */
+  dest: OutlineItem["dest"];
+  /** External target. */
+  url: string | null;
+}
+
 // ---- helpers ----
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -101,6 +113,7 @@ function PdfPage({
   matches,
   activeMatch,
   onElement,
+  onLinkDest,
 }: {
   doc: PDFDocumentProxy;
   pageNumber: number;
@@ -116,6 +129,8 @@ function PdfPage({
   /** Index into `matches` of the globally active hit, or -1. */
   activeMatch: number;
   onElement: (pageNumber: number, el: HTMLDivElement | null) => void;
+  /** Jump to an in-document link target (table of contents, cross-references). */
+  onLinkDest: (dest: OutlineItem["dest"]) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
@@ -125,6 +140,7 @@ function PdfPage({
   const [near, setNear] = useState(false);
   const [painted, setPainted] = useState(false);
   const [textReady, setTextReady] = useState(false);
+  const [links, setLinks] = useState<PageLink[]>([]);
 
   const { w, h } = sizeOf(geom, scale, rotation);
 
@@ -153,6 +169,7 @@ function PdfPage({
             setNear(false);
             setPainted(false);
             setTextReady(false);
+            setLinks([]);
             releaseAll();
           }
         }
@@ -260,6 +277,44 @@ function PdfPage({
     };
   }, [doc, pageNumber, rotation, near, painted]);
 
+  // Link annotations — the PDF's own table-of-contents entries, cross-
+  // references and web links. Positioned in percentages like the text layer,
+  // so they follow zoom without being rebuilt.
+  useEffect(() => {
+    if (!near || !painted) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const page = await doc.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1, rotation: (page.rotate + rotation) % 360 });
+        const annots = await page.getAnnotations({ intent: "display" });
+        if (cancelled) return;
+        const next: PageLink[] = [];
+        for (const a of annots) {
+          if (a.subtype !== "Link" || !a.rect) continue;
+          const url: string | null = typeof a.url === "string" ? a.url : null;
+          if (!a.dest && !url) continue;
+          const [x1, y1] = viewport.convertToViewportPoint(a.rect[0], a.rect[1]);
+          const [x2, y2] = viewport.convertToViewportPoint(a.rect[2], a.rect[3]);
+          next.push({
+            left: (Math.min(x1, x2) / viewport.width) * 100,
+            top: (Math.min(y1, y2) / viewport.height) * 100,
+            width: (Math.abs(x2 - x1) / viewport.width) * 100,
+            height: (Math.abs(y2 - y1) / viewport.height) * 100,
+            dest: a.dest ?? null,
+            url,
+          });
+        }
+        setLinks(next);
+      } catch (e) {
+        if (!cancelled && !isCancellation(e)) console.error(`PDF page ${pageNumber} links failed`, e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, pageNumber, rotation, near, painted]);
+
   // Repaint search highlights without re-rendering the page.
   useEffect(() => {
     const layer = layerRef.current;
@@ -283,6 +338,26 @@ function PdfPage({
         className="pdf-text-layer"
         style={{ "--total-scale-factor": scale } as React.CSSProperties}
       />
+      {links.length > 0 && (
+        <div className="absolute inset-0 z-[3] pointer-events-none">
+          {links.map((l, i) => (
+            <a
+              key={i}
+              href={l.url ?? "#"}
+              target={l.url ? "_blank" : undefined}
+              rel={l.url ? "noopener noreferrer" : undefined}
+              title={l.url ?? undefined}
+              onClick={(e) => {
+                if (l.url) return;
+                e.preventDefault();
+                onLinkDest(l.dest);
+              }}
+              className="absolute pointer-events-auto cursor-pointer hover:bg-ink/10"
+              style={{ left: `${l.left}%`, top: `${l.top}%`, width: `${l.width}%`, height: `${l.height}%` }}
+            />
+          ))}
+        </div>
+      )}
       {!painted && (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
@@ -715,14 +790,20 @@ export default function PdfViewerPane({
     [matches.length],
   );
 
-  // ---- destinations (outline) ----
+  // ---- destinations (outline and in-page links) ----
   const goToDest = useCallback(
     async (dest: OutlineItem["dest"]) => {
       if (!doc || !dest) return;
       try {
         const resolved = typeof dest === "string" ? await doc.getDestination(dest) : dest;
         if (!resolved?.length) return;
-        const index = await doc.getPageIndex(resolved[0] as Parameters<typeof doc.getPageIndex>[0]);
+        // Explicit destinations name the page by reference; some writers use a
+        // zero-based page number instead.
+        const target = resolved[0];
+        const index =
+          typeof target === "number"
+            ? target
+            : await doc.getPageIndex(target as Parameters<typeof doc.getPageIndex>[0]);
         scrollToPage(index + 1);
       } catch {
         /* a broken outline entry just does nothing */
@@ -1127,6 +1208,7 @@ export default function PdfViewerPane({
                   matches={entry?.list ?? []}
                   activeMatch={entry?.activeLocal ?? -1}
                   onElement={registerPageEl}
+                  onLinkDest={goToDest}
                 />
               );
             })}
