@@ -12,6 +12,28 @@ It is a self-contained Worker. Access control is split per hostname: an
 **in-app admin password gate** covers every hostname, except
 `corpus.companyresearch.org` where **Cloudflare Access** (Zero Trust email
 allowlist) does the job at the edge instead — see [Access control](#access-control).
+A second, **read-only viewer password** shows only folios tagged `shared` —
+see [Viewer account](#viewer-account).
+
+## ⚠️ Changing passwords — read this first
+
+| Password | Where it really lives | How to change it |
+|---|---|---|
+| **Admin** (`ADMIN_PASSWORD`) | **GitHub** repo secret — every deploy copies it into Cloudflare | 1. GitHub → **Settings → Secrets and variables → Actions → `ADMIN_PASSWORD` → Update**. 2. **Actions → "Deploy public viewer" → Run workflow** (the new password only takes effect after a deploy). |
+| **Viewer** (`VIEWER_PASSWORD`) | **Cloudflare** Worker secret only — deploys never touch it | In this folder: `npx wrangler secret put VIEWER_PASSWORD`, then type the new password. Takes effect within seconds. |
+
+- **Do not change the admin password only in the Cloudflare dashboard.** The
+  next deploy (any push touching `portal/public/**`) silently puts the GitHub
+  value back.
+- **Avoid "Rotate"/Edit of secrets in the Cloudflare dashboard.** On
+  2026-11-03 a dashboard secret edit produced a Worker version running older
+  server code against newer browser files → every page showed *"This page
+  couldn't load"* on both hostnames. Use `wrangler secret put` instead.
+  If it happens again, redeploy: `npx opennextjs-cloudflare deploy` here (keeps
+  all secrets) or re-run the GitHub workflow.
+- Cloudflare never displays a secret's value — a blank/locked field is normal.
+- Changing a password logs out everyone using that password; the other role is
+  unaffected.
 
 ## Architecture
 
@@ -62,11 +84,26 @@ How the password gate works (`src/middleware.ts`, `src/app/login/`,
   Worker — a dashboard edit of this particular secret would be overwritten on
   the next deploy).
 
+## Viewer account
+
+`VIEWER_PASSWORD` (optional — unset means no viewer login) gives **read-only**
+access on the password-gated hostnames (use `public.research.us.kg`):
+
+- Sees **only folios tagged `shared`** — add/remove the tag on a folio to
+  share/unshare it. No NotebookLM Corpus, no Free Forms.
+- Can open and download files; cannot create, upload, edit, rename, delete or
+  generate.
+- Enforced server-side in `src/middleware.ts` (route allowlist + per-folio tag
+  check) and in the folio list route; the UI just hides the controls
+  (`useIsViewer()` in `src/hooks/use-role.tsx`).
+- Viewer cookies are signed separately, so rotating `VIEWER_PASSWORD` logs out
+  viewers only. `corpus.companyresearch.org` always runs as admin.
+
 ## AI generate
 
 Folios have a **Generate** dropdown (Note / Mind map / Quiz / Flashcards) →
 `POST /api/library-notebooks/{id}/generate`. Provider policy mirrors
-`portal/backend/ai.py`: **MiMo first, Gemini fallback**, error only when both
+`portal/backend/ai.py`: **Gemini first, MiMo fallback**, error only when both
 fail. Context is the folio's text artifacts read from R2; output is validated
 against the viewer schemas and saved like a manual upload.
 
@@ -76,7 +113,8 @@ against the viewer schemas and saved like a manual upload.
 research-portal-public → Settings → Variables and Secrets). Edit there →
 effective immediately. They must be the *Secret* type: plaintext vars added in
 the dashboard are wiped by every deploy, secrets persist. Code defaults when
-unset: `mimo-v2.5` / `gemini-2.5-flash`.
+unset: `mimo-v2.5` / `gemini-3.5-flash-lite`. (MiMo v2.5 is retired —
+set `ANTHROPIC_MODEL` to a v2.6 model once the Xiaomi account is topped up.)
 
 (The private portal reads the same knobs from `portal/.env`
 (`ANTHROPIC_MODEL`, `GEMINI_MODEL`) — edit + `sudo systemctl restart
@@ -95,6 +133,7 @@ project as the private portal — see `portal/.env`). For the deployed Worker:
 | `SUPABASE_SERVICE_ROLE_KEY` | secret | `wrangler secret put …` once; persists across deploys |
 | `ANTHROPIC_API_KEY` | secret | `wrangler secret put …` once; persists across deploys |
 | `ADMIN_PASSWORD` | secret | GitHub secret, synced by the deploy workflow every deploy |
+| `VIEWER_PASSWORD` | secret | `wrangler secret put …`; persists across deploys (optional) |
 | `GEMINI_API_KEY` | secret | GitHub secret, synced by the deploy workflow every deploy |
 | `ANTHROPIC_MODEL` | secret | Cloudflare dashboard (Secret type) — instant model switch |
 | `GEMINI_MODEL` | secret | Cloudflare dashboard (Secret type) — instant model switch |
@@ -167,7 +206,8 @@ change any of these there, re-copy them here:
 Files **specific to this app**:
 
 - `src/middleware.ts`, `src/lib/auth.ts`, `src/app/login/`,
-  `src/app/api/login/` — the admin password gate (the private portal needs no
+  `src/app/api/login/`, `src/app/api/logout/`, `src/hooks/use-role.tsx` —
+  the admin/viewer password gate (the private portal needs no
   equivalent — it lives behind Tailscale).
 - `src/lib/supabase.ts` — service-role Supabase client + R2 streaming helper.
 - `src/lib/r2.ts` — R2 bucket-binding helper (writes/deletes) + key builders.
