@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # so anything under ~6k routinely truncates the actual answer.
     anthropic_max_tokens: int = 8192
 
-    # Google Gemini fallback (used when MiMo is unavailable)
+    # Google Gemini (primary AI provider; MiMo is the fallback)
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"
 

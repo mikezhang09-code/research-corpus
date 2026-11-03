@@ -86,10 +86,11 @@ binding) directly — **not** through the VM backend.
 
 ## AI providers
 
-- Chat and generate use the **Xiaomi MiMo** Anthropic-compatible proxy via the
-  `anthropic` SDK — it serves only MiMo models; no `claude-*` model name works.
-  Gemini is the automatic fallback (`portal/backend/ai.py`, mirrored in the
-  Worker's generate route).
+- Chat and generate use **Google Gemini** first (`GEMINI_MODEL`), with the
+  **Xiaomi MiMo** Anthropic-compatible proxy as the automatic fallback
+  (`portal/backend/ai.py`, mirrored in the Worker's generate route). MiMo is
+  called via the `anthropic` SDK and serves only MiMo models; no `claude-*`
+  model name works.
 - The effective base URL / model come from `portal/.env`
   (`ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`); `portal/backend/config.py` holds
   *different* fallback defaults — never quote those as the live values.

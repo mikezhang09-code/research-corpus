@@ -147,17 +147,17 @@ async function callGemini(system: string, prompt: string): Promise<string> {
 
 async function callModel(system: string, prompt: string): Promise<string> {
   const errors: string[] = [];
-  if (env("ANTHROPIC_API_KEY")) {
-    try {
-      return await callMimo(system, prompt);
-    } catch (e) {
-      console.warn(`MiMo failed, trying Gemini fallback: ${e}`);
-      errors.push(e instanceof Error ? e.message : String(e));
-    }
-  }
   if (env("GEMINI_API_KEY")) {
     try {
       return await callGemini(system, prompt);
+    } catch (e) {
+      console.warn(`Gemini failed, trying MiMo fallback: ${e}`);
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (env("ANTHROPIC_API_KEY")) {
+    try {
+      return await callMimo(system, prompt);
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
     }
@@ -165,7 +165,7 @@ async function callModel(system: string, prompt: string): Promise<string> {
   throw new Error(
     errors.length
       ? `All AI providers failed — ${errors.join("; ")}`
-      : "No AI provider configured (set ANTHROPIC_API_KEY and/or GEMINI_API_KEY)",
+      : "No AI provider configured (set GEMINI_API_KEY and/or ANTHROPIC_API_KEY)",
   );
 }
 

@@ -3,8 +3,8 @@
 Stateless helper: takes a natural-language instruction plus the current
 Mermaid source and returns updated Mermaid. When a ``notebook_id`` (folio) is
 supplied, the folio's files are folded into the prompt so edits are grounded
-in the research context. Reuses the shared ``ai_chat`` helper (MiMo primary,
-Gemini fallback) — no diagram state is persisted here; the frontend owns the
+in the research context. Reuses the shared ``ai_chat`` helper (Gemini primary,
+MiMo fallback) — no diagram state is persisted here; the frontend owns the
 document.
 """
 

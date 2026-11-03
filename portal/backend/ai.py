@@ -1,4 +1,4 @@
-"""Centralised AI helper — MiMo primary, Gemini fallback.
+"""Centralised AI helper — Gemini primary, MiMo fallback.
 
 Every AI call in the portal backend should go through :func:`ai_chat` so
 that callers get automatic failover without duplicating retry logic.
@@ -120,37 +120,37 @@ async def ai_chat(
     messages: list[dict[str, str]],
     settings: Settings,
 ) -> str:
-    """Send a chat request — tries MiMo first, falls back to Gemini.
+    """Send a chat request — tries Gemini first, falls back to MiMo.
 
     Raises :class:`RuntimeError` only if *both* providers fail (or neither
     is configured).
     """
     errors: list[str] = []
 
-    # 1. Try MiMo (primary)
-    if settings.anthropic_api_key:
-        try:
-            answer = await _call_mimo(system, messages, settings)
-            if answer:
-                logger.debug("AI response from MiMo (%s)", settings.anthropic_model)
-                return answer
-            errors.append("MiMo returned empty response")
-        except Exception as exc:
-            logger.warning("MiMo failed (%s: %s), trying Gemini fallback", type(exc).__name__, exc)
-            errors.append(f"MiMo: {exc}")
-
-    # 2. Fallback: Gemini
+    # 1. Try Gemini (primary)
     if settings.gemini_api_key:
         try:
             answer = await _call_gemini(system, messages, settings)
             if answer:
-                logger.info("AI response from Gemini fallback (%s)", settings.gemini_model)
+                logger.debug("AI response from Gemini (%s)", settings.gemini_model)
                 return answer
             errors.append("Gemini returned empty response")
         except Exception as exc:
-            logger.error("Gemini fallback also failed: %s", exc)
+            logger.warning("Gemini failed (%s: %s), trying MiMo fallback", type(exc).__name__, exc)
             errors.append(f"Gemini: {exc}")
 
+    # 2. Fallback: MiMo
+    if settings.anthropic_api_key:
+        try:
+            answer = await _call_mimo(system, messages, settings)
+            if answer:
+                logger.info("AI response from MiMo fallback (%s)", settings.anthropic_model)
+                return answer
+            errors.append("MiMo returned empty response")
+        except Exception as exc:
+            logger.error("MiMo fallback also failed: %s", exc)
+            errors.append(f"MiMo: {exc}")
+
     # Both failed (or neither is configured)
-    detail = "; ".join(errors) if errors else "No AI provider configured (set ANTHROPIC_API_KEY and/or GEMINI_API_KEY)"
+    detail = "; ".join(errors) if errors else "No AI provider configured (set GEMINI_API_KEY and/or ANTHROPIC_API_KEY)"
     raise RuntimeError(f"All AI providers failed — {detail}")
