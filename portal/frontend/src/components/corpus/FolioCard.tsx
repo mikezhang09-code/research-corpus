@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { SourceThumb, type SourceKind } from "@/components/corpus/SourceThumb";
 
 export type FolioCover = "stitch" | "manila" | "index" | "pinned" | "photo";
@@ -17,10 +18,13 @@ export type FolioCardProps = {
   updated: string;
   accent?: string;
   onClick?: () => void;
+  /** Bulk-select mode: show a checkbox; `selected` ticks it. */
+  selectable?: boolean;
+  selected?: boolean;
 };
 
 export function FolioCard({
-  folio, title, titleEn, status, cover, sources, excerpt, tags, updated, accent, onClick,
+  folio, title, titleEn, status, cover, sources, excerpt, tags, updated, accent, onClick, selectable, selected,
 }: FolioCardProps) {
   const distinct: SourceKind[] = [];
   for (const s of sources) {
@@ -35,9 +39,23 @@ export function FolioCard({
   return (
     <article
       onClick={onClick}
-      className="cursor-pointer transition-transform hover:-translate-y-px h-[280px]"
+      role={selectable ? "checkbox" : undefined}
+      aria-checked={selectable ? !!selected : undefined}
+      className={`relative cursor-pointer transition-transform hover:-translate-y-px h-[280px] ${
+        selected ? "outline outline-2 outline-offset-2 outline-ink" : ""
+      }`}
       style={accentStyle}
     >
+      {selectable && (
+        <span
+          aria-hidden
+          className={`absolute -top-2 -left-2 z-10 h-5 w-5 flex items-center justify-center rounded-[1px] border shadow-sm ${
+            selected ? "bg-ink border-ink text-paper" : "bg-paper border-ink-mute"
+          }`}
+        >
+          {selected && <Check className="h-3.5 w-3.5" />}
+        </span>
+      )}
       <div
         className={`cover-${cover} h-full flex flex-col`}
         data-tab={cover === "manila" ? tabLabel : undefined}

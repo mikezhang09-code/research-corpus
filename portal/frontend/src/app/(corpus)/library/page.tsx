@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, MoreVertical, Pencil, EyeOff, Trash2, Loader2, ArrowUpDown,
-  RotateCcw,
+  RotateCcw, CheckSquare, Share2, Tag, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,12 @@ import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
 import { FolioCard, pickCover, type FolioStatus } from "@/components/corpus/FolioCard";
 import { SectionHead } from "@/components/corpus/SectionHead";
+
+// Viewer accounts on the public Worker see only folios with this tag.
+const SHARED_TAG = "shared";
+
+// Same normalisation as TagInput: lower-case, spaces → dashes.
+const normalizeTag = (raw: string) => raw.trim().toLowerCase().replace(/\s+/g, "-");
 
 function folioLabel(id: string, index: number): string {
   const code = String(index + 1).padStart(3, "0");
@@ -99,10 +105,12 @@ function NotebookCardActions({
 }
 
 function NotebookCard({
-  notebook, index, onOpen, onEdit, onHide, onRestore, onDelete,
+  notebook, index, onOpen, onEdit, onHide, onRestore, onDelete, selectable, selected,
 }: {
   notebook: LibraryNotebook;
   index: number;
+  selectable?: boolean;
+  selected?: boolean;
   onOpen: () => void;
   onEdit: () => void;
   onHide: () => void;
@@ -117,13 +125,13 @@ function NotebookCard({
 
   return (
     <div className="relative group">
-      <NotebookCardActions
+      {!selectable && <NotebookCardActions
         notebook={notebook}
         onEdit={onEdit}
         onHide={onHide}
         onRestore={onRestore}
         onDelete={onDelete}
-      />
+      />}
       <FolioCard
         folio={folio}
         title={notebook.title}
@@ -133,6 +141,8 @@ function NotebookCard({
         excerpt={excerpt}
         tags={notebook.tags}
         updated={notebook.updated_at}
+        selectable={selectable}
+        selected={selected}
         onClick={onOpen}
       />
     </div>
@@ -230,6 +240,69 @@ export default function LibraryPage() {
   const [sortBy, setSortBy] = useState<"recent" | "title" | "files">("recent");
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
+  // Bulk tagging.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [tagDraft, setTagDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  function exitSelect() {
+    setSelecting(false);
+    setPicked(new Set());
+    setTagDraft("");
+  }
+
+  function togglePick(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  /** Add or remove one tag on every picked folio, keeping their other tags. */
+  async function bulkTag(rawTag: string, mode: "add" | "remove") {
+    const tag = normalizeTag(rawTag);
+    if (!tag) return;
+    const targets = notebooks.filter(
+      (f) => picked.has(f.id) && (mode === "add" ? !f.tags.includes(tag) : f.tags.includes(tag)),
+    );
+    if (targets.length === 0) {
+      setNotice(mode === "add" ? `All selected folios already have “${tag}”.` : `No selected folio has “${tag}”.`);
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    const updated = new Map<string, LibraryNotebook>();
+    let failed = 0;
+    // Small batches so a large selection doesn't flood the API.
+    for (let i = 0; i < targets.length; i += 5) {
+      const batch = targets.slice(i, i + 5);
+      const results = await Promise.allSettled(
+        batch.map((f) =>
+          updateLibraryNotebook(f.id, {
+            tags: mode === "add" ? [...f.tags, tag] : f.tags.filter((t) => t !== tag),
+          }),
+        ),
+      );
+      results.forEach((r) => {
+        if (r.status === "fulfilled") updated.set(r.value.id, r.value);
+        else failed++;
+      });
+    }
+    setNotebooks((prev) => prev.map((f) => updated.get(f.id) ?? f));
+    setBusy(false);
+    setTagDraft("");
+    const verb = tag === SHARED_TAG
+      ? (mode === "add" ? "Shared with viewer" : "Unshared")
+      : (mode === "add" ? `Tagged “${tag}”` : `Removed “${tag}” from`);
+    setNotice(
+      `${verb}: ${updated.size} folio${updated.size !== 1 ? "s" : ""}` +
+        (failed ? ` — ${failed} failed, try again.` : "."),
+    );
+  }
+
   async function load(includeHidden = showHidden) {
     try {
       const res = await getLibraryNotebooks({ includeHidden });
@@ -306,6 +379,14 @@ export default function LibraryPage() {
     return counts;
   }, [filtered]);
 
+  const pickedTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of notebooks) if (picked.has(f.id)) for (const t of f.tags) set.add(t);
+    return [...set].sort();
+  }, [notebooks, picked]);
+
+  const allVisiblePicked = filtered.length > 0 && filtered.every((f) => picked.has(f.id));
+
   async function handleHide() {
     if (!hideTarget) return;
     setPendingAction(true);
@@ -350,12 +431,40 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="pb-16">
+    <div className={selecting ? "pb-36" : "pb-16"}>
       <SectionHead eyebrow="Section II" title="My Research" count={notebooks.length} />
 
       <div className="px-5 sm:px-8 lg:px-14 space-y-6">
         {/* Action row */}
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          {selecting && filtered.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setPicked((prev) => {
+                  const next = new Set(prev);
+                  for (const f of filtered) {
+                    if (allVisiblePicked) next.delete(f.id); else next.add(f.id);
+                  }
+                  return next;
+                })
+              }
+            >
+              {allVisiblePicked ? "Clear visible" : `Select all visible (${filtered.length})`}
+            </Button>
+          )}
+          {notebooks.length > 0 && (
+            <Button
+              size="sm"
+              variant={selecting ? "default" : "outline"}
+              className="gap-2"
+              onClick={() => (selecting ? exitSelect() : (setSelecting(true), setNotice(null)))}
+            >
+              <CheckSquare className="h-4 w-4" />
+              {selecting ? "Done" : "Select"}
+            </Button>
+          )}
           <Button onClick={() => setShowCreate(true)} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             New folio
@@ -416,13 +525,15 @@ export default function LibraryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <CreateNotebookCard onClick={() => setShowCreate(true)} />
+            {!selecting && <CreateNotebookCard onClick={() => setShowCreate(true)} />}
             {filtered.map((nb, i) => (
               <NotebookCard
                 key={nb.id}
                 notebook={nb}
                 index={i}
-                onOpen={() => router.push(`/library/${nb.id}`)}
+                selectable={selecting}
+                selected={picked.has(nb.id)}
+                onOpen={() => (selecting ? togglePick(nb.id) : router.push(`/library/${nb.id}`))}
                 onEdit={() => setEditTarget(nb)}
                 onHide={() => setHideTarget(nb)}
                 onRestore={() => handleRestore(nb)}
@@ -432,6 +543,99 @@ export default function LibraryPage() {
           </div>
         )}
       </div>
+
+      {notice && !selecting && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-ink text-paper font-mono text-[11px] tracking-[0.08em] px-4 py-2 rounded-[2px] shadow-lg flex items-center gap-3">
+          {notice}
+          <button onClick={() => setNotice(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+
+      {selecting && (
+        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-vellum/95 backdrop-blur px-5 sm:px-8 lg:px-14 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink mr-2">
+              {picked.size} selected
+            </span>
+            <Button
+              size="sm"
+              className="gap-1.5 h-8 rounded-[1px]"
+              disabled={busy || picked.size === 0}
+              onClick={() => bulkTag(SHARED_TAG, "add")}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Share with viewer
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-8 rounded-[1px]"
+              disabled={busy || picked.size === 0}
+              onClick={() => bulkTag(SHARED_TAG, "remove")}
+            >
+              <EyeOff className="h-3.5 w-3.5" />
+              Unshare
+            </Button>
+            <span className="w-px h-6 bg-rule mx-1" />
+            <form
+              className="flex items-center gap-1.5"
+              onSubmit={(e) => { e.preventDefault(); bulkTag(tagDraft, "add"); }}
+            >
+              <Input
+                list="bulk-tag-suggestions"
+                placeholder="tag name…"
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                className="h-8 w-36"
+                disabled={busy}
+              />
+              <datalist id="bulk-tag-suggestions">
+                {allTags.map((t) => <option key={t} value={t} />)}
+              </datalist>
+              <Button
+                type="submit"
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8 rounded-[1px]"
+                disabled={busy || picked.size === 0 || !normalizeTag(tagDraft)}
+              >
+                <Tag className="h-3.5 w-3.5" />
+                Add tag
+              </Button>
+            </form>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={busy || pickedTags.length === 0}
+                className="inline-flex items-center gap-1.5 h-8 rounded-[1px] border border-rule bg-vellum hover:bg-paper-deep hover:border-ink px-3 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <X className="h-3.5 w-3.5" />
+                Remove tag
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                {pickedTags.map((t) => (
+                  <DropdownMenuItem key={t} onClick={() => bulkTag(t, "remove")}>
+                    {t}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {(busy || notice) && (
+              <span className="font-mono text-[10px] tracking-[0.08em] text-ink-fade">
+                {busy ? "Saving…" : notice}
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-[1px] ml-auto"
+              onClick={exitSelect}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <CreateLibraryNotebookModal
