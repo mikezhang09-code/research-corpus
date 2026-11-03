@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # Google Gemini fallback (used when MiMo is unavailable)
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",

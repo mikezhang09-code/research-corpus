@@ -119,7 +119,7 @@ async function callMimo(system: string, prompt: string): Promise<string> {
 async function callGemini(system: string, prompt: string): Promise<string> {
   const key = env("GEMINI_API_KEY");
   if (!key) throw new Error("GEMINI_API_KEY is not configured");
-  const model = env("GEMINI_MODEL") ?? "gemini-2.5-flash";
+  const model = env("GEMINI_MODEL") ?? "gemini-3.5-flash-lite";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
