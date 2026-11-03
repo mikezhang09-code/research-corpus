@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, FolderOpen, ArrowUpDown, Plus } from "lucide-react";
+import { Search, FolderOpen, ArrowUpDown, Plus, CheckSquare, Share2, EyeOff, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,9 +18,12 @@ import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNo
 import { useIsViewer } from "@/hooks/use-role";
 import { SHARED_TAG } from "@/lib/shared-tag";
 import { TagFilterBar } from "@/components/library/TagFilterBar";
-import { getLibraryNotebooks, type LibraryNotebook } from "@/lib/api";
+import { getLibraryNotebooks, updateLibraryNotebook, type LibraryNotebook } from "@/lib/api";
 
 type SortKey = "recent" | "title" | "files";
+
+// Same normalisation as TagInput: lower-case, spaces → dashes.
+const normalizeTag = (raw: string) => raw.trim().toLowerCase().replace(/\s+/g, "-");
 
 export default function LibraryPage() {
   const router = useRouter();
@@ -30,6 +33,69 @@ export default function LibraryPage() {
   const [sortBy, setSortBy] = useState<SortKey>("recent");
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+
+  // Bulk tagging (admin only).
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [tagDraft, setTagDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  function exitSelect() {
+    setSelecting(false);
+    setPicked(new Set());
+    setTagDraft("");
+  }
+
+  function togglePick(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  /** Add or remove one tag on every picked folio, keeping their other tags. */
+  async function bulkTag(rawTag: string, mode: "add" | "remove") {
+    const tag = normalizeTag(rawTag);
+    if (!tag || !folios) return;
+    const targets = folios.filter(
+      (f) => picked.has(f.id) && (mode === "add" ? !f.tags.includes(tag) : f.tags.includes(tag)),
+    );
+    if (targets.length === 0) {
+      setNotice(mode === "add" ? `All selected folios already have “${tag}”.` : `No selected folio has “${tag}”.`);
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    const updated = new Map<string, LibraryNotebook>();
+    let failed = 0;
+    // Small batches so a large selection doesn't flood the API.
+    for (let i = 0; i < targets.length; i += 5) {
+      const batch = targets.slice(i, i + 5);
+      const results = await Promise.allSettled(
+        batch.map((f) =>
+          updateLibraryNotebook(f.id, {
+            tags: mode === "add" ? [...f.tags, tag] : f.tags.filter((t) => t !== tag),
+          }),
+        ),
+      );
+      results.forEach((r) => {
+        if (r.status === "fulfilled") updated.set(r.value.id, r.value);
+        else failed++;
+      });
+    }
+    setFolios((prev) => prev?.map((f) => updated.get(f.id) ?? f) ?? prev);
+    setBusy(false);
+    setTagDraft("");
+    const verb = tag === SHARED_TAG
+      ? (mode === "add" ? "Shared with viewer" : "Unshared")
+      : (mode === "add" ? `Tagged “${tag}”` : `Removed “${tag}” from`);
+    setNotice(
+      `${verb}: ${updated.size} folio${updated.size !== 1 ? "s" : ""}` +
+        (failed ? ` — ${failed} failed, try again.` : "."),
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -102,10 +168,18 @@ export default function LibraryPage() {
     return counts;
   }, [visible]);
 
+  const pickedTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of folios ?? []) if (picked.has(f.id)) for (const t of f.tags) set.add(t);
+    return [...set].sort();
+  }, [folios, picked]);
+
+  const allVisiblePicked = visible.length > 0 && visible.every((f) => picked.has(f.id));
+
   const loading = folios === null;
 
   return (
-    <div className="pb-16">
+    <div className={selecting ? "pb-36" : "pb-16"}>
       <SectionHead eyebrow="Section II" title="My Research" count={folios?.length ?? 0} />
 
       <div className="px-5 sm:px-8 lg:px-14 space-y-6">
@@ -142,10 +216,39 @@ export default function LibraryPage() {
                 </DropdownMenu>
               </>
             )}
+            {!isViewer && folios.length > 0 && (
+              <Button
+                size="sm"
+                variant={selecting ? "default" : "outline"}
+                className="gap-1.5 h-9 rounded-[1px] ml-auto"
+                onClick={() => (selecting ? exitSelect() : (setSelecting(true), setNotice(null)))}
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                {selecting ? "Done" : "Select"}
+              </Button>
+            )}
+            {selecting && visible.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 rounded-[1px]"
+                onClick={() =>
+                  setPicked((prev) => {
+                    const next = new Set(prev);
+                    for (const f of visible) {
+                      if (allVisiblePicked) next.delete(f.id); else next.add(f.id);
+                    }
+                    return next;
+                  })
+                }
+              >
+                {allVisiblePicked ? "Clear visible" : `Select all visible (${visible.length})`}
+              </Button>
+            )}
             {!isViewer && (
               <Button
                 size="sm"
-                className="gap-1.5 h-9 rounded-[1px] ml-auto"
+                className={`gap-1.5 h-9 rounded-[1px] ${folios.length > 0 ? "" : "ml-auto"}`}
                 onClick={() => setShowCreate(true)}
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -213,12 +316,108 @@ export default function LibraryPage() {
                 }
                 tags={nb.tags}
                 updated={nb.updated_at}
-                onClick={() => router.push(`/library/${nb.id}`)}
+                selectable={selecting}
+                selected={picked.has(nb.id)}
+                onClick={() => (selecting ? togglePick(nb.id) : router.push(`/library/${nb.id}`))}
               />
             ))}
           </div>
         )}
       </div>
+
+      {notice && !selecting && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-ink text-paper font-mono text-[11px] tracking-[0.08em] px-4 py-2 rounded-[2px] shadow-lg flex items-center gap-3">
+          {notice}
+          <button onClick={() => setNotice(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+
+      {selecting && !isViewer && (
+        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-vellum/95 backdrop-blur px-5 sm:px-8 lg:px-14 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink mr-2">
+              {picked.size} selected
+            </span>
+            <Button
+              size="sm"
+              className="gap-1.5 h-8 rounded-[1px]"
+              disabled={busy || picked.size === 0}
+              onClick={() => bulkTag(SHARED_TAG, "add")}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Share with viewer
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-8 rounded-[1px]"
+              disabled={busy || picked.size === 0}
+              onClick={() => bulkTag(SHARED_TAG, "remove")}
+            >
+              <EyeOff className="h-3.5 w-3.5" />
+              Unshare
+            </Button>
+            <span className="w-px h-6 bg-rule mx-1" />
+            <form
+              className="flex items-center gap-1.5"
+              onSubmit={(e) => { e.preventDefault(); bulkTag(tagDraft, "add"); }}
+            >
+              <Input
+                list="bulk-tag-suggestions"
+                placeholder="tag name…"
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                className="h-8 w-36"
+                disabled={busy}
+              />
+              <datalist id="bulk-tag-suggestions">
+                {existingTags.map((t) => <option key={t} value={t} />)}
+              </datalist>
+              <Button
+                type="submit"
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8 rounded-[1px]"
+                disabled={busy || picked.size === 0 || !normalizeTag(tagDraft)}
+              >
+                <Tag className="h-3.5 w-3.5" />
+                Add tag
+              </Button>
+            </form>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={busy || pickedTags.length === 0}
+                className="inline-flex items-center gap-1.5 h-8 rounded-[1px] border border-rule bg-vellum hover:bg-paper-deep hover:border-ink px-3 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-fade hover:text-ink disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <X className="h-3.5 w-3.5" />
+                Remove tag
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                {pickedTags.map((t) => (
+                  <DropdownMenuItem key={t} onClick={() => bulkTag(t, "remove")}>
+                    {t}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {notice && (
+              <span className="font-mono text-[10px] tracking-[0.08em] text-ink-fade">{busy ? "Saving…" : notice}</span>
+            )}
+            {busy && !notice && (
+              <span className="font-mono text-[10px] tracking-[0.08em] text-ink-fade">Saving…</span>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-[1px] ml-auto"
+              onClick={exitSelect}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       {showCreate && !isViewer && (
         <CreateLibraryNotebookModal

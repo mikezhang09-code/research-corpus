@@ -98,6 +98,9 @@ access on the password-gated hostnames (use `public.research.us.kg`):
 
 - Sees **only folios tagged `shared`** — add/remove the tag on a folio to
   share/unshare it. No NotebookLM Corpus, no Free Forms.
+- To share many at once: **My Research → Select**, tick folios (or *Select all
+  visible* after filtering), then **Share with viewer** / **Unshare**. The same
+  bar can **Add tag** / **Remove tag** for any tag on all selected folios.
 - Can open and download files; cannot create, upload, edit, rename, delete or
   generate.
 - Enforced server-side in `src/middleware.ts` (route allowlist + per-folio tag
