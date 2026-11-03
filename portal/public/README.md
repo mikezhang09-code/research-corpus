@@ -31,6 +31,13 @@ see [Viewer account](#viewer-account).
   couldn't load"* on both hostnames. Use `wrangler secret put` instead.
   If it happens again, redeploy: `npx opennextjs-cloudflare deploy` here (keeps
   all secrets) or re-run the GitHub workflow.
+- **If you do use the dashboard anyway:** after Rotate/Edit, click
+  **Deploy**, not **Save**. *Save* only stores a new Worker version that is
+  not live (the old password keeps working); *Deploy* makes it live. Reload
+  the site right after — if it shows *"This page couldn't load"*, run
+  `cd /home/ubuntu/Documents/research-corpus/portal/public && npx opennextjs-cloudflare deploy`
+  (restores the site and keeps the new password).
+- `wrangler secret put` needs no Save/Deploy step — it is live immediately.
 - Cloudflare never displays a secret's value — a blank/locked field is normal.
 - Changing a password logs out everyone using that password; the other role is
   unaffected.
