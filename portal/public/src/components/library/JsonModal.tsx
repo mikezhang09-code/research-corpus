@@ -12,6 +12,7 @@ import { DataGrid, renderTextEditor, type Column, type SortColumn, type RowsChan
 import "react-data-grid/lib/styles.css";
 import { X, Loader2, AlertCircle, Table, Braces, Download, Pencil, Eye, Save, CheckCircle2, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useIsViewer } from "@/hooks/use-role";
 import { ExpandButton, EXPANDED_MODAL } from "@/components/corpus/Expandable";
 import { getLibraryFileContent, replaceLibraryFileBytes } from "@/lib/api";
 import { analyzeJson, toJson, coerceCell, cellText, isExpandable, type JsonAnalysis } from "@/lib/json-table";
@@ -45,6 +46,7 @@ export function JsonModal({
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<"table" | "raw">("table");
   const [editing, setEditing] = useState(false);
+  const readOnly = useIsViewer();
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -240,9 +242,9 @@ export function JsonModal({
                 {mode === "table" ? (<><Braces className="h-3.5 w-3.5" /> Raw</>) : (<><Table className="h-3.5 w-3.5" /> Table</>)}
               </Button>
             )}
-            <Button variant="outline" size="sm" className="gap-1.5 h-8 rounded-[1px] mr-1" onClick={() => (editing ? stopEditing() : startEditing())}>
+            {!readOnly && <Button variant="outline" size="sm" className="gap-1.5 h-8 rounded-[1px] mr-1" onClick={() => (editing ? stopEditing() : startEditing())}>
               {editing ? (<><Eye className="h-3.5 w-3.5" /> View</>) : (<><Pencil className="h-3.5 w-3.5" /> Edit</>)}
-            </Button>
+            </Button>}
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-ink-fade hover:text-ink" onClick={download} title="Download JSON">
               <Download className="h-4 w-4" />
             </Button>

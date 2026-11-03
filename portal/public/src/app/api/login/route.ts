@@ -1,26 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { AUTH_COOKIE, adminPassword, authToken, timingSafeEqual } from "@/lib/auth";
+import { AUTH_COOKIE, adminPassword, cookieForRole, roleForPassword } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/login {password} → sets the stateless auth cookie on success.
+// The admin password grants full access; VIEWER_PASSWORD (optional) grants
+// read-only access to shared folios.
 export async function POST(req: NextRequest) {
-  const expected = adminPassword();
-  if (!expected) {
+  if (!adminPassword()) {
     return NextResponse.json({ error: "ADMIN_PASSWORD is not configured" }, { status: 503 });
   }
   const { password } = (await req.json().catch(() => ({}))) as { password?: string };
 
-  // Compare HMACs rather than raw strings so the check stays constant-time
-  // even for wrong-length guesses.
-  const expectedToken = await authToken(expected);
-  const gotToken = await authToken(typeof password === "string" ? password : "");
-  if (!timingSafeEqual(gotToken, expectedToken)) {
+  const role = await roleForPassword(typeof password === "string" ? password : "");
+  const token = role ? await cookieForRole(role) : null;
+  if (!role || !token) {
     return NextResponse.json({ error: "Wrong password" }, { status: 401 });
   }
 
-  const res = NextResponse.json({ ok: true });
-  res.cookies.set(AUTH_COOKIE, expectedToken, {
+  const res = NextResponse.json({ ok: true, role });
+  res.cookies.set(AUTH_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

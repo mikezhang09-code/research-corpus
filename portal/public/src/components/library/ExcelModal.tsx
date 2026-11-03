@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsViewer } from "@/hooks/use-role";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { X, Loader2, AlertCircle, Pencil, Eye, Table, FileSpreadsheet } from "lucide-react";
@@ -55,7 +56,8 @@ export function ExcelModal({
 }) {
   const isXlsx = ext === ".xlsx";
   const isCsv = ext === ".csv";
-  const editable = isXlsx || isCsv;
+  const readOnly = useIsViewer();
+  const editable = (isXlsx || isCsv) && !readOnly;
 
   const [sheets, setSheets] = useState<Sheet[] | null>(null);
   const [active, setActive] = useState(0);

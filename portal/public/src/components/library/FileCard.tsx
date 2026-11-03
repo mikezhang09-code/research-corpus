@@ -38,6 +38,7 @@ import { QuizEditorModal } from "./QuizEditorModal";
 import { FlashcardsModal } from "./FlashcardsModal";
 import { FlashcardEditorModal } from "./FlashcardEditorModal";
 import { NoteEditorModal } from "./NoteEditorModal";
+import { useIsViewer } from "@/hooks/use-role";
 import { JsxModal } from "./JsxModal";
 
 // ---- category config ----
@@ -352,6 +353,7 @@ export function FileCard({
   const cfg = FILE_CATEGORY_CONFIG[file.file_category as CatKey] ?? DEFAULT_CAT;
   const Icon = cfg.icon;
 
+  const readOnly = useIsViewer();
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -405,7 +407,7 @@ export function FileCard({
   }
 
   function openViewer() {
-    if (isNote) { setNoteOpen(true); return; }
+    if (isNote) { if (readOnly) setViewer("markdown"); else setNoteOpen(true); return; }
     if (isDocx) setViewer("docx");
     else if (isPdf) setViewer("pdf");
     else if (isExcel) setViewer("excel");
@@ -431,7 +433,7 @@ export function FileCard({
           notebookId={file.notebook_id}
           fileId={file.id}
           title={file.title}
-          editable={ext === ".docx"}
+          editable={ext === ".docx" && !readOnly}
           onClose={() => setViewer(null)}
         />
       )}
@@ -440,7 +442,7 @@ export function FileCard({
           notebookId={file.notebook_id}
           fileId={file.id}
           title={file.title}
-          editable
+          editable={!readOnly}
           onClose={() => setViewer(null)}
         />
       )}
@@ -461,7 +463,7 @@ export function FileCard({
           title={file.title}
           fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
           onClose={() => setViewer(null)}
-          onEdit={() => setViewer("mindmap-edit")}
+          onEdit={readOnly ? undefined : () => setViewer("mindmap-edit")}
         />
       )}
       {viewer === "mindmap-edit" && (
@@ -480,7 +482,7 @@ export function FileCard({
           title={file.title}
           fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
           onClose={() => setViewer(null)}
-          onEdit={() => setViewer("diagram-edit")}
+          onEdit={readOnly ? undefined : () => setViewer("diagram-edit")}
         />
       )}
       {viewer === "diagram-edit" && (
@@ -499,7 +501,7 @@ export function FileCard({
           title={file.title}
           fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
           onClose={() => setViewer(null)}
-          onEdit={() => setViewer("quiz-edit")}
+          onEdit={readOnly ? undefined : () => setViewer("quiz-edit")}
         />
       )}
       {viewer === "quiz-edit" && (
@@ -518,7 +520,7 @@ export function FileCard({
           title={file.title}
           fetchContent={() => getLibraryFileContent(file.notebook_id, file.id)}
           onClose={() => setViewer(null)}
-          onEdit={() => setViewer("flashcards-edit")}
+          onEdit={readOnly ? undefined : () => setViewer("flashcards-edit")}
         />
       )}
       {viewer === "flashcards-edit" && (
@@ -612,6 +614,7 @@ export function FileCard({
               </a>
             ) : null}
 
+            {!readOnly && <>
             <Button
               variant="ghost"
               size="icon"
@@ -637,11 +640,12 @@ export function FileCard({
                 <Trash2 className="h-3.5 w-3.5" />
               )}
             </Button>
+            </>}
           </div>
         </div>
       </div>
 
-      {editing && (
+      {editing && !readOnly && (
         <EditFileDialog
           file={file}
           onClose={() => setEditing(false)}
@@ -652,7 +656,7 @@ export function FileCard({
         />
       )}
 
-      {noteOpen && (
+      {noteOpen && !readOnly && (
         <NoteEditorModal
           notebookId={file.notebook_id}
           file={file}

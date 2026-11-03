@@ -1,14 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { AUTH_COOKIE, SHARED_TAG, requestRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/library-notebooks?include_hidden=&tag=  → { items, total }
+// A viewer only ever gets non-hidden folios tagged SHARED_TAG.
 export async function GET(req: NextRequest) {
   const db = supabase();
   const url = new URL(req.url);
-  const includeHidden = url.searchParams.get("include_hidden") === "true";
-  const tags = url.searchParams.getAll("tag");
+  const role = await requestRole(req.headers.get("host"), req.cookies.get(AUTH_COOKIE)?.value);
+  const isViewer = role === "viewer";
+  const includeHidden = !isViewer && url.searchParams.get("include_hidden") === "true";
+  const tags = isViewer ? [SHARED_TAG] : url.searchParams.getAll("tag");
 
   let q = db.from("library_notebooks").select("*");
   if (!includeHidden) q = q.eq("hidden", false);

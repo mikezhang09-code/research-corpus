@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
-import { Languages, User } from "lucide-react";
+import { Languages, LogOut, User } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +13,10 @@ import {
 import { LANGUAGES, useLanguage, type Language } from "@/hooks/use-language";
 import { SectionSwitch } from "@/components/corpus/SectionSwitch";
 import { getArtifacts, getLibraryNotebooks } from "@/lib/api";
+import { useRole } from "@/hooks/use-role";
 
 export function Masthead() {
+  const isViewer = useRole().role === "viewer";
   return (
     <header className="px-5 sm:px-8 lg:px-14 pt-6 sm:pt-8 pb-4 sm:pb-5 border-b border-rule relative">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
@@ -26,14 +28,9 @@ export function Masthead() {
           <ArchiveCount />
         </div>
         <div className="flex flex-wrap items-center sm:items-end justify-start sm:justify-end gap-2 sm:gap-3 pb-1">
-          <SectionSwitch />
+          {!isViewer && <SectionSwitch />}
           <LanguagePill />
-          <button
-            aria-label="Account"
-            className="w-8 h-8 rounded-full border border-ink bg-vellum flex items-center justify-center text-ink-soft hover:bg-paper-deep transition-colors"
-          >
-            <User size={14} />
-          </button>
+          <AccountMenu />
         </div>
       </div>
     </header>
@@ -81,12 +78,15 @@ function RomanDate() {
 /** Live total of NotebookLM corpora + library folios; refetches on route change. */
 function ArchiveCount() {
   const pathname = usePathname();
+  const isViewer = useRole().role === "viewer";
   const [counts, setCounts] = useState<{ corpora: number; folios: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      getArtifacts({ limit: 200 }).catch(() => ({ items: [], total: 0 })),
+      isViewer
+        ? Promise.resolve({ items: [], total: 0 })
+        : getArtifacts({ limit: 200 }).catch(() => ({ items: [], total: 0 })),
       getLibraryNotebooks().catch(() => ({ items: [], total: 0 })),
     ])
       .then(([arts, lib]) => {
@@ -101,7 +101,7 @@ function ArchiveCount() {
         setCounts({ corpora, folios });
       });
     return () => { cancelled = true; };
-  }, [pathname]);
+  }, [pathname, isViewer]);
 
   if (!counts) {
     return (
@@ -111,6 +111,13 @@ function ArchiveCount() {
     );
   }
   const { corpora, folios } = counts;
+  if (isViewer) {
+    return (
+      <div className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute pb-1">
+        {folios} shared {folios === 1 ? "folio" : "folios"}
+      </div>
+    );
+  }
   return (
     <div
       className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-mute pb-1"
@@ -167,6 +174,38 @@ function LanguagePill() {
             )}
           </DropdownMenuItem>
         ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function AccountMenu() {
+  const { role, canLogout } = useRole();
+  async function logout() {
+    await fetch("/api/logout", { method: "POST" }).catch(() => null);
+    window.location.replace("/login");
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Account"
+        className="w-8 h-8 rounded-full border border-ink bg-vellum flex items-center justify-center text-ink-soft hover:bg-paper-deep transition-colors"
+      >
+        <User size={14} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[180px]">
+        <div className="px-2 py-1.5 font-mono text-[9px] tracking-[0.2em] uppercase text-ink-mute">
+          {role === "viewer" ? "Viewer · read-only" : "Admin"}
+        </div>
+        {canLogout && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout}>
+              <LogOut size={13} />
+              <span className="flex-1">Log out</span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

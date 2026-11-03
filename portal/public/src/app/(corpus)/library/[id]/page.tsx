@@ -19,6 +19,8 @@ import {
 import { FilesPanel } from "@/components/library/FilesPanel";
 import { LibraryNotebookDescription } from "@/components/library/LibraryNotebookDescription";
 import { TagInput } from "@/components/library/TagInput";
+import { useIsViewer } from "@/hooks/use-role";
+import { SHARED_TAG } from "@/lib/shared-tag";
 import {
   getLibraryNotebook, updateLibraryNotebook, deleteLibraryNotebook,
   type LibraryNotebook,
@@ -28,6 +30,7 @@ export default function FolioDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
+  const isViewer = useIsViewer();
 
   const [folio, setFolio] = useState<LibraryNotebook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +85,7 @@ export default function FolioDetailPage() {
                   <h1 className="font-serif-display text-[32px] leading-[1.05] tracking-tight text-ink truncate">
                     {folio.title}
                   </h1>
-                  <DropdownMenu>
+                  {!isViewer && <DropdownMenu>
                     <DropdownMenuTrigger className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-[1px] text-ink-fade hover:text-ink hover:bg-paper-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink">
                       <MoreVertical className="h-4 w-4" />
                     </DropdownMenuTrigger>
@@ -97,7 +100,7 @@ export default function FolioDetailPage() {
                         <Trash2 className="h-4 w-4" /> Delete folio
                       </DropdownMenuItem>
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
                 <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute mt-2">
                   {folio.file_count} file{folio.file_count !== 1 ? "s" : ""}
@@ -107,14 +110,30 @@ export default function FolioDetailPage() {
           </div>
 
           {/* Description */}
-          <LibraryNotebookDescription
+          {isViewer ? (
+            folio.description?.trim() ? (
+              <p className="font-serif text-[15px] text-ink-soft whitespace-pre-wrap max-w-3xl">
+                {folio.description}
+              </p>
+            ) : null
+          ) : <LibraryNotebookDescription
             notebookId={id}
             initialDescription={folio.description}
             onSave={(desc) => setFolio((nb) => (nb ? { ...nb, description: desc } : nb))}
-          />
+          />}
 
           {/* Tags */}
-          <div>
+          {isViewer ? (
+            folio.tags.some((t) => t !== SHARED_TAG) && (
+              <div className="flex gap-1.5 flex-wrap">
+                {folio.tags.filter((t) => t !== SHARED_TAG).map((t) => (
+                  <span key={t} className="px-2 py-0.5 rounded-[1px] border border-rule bg-vellum font-mono text-[10px] tracking-[0.12em] uppercase text-ink-fade">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )
+          ) : <div>
             <label className="block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-2">
               Tags
             </label>
@@ -131,12 +150,12 @@ export default function FolioDetailPage() {
                 }
               }}
             />
-          </div>
+          </div>}
 
           {/* Files */}
           <FilesPanel notebookId={id} />
 
-          {showEdit && (
+          {showEdit && !isViewer && (
             <EditFolioDialog
               folio={folio}
               onClose={() => setShowEdit(false)}

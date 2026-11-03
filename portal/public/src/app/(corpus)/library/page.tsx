@@ -15,6 +15,8 @@ import {
 import { SectionHead } from "@/components/corpus/SectionHead";
 import { FolioCard, pickCover } from "@/components/corpus/FolioCard";
 import { CreateLibraryNotebookModal } from "@/components/library/CreateLibraryNotebookModal";
+import { useIsViewer } from "@/hooks/use-role";
+import { SHARED_TAG } from "@/lib/shared-tag";
 import { TagFilterBar } from "@/components/library/TagFilterBar";
 import { getLibraryNotebooks, type LibraryNotebook } from "@/lib/api";
 
@@ -22,6 +24,7 @@ type SortKey = "recent" | "title" | "files";
 
 export default function LibraryPage() {
   const router = useRouter();
+  const isViewer = useIsViewer();
   const [folios, setFolios] = useState<LibraryNotebook[] | null>(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recent");
@@ -53,10 +56,10 @@ export default function LibraryPage() {
 
   const tagOrder = useMemo(
     () =>
-      [...tagTotals.keys()].sort(
-        (a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b),
-      ),
-    [tagTotals],
+      [...tagTotals.keys()]
+        .filter((t) => !(isViewer && t === SHARED_TAG))
+        .sort((a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b)),
+    [tagTotals, isViewer],
   );
 
   function toggleTag(tag: string) {
@@ -107,8 +110,9 @@ export default function LibraryPage() {
 
       <div className="px-5 sm:px-8 lg:px-14 space-y-6">
         <p className="font-serif text-[14px] text-ink-soft max-w-2xl">
-          Research folios and their files. Create folios, upload files, and
-          organise — open any file to view it inline.
+          {isViewer
+            ? "Research folios shared with you — open any file to view it inline."
+            : "Research folios and their files. Create folios, upload files, and organise — open any file to view it inline."}
         </p>
 
         {/* Toolbar: search · sort · new folio */}
@@ -138,14 +142,16 @@ export default function LibraryPage() {
                 </DropdownMenu>
               </>
             )}
-            <Button
-              size="sm"
-              className="gap-1.5 h-9 rounded-[1px] ml-auto"
-              onClick={() => setShowCreate(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New folio
-            </Button>
+            {!isViewer && (
+              <Button
+                size="sm"
+                className="gap-1.5 h-9 rounded-[1px] ml-auto"
+                onClick={() => setShowCreate(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New folio
+              </Button>
+            )}
           </div>
         )}
 
@@ -168,11 +174,15 @@ export default function LibraryPage() {
         ) : folios.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-ink-mute gap-3">
             <FolderOpen className="h-12 w-12 opacity-30" />
-            <p className="font-serif-display text-[20px] tracking-tight text-ink">No folios yet</p>
-            <p className="font-serif text-[14px] text-center max-w-sm text-ink-soft">
-              Create a research folio to start collecting files.
+            <p className="font-serif-display text-[20px] tracking-tight text-ink">
+              {isViewer ? "Nothing shared yet" : "No folios yet"}
             </p>
-            <Button
+            <p className="font-serif text-[14px] text-center max-w-sm text-ink-soft">
+              {isViewer
+                ? "No folios have been shared with you yet."
+                : "Create a research folio to start collecting files."}
+            </p>
+            {!isViewer && <Button
               variant="outline"
               size="sm"
               className="gap-1.5 rounded-[1px] mt-1"
@@ -180,7 +190,7 @@ export default function LibraryPage() {
             >
               <Plus className="h-3.5 w-3.5" />
               New folio
-            </Button>
+            </Button>}
           </div>
         ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-ink-mute gap-3">
@@ -210,7 +220,7 @@ export default function LibraryPage() {
         )}
       </div>
 
-      {showCreate && (
+      {showCreate && !isViewer && (
         <CreateLibraryNotebookModal
           existingTags={existingTags}
           onClose={() => setShowCreate(false)}

@@ -22,6 +22,7 @@ import {
 import { useLanguageMounted } from "@/hooks/use-language";
 import { FileCard } from "./FileCard";
 import { AddFileModal } from "./AddFileModal";
+import { useIsViewer } from "@/hooks/use-role";
 import { NoteEditorModal } from "./NoteEditorModal";
 import { MindMapEditorModal } from "./MindMapEditorModal";
 import { QuizEditorModal } from "./QuizEditorModal";
@@ -111,6 +112,7 @@ function CreateFolioFromSelectionDialog({
 }
 
 export function FilesPanel({ notebookId }: { notebookId: string }) {
+  const readOnly = useIsViewer();
   const router = useRouter();
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,6 +280,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
               {selectionMode ? "Done" : "Select"}
             </Button>
           )}
+          {!readOnly && <>
           <GenerateArtifactButton generating={generating} onGenerate={handleGenerate} />
           <NewArtifactButton
             onCreate={(kind) => {
@@ -296,6 +299,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             <Plus className="h-3.5 w-3.5" />
             Add file
           </Button>
+          </>}
         </div>
       </div>
 
@@ -307,7 +311,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           <Button variant="ghost" size="sm" className="h-7 rounded-[1px]" onClick={allVisibleSelected ? clearSelection : selectAllVisible}>
             {allVisibleSelected ? "Clear" : "Select all"}
           </Button>
-          <Button
+          {!readOnly && <Button
             variant="outline"
             size="sm"
             className="gap-1.5 h-7 rounded-[1px]"
@@ -316,7 +320,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           >
             <FolderPlus className="h-3.5 w-3.5" />
             New folio
-          </Button>
+          </Button>}
           <Button
             variant="outline"
             size="sm"
@@ -327,7 +331,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
             {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             Download
           </Button>
-          <Button
+          {!readOnly && <Button
             variant="destructive"
             size="sm"
             className="gap-1.5 h-7 rounded-[1px]"
@@ -336,7 +340,7 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete
-          </Button>
+          </Button>}
         </div>
       )}
 
@@ -366,10 +370,10 @@ export function FilesPanel({ notebookId }: { notebookId: string }) {
           <p className="font-serif italic text-[14px] text-ink-fade">
             {activeCategory ? `No ${activeCategory} files yet` : "No files yet"}
           </p>
-          <Button variant="outline" size="sm" className="gap-1.5 rounded-[1px]" onClick={() => setShowAdd(true)}>
+          {!readOnly && <Button variant="outline" size="sm" className="gap-1.5 rounded-[1px]" onClick={() => setShowAdd(true)}>
             <Plus className="h-3.5 w-3.5" />
             Add your first file
-          </Button>
+          </Button>}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

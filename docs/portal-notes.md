@@ -69,6 +69,16 @@ binding) directly — **not** through the VM backend.
   admin-password gate in `src/middleware.ts` (stateless HMAC cookie). The
   password is the GitHub secret `ADMIN_PASSWORD`, re-synced on every deploy;
   rotating it invalidates all cookies. Middleware fails closed (503) if unset.
+- **Viewer account:** a second password, `VIEWER_PASSWORD` (Worker secret set
+  with `wrangler secret put`, persists across deploys; unset = no viewer
+  login), gives read-only access to folios tagged `shared` and nothing else.
+  The middleware allowlists viewer routes (folio list/detail/files/content,
+  zip download) and checks each folio id carries the tag; the list route
+  filters to shared folios itself. Viewer cookies are signed with a separate
+  label, so rotating `VIEWER_PASSWORD` logs out viewers only. Viewers can only
+  log in on password-gated hosts (e.g. `public.research.us.kg`) — the
+  Access-protected host always runs as admin. UI hides write controls via
+  `useIsViewer()` (`src/hooks/use-role.tsx`); enforcement is server-side.
 - **Capabilities:** My Research folios are fully writable (create / upload /
   edit / delete / AI generate); the NotebookLM Corpus is read-only; folio
   **chat is VM-only** (needs Python text extraction the Worker can't run).

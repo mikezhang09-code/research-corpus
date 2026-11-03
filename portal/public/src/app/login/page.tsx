@@ -1,13 +1,12 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 function LoginForm() {
-  const router = useRouter();
   const next = useSearchParams().get("next") ?? "/";
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +23,9 @@ function LoginForm() {
       body: JSON.stringify({ password }),
     }).catch(() => null);
     if (res?.ok) {
-      // Only follow same-origin paths from ?next= (no open redirect).
-      router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+      // Only follow same-origin paths from ?next= (no open redirect). A full
+      // page load (not a client transition) so the layout re-reads the role.
+      window.location.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
       return;
     }
     setBusy(false);
@@ -44,7 +44,7 @@ function LoginForm() {
             Research Corpus
           </h1>
           <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute">
-            Admin password required
+            Password required
           </p>
         </div>
         <Input
