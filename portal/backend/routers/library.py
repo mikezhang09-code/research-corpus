@@ -41,7 +41,7 @@ def _filters(
 
 
 @router.get("", response_model=LibraryItemListResponse)
-async def list_items(filters: LibraryFilters = Depends(_filters)):
+def list_items(filters: LibraryFilters = Depends(_filters)):
     db = get_supabase()
     items, total = repo.list_all(db, filters)
     return {"items": items, "total": total}
@@ -86,7 +86,7 @@ async def upload_file_endpoint(
 
 
 @router.post("/link", response_model=LibraryItemRead, status_code=201)
-async def add_link(data: LibraryItemCreate):
+def add_link(data: LibraryItemCreate):
     """Add a YouTube link or web URL without uploading a file."""
     if data.source_type not in (LibrarySourceType.YOUTUBE_LINK, LibrarySourceType.WEB_LINK):
         raise HTTPException(400, "Use /upload for files; /link for URLs only")
@@ -95,12 +95,12 @@ async def add_link(data: LibraryItemCreate):
 
 
 @router.get("/collections", response_model=list[str])
-async def list_collections():
+def list_collections():
     return repo.list_collections(get_supabase())
 
 
 @router.get("/{item_id}", response_model=LibraryItemRead)
-async def get_item(item_id: UUID):
+def get_item(item_id: UUID):
     db = get_supabase()
     row = repo.get(db, item_id)
     if not row:
@@ -109,7 +109,7 @@ async def get_item(item_id: UUID):
 
 
 @router.patch("/{item_id}", response_model=LibraryItemRead)
-async def update_item(item_id: UUID, data: LibraryItemUpdate):
+def update_item(item_id: UUID, data: LibraryItemUpdate):
     db = get_supabase()
     row = repo.update(db, item_id, data)
     if not row:
@@ -118,7 +118,7 @@ async def update_item(item_id: UUID, data: LibraryItemUpdate):
 
 
 @router.delete("/{item_id}", status_code=204)
-async def delete_item(item_id: UUID):
+def delete_item(item_id: UUID):
     db = get_supabase()
     row = repo.get(db, item_id)
     if not row:

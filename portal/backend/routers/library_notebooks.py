@@ -276,34 +276,32 @@ def _enrich(nb: dict, file_count: int) -> dict:
 
 
 @router.get("", response_model=LibraryNotebookListResponse)
-async def list_notebooks(
+def list_notebooks(
     include_hidden: bool = Query(False),
     tag: list[str] | None = Query(None),
 ):
     db = get_supabase()
-    notebooks = repo.list_all(db, include_hidden=include_hidden, tags=tag)
-    counts = repo.get_file_counts(db)
-    items = [_enrich(nb, counts.get(nb["id"], 0)) for nb in notebooks]
+    items = repo.list_all(db, include_hidden=include_hidden, tags=tag)
     return {"items": items, "total": len(items)}
 
 
 @router.post("", response_model=LibraryNotebookRead, status_code=201)
-async def create_notebook(body: LibraryNotebookCreate):
+def create_notebook(body: LibraryNotebookCreate):
     db = get_supabase()
     nb = repo.create(db, title=body.title, cover_emoji=body.cover_emoji, tags=body.tags or None)
     return _enrich(nb, 0)
 
 
 @router.get("/{nb_id}", response_model=LibraryNotebookRead)
-async def get_notebook(nb_id: UUID):
-    db = get_supabase()
-    nb = _notebook_or_404(db, nb_id)
-    count = repo.get_file_count(db, nb_id)
-    return _enrich(nb, count)
+def get_notebook(nb_id: UUID):
+    nb = repo.get_with_file_count(get_supabase(), nb_id)
+    if not nb:
+        raise HTTPException(404, "Notebook not found")
+    return nb
 
 
 @router.patch("/{nb_id}", response_model=LibraryNotebookRead)
-async def update_notebook(nb_id: UUID, body: LibraryNotebookUpdate):
+def update_notebook(nb_id: UUID, body: LibraryNotebookUpdate):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     patch = body.model_dump(exclude_none=True)
@@ -313,7 +311,7 @@ async def update_notebook(nb_id: UUID, body: LibraryNotebookUpdate):
 
 
 @router.delete("/{nb_id}", status_code=204)
-async def delete_notebook(nb_id: UUID):
+def delete_notebook(nb_id: UUID):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     # Delete R2 files for all items in this notebook before DB cascade
@@ -328,7 +326,7 @@ async def delete_notebook(nb_id: UUID):
 
 
 @router.post("/{nb_id}/hide", response_model=LibraryNotebookRead)
-async def hide_notebook(nb_id: UUID):
+def hide_notebook(nb_id: UUID):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     nb = repo.hide(db, nb_id)
@@ -337,7 +335,7 @@ async def hide_notebook(nb_id: UUID):
 
 
 @router.post("/{nb_id}/restore", response_model=LibraryNotebookRead)
-async def restore_notebook(nb_id: UUID):
+def restore_notebook(nb_id: UUID):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     nb = repo.restore(db, nb_id)
@@ -351,7 +349,7 @@ async def restore_notebook(nb_id: UUID):
 
 
 @router.get("/{nb_id}/files", response_model=list[LibraryFileRead])
-async def list_files(nb_id: UUID, category: str | None = Query(None)):
+def list_files(nb_id: UUID, category: str | None = Query(None)):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     return repo.list_files(db, nb_id, category=category)
@@ -398,7 +396,7 @@ async def upload_notebook_file(
 
 
 @router.post("/{nb_id}/files/bulk-delete", status_code=204)
-async def bulk_delete_notebook_files(nb_id: UUID, body: LibraryFileBulkRequest):
+def bulk_delete_notebook_files(nb_id: UUID, body: LibraryFileBulkRequest):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     if not body.file_ids:
@@ -419,7 +417,7 @@ async def bulk_delete_notebook_files(nb_id: UUID, body: LibraryFileBulkRequest):
 
 
 @router.post("/{nb_id}/files/download")
-async def download_notebook_files(nb_id: UUID, body: BulkDownloadRequest | None = Body(None)):
+def download_notebook_files(nb_id: UUID, body: BulkDownloadRequest | None = Body(None)):
     """Stream a zip of this folio's files. Omit ``ids`` to download the whole folio."""
     db = get_supabase()
     nb = _notebook_or_404(db, nb_id)
@@ -445,7 +443,7 @@ async def download_notebook_files(nb_id: UUID, body: BulkDownloadRequest | None 
 @router.post(
     "/{nb_id}/files/move-to-new-notebook", response_model=LibraryNotebookRead, status_code=201
 )
-async def move_files_to_new_notebook(nb_id: UUID, body: LibraryFilesNewNotebookRequest):
+def move_files_to_new_notebook(nb_id: UUID, body: LibraryFilesNewNotebookRequest):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     title = body.title.strip()
@@ -465,7 +463,7 @@ async def move_files_to_new_notebook(nb_id: UUID, body: LibraryFilesNewNotebookR
 
 
 @router.patch("/{nb_id}/files/{file_id}", response_model=LibraryFileRead)
-async def update_notebook_file(nb_id: UUID, file_id: UUID, body: LibraryFileUpdate):
+def update_notebook_file(nb_id: UUID, file_id: UUID, body: LibraryFileUpdate):
     """Rename or recategorise a file. Only fields present in the body are updated."""
     db = get_supabase()
     _notebook_or_404(db, nb_id)
@@ -488,7 +486,7 @@ async def update_notebook_file(nb_id: UUID, file_id: UUID, body: LibraryFileUpda
 
 
 @router.delete("/{nb_id}/files/{file_id}", status_code=204)
-async def delete_notebook_file(nb_id: UUID, file_id: UUID):
+def delete_notebook_file(nb_id: UUID, file_id: UUID):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     f = repo.get_file(db, nb_id, file_id)
@@ -547,7 +545,7 @@ def file_content_response(f: dict, format: str | None = None) -> Response:
 
 
 @router.get("/{nb_id}/files/{file_id}/content")
-async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Query(None)):
+def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Query(None)):
     db = get_supabase()
     f = repo.get_file(db, nb_id, file_id)
     if not f:
@@ -556,7 +554,7 @@ async def get_file_content(nb_id: UUID, file_id: UUID, format: str | None = Quer
 
 
 @router.put("/{nb_id}/files/{file_id}/content", response_model=LibraryFileRead)
-async def update_notebook_file_content(nb_id: UUID, file_id: UUID, body: LibraryFileContentUpdate):
+def update_notebook_file_content(nb_id: UUID, file_id: UUID, body: LibraryFileContentUpdate):
     """Overwrite a stored text file's contents (used by the note editor).
 
     The item keeps its `r2_key`/`r2_url` — only the bytes and `file_size_bytes`
@@ -611,7 +609,7 @@ async def replace_notebook_file_bytes(nb_id: UUID, file_id: UUID, file: UploadFi
 
 
 @router.get("/{nb_id}/chat/history", response_model=ChatHistoryResponse)
-async def chat_history(nb_id: UUID):
+def chat_history(nb_id: UUID):
     db = get_supabase()
     _notebook_or_404(db, nb_id)
     turns_raw = repo.get_chat_history(db, nb_id)
@@ -632,7 +630,7 @@ async def chat_history(nb_id: UUID):
 
 
 @router.delete("/{nb_id}/chat/history", status_code=204)
-async def clear_chat_history(nb_id: UUID):
+def clear_chat_history(nb_id: UUID):
     """Wipe persisted chat history for this folio (used after saving a chat as a note)."""
     db = get_supabase()
     _notebook_or_404(db, nb_id)

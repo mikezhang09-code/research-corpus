@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 from pathlib import Path
@@ -15,13 +16,18 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
     from ..repositories import artifacts as repo
     from ..storage import r2_key_for_artifact, upload_file
 
+    # The Supabase client and boto3 are synchronous: run their calls in a
+    # worker thread so a large R2 upload doesn't stall every other request
+    # on the event loop.
     db = get_supabase()
-    row = repo.get(db, artifact_id)
+    row = await asyncio.to_thread(repo.get, db, artifact_id)
     if not row:
         logger.error("Artifact %s not found", artifact_id)
         return
 
-    repo.update_download_status(db, artifact_id, DownloadStatus.DOWNLOADING)
+    await asyncio.to_thread(
+        repo.update_download_status, db, artifact_id, DownloadStatus.DOWNLOADING
+    )
 
     try:
         from notebooklm import NotebookLMClient
@@ -39,13 +45,14 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
                     client, notebook_id, artifact_type, fmt, str(out_path), nlm_artifact_id
                 )
 
-            data = out_path.read_bytes()
+            data = await asyncio.to_thread(out_path.read_bytes)
 
         mime = _mime_for_format(fmt)
         key = r2_key_for_artifact(notebook_id, artifact_type, nlm_artifact_id, fmt)
-        url = upload_file(key, data, mime)
+        url = await asyncio.to_thread(upload_file, key, data, mime)
 
-        repo.update_download_status(
+        await asyncio.to_thread(
+            repo.update_download_status,
             db,
             artifact_id,
             DownloadStatus.DONE,
@@ -57,7 +64,9 @@ async def download_artifact_to_r2(artifact_id: UUID) -> None:
 
     except Exception as exc:
         logger.exception("Failed to download artifact %s", artifact_id)
-        repo.update_download_status(db, artifact_id, DownloadStatus.FAILED, error=str(exc))
+        await asyncio.to_thread(
+            repo.update_download_status, db, artifact_id, DownloadStatus.FAILED, error=str(exc)
+        )
 
 
 async def _download_by_type(

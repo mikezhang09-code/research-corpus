@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { r2Bucket } from "@/lib/r2";
+import { getFolio } from "@/lib/server-data";
 
 export const dynamic = "force-dynamic";
 
@@ -15,20 +16,16 @@ async function fileCount(
   return count ?? 0;
 }
 
-// GET /api/library-notebooks/{id}  → LibraryNotebook
+// GET /api/library-notebooks/{id}  → LibraryNotebook (one query, count included)
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = supabase();
-
-  const { data, error } = await db
-    .from("library_notebooks")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  return NextResponse.json({ ...data, file_count: await fileCount(db, id) });
+  try {
+    const folio = await getFolio(id);
+    if (!folio) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(folio);
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
 }
 
 // PATCH /api/library-notebooks/{id}  → rename / edit description / tags

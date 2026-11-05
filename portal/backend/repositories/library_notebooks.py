@@ -23,9 +23,27 @@ def create(
     return db.table(NOTEBOOK_TABLE).insert(row).execute().data[0]
 
 
+# PostgREST embedded aggregate: one round trip returns each folio with
+# `library_items: [{"count": n}]`, counted in Postgres (no 1000-row cap).
+_WITH_FILE_COUNT = "*, library_items(count)"
+
+
+def _flatten_count(row: dict) -> dict:
+    """Replace the embedded `library_items: [{count}]` with `file_count`."""
+    embedded = row.pop("library_items", None) or []
+    row["file_count"] = embedded[0].get("count", 0) if embedded else 0
+    return row
+
+
 def get(db: Client, nb_id: UUID) -> dict | None:
     rows = db.table(NOTEBOOK_TABLE).select("*").eq("id", str(nb_id)).execute().data
     return rows[0] if rows else None
+
+
+def get_with_file_count(db: Client, nb_id: UUID) -> dict | None:
+    """The folio row plus `file_count`, in one query."""
+    rows = db.table(NOTEBOOK_TABLE).select(_WITH_FILE_COUNT).eq("id", str(nb_id)).execute().data
+    return _flatten_count(rows[0]) if rows else None
 
 
 def list_all(
@@ -33,14 +51,15 @@ def list_all(
     include_hidden: bool = False,
     tags: list[str] | None = None,
 ) -> list[dict]:
-    q = db.table(NOTEBOOK_TABLE).select("*")
+    """Folios, newest first, each with `file_count` (one query)."""
+    q = db.table(NOTEBOOK_TABLE).select(_WITH_FILE_COUNT)
     if not include_hidden:
         q = q.eq("hidden", False)
     if tags:
         # AND semantics: match folios whose tags array contains every filter
         # tag. postgrest exposes the @> operator via `.contains()`.
         q = q.contains("tags", tags)
-    return q.order("created_at", desc=True).execute().data
+    return [_flatten_count(r) for r in q.order("created_at", desc=True).execute().data]
 
 
 def update(db: Client, nb_id: UUID, patch: dict) -> dict | None:
@@ -63,22 +82,25 @@ def restore(db: Client, nb_id: UUID) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_file_counts(db: Client) -> dict[str, int]:
-    """Return {notebook_id: count} for all notebooks."""
-    rows = (
-        db.table(ITEMS_TABLE).select("notebook_id").not_.is_("notebook_id", "null").execute().data
-    )
-    counts: dict[str, int] = {}
-    for row in rows:
-        nid = row.get("notebook_id")
-        if nid:
-            counts[nid] = counts.get(nid, 0) + 1
-    return counts
-
-
 def get_file_count(db: Client, nb_id: UUID) -> int:
-    rows = db.table(ITEMS_TABLE).select("id").eq("notebook_id", str(nb_id)).execute().data
-    return len(rows)
+    res = (
+        db.table(ITEMS_TABLE)
+        .select("id", count="exact", head=True)
+        .eq("notebook_id", str(nb_id))
+        .execute()
+    )
+    return res.count or 0
+
+
+def count_visible(db: Client) -> int:
+    """Number of non-hidden folios (masthead count)."""
+    res = (
+        db.table(NOTEBOOK_TABLE)
+        .select("id", count="exact", head=True)
+        .eq("hidden", False)
+        .execute()
+    )
+    return res.count or 0
 
 
 def list_files(db: Client, nb_id: UUID, category: str | None = None) -> list[dict]:

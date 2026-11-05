@@ -42,6 +42,8 @@ export async function middleware(req: NextRequest) {
 // Viewer-reachable routes. Capture group 1, when present, is a folio id that must be shared.
 const VIEWER_PAGES: RegExp[] = [/^\/$/, /^\/library\/?$/, /^\/library\/([^/]+)\/?$/];
 const VIEWER_API: { method: string; re: RegExp }[] = [
+  // Masthead count; the route itself counts only shared folios for viewers.
+  { method: "GET", re: /^\/api\/counts\/?$/ },
   { method: "GET", re: /^\/api\/library-notebooks\/?$/ },
   { method: "GET", re: /^\/api\/library-notebooks\/([^/]+)\/?$/ },
   { method: "GET", re: /^\/api\/library-notebooks\/([^/]+)\/files\/?$/ },

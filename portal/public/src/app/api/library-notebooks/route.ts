@@ -1,40 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { AUTH_COOKIE, SHARED_TAG, requestRole } from "@/lib/auth";
+import { AUTH_COOKIE, requestRole } from "@/lib/auth";
+import { listFolios } from "@/lib/server-data";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/library-notebooks?include_hidden=&tag=  → { items, total }
 // A viewer only ever gets non-hidden folios tagged SHARED_TAG.
 export async function GET(req: NextRequest) {
-  const db = supabase();
   const url = new URL(req.url);
   const role = await requestRole(req.headers.get("host"), req.cookies.get(AUTH_COOKIE)?.value);
-  const isViewer = role === "viewer";
-  const includeHidden = !isViewer && url.searchParams.get("include_hidden") === "true";
-  const tags = isViewer ? [SHARED_TAG] : url.searchParams.getAll("tag");
-
-  let q = db.from("library_notebooks").select("*");
-  if (!includeHidden) q = q.eq("hidden", false);
-  if (tags.length) q = q.contains("tags", tags);
-  const { data, error } = await q.order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // file_count per notebook (one cheap scan of library_items.notebook_id).
-  const { data: fileRows } = await db
-    .from("library_items")
-    .select("notebook_id")
-    .not("notebook_id", "is", null);
-  const counts = new Map<string, number>();
-  for (const r of (fileRows ?? []) as { notebook_id: string }[]) {
-    counts.set(r.notebook_id, (counts.get(r.notebook_id) ?? 0) + 1);
+  try {
+    const items = await listFolios({
+      viewer: role === "viewer",
+      includeHidden: url.searchParams.get("include_hidden") === "true",
+      tags: url.searchParams.getAll("tag"),
+    });
+    return NextResponse.json({ items, total: items.length });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
-
-  const items = ((data ?? []) as { id: string }[]).map((n) => ({
-    ...n,
-    file_count: counts.get(n.id) ?? 0,
-  }));
-  return NextResponse.json({ items, total: items.length });
 }
 
 // POST /api/library-notebooks  → create a folio

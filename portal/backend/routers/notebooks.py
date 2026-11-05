@@ -71,7 +71,7 @@ def _nlm_lang(code: str | None) -> str:
 
 
 @router.get("", response_model=list[NotebookRead])
-async def list_notebooks(include_hidden: bool = False):
+def list_notebooks(include_hidden: bool = False):
     db = get_supabase()
     q = db.table("notebooks").select("*")
     if not include_hidden:
@@ -120,7 +120,7 @@ async def sync_notebooks():
 
 
 @router.get("/{notebook_id}", response_model=NotebookRead)
-async def get_notebook(notebook_id: str):
+def get_notebook(notebook_id: str):
     db = get_supabase()
     rows = db.table("notebooks").select("*").eq("id", notebook_id).execute().data
     if not rows:
@@ -171,7 +171,7 @@ async def delete_notebook(notebook_id: str):
 
 
 @router.post("/{notebook_id}/restore", response_model=NotebookRead)
-async def restore_notebook(notebook_id: str):
+def restore_notebook(notebook_id: str):
     """Un-hide a notebook (clear the hidden flag set by remove-from-recent)."""
     db = get_supabase()
     updated = db.table("notebooks").update({"hidden": False}).eq("id", notebook_id).execute().data
@@ -291,7 +291,7 @@ async def sync_notebook_artifacts(notebook_id: str):
 
 
 @router.get("/{notebook_id}/artifacts", response_model=list[NLMArtifactRead])
-async def get_notebook_artifacts(notebook_id: str):
+def get_notebook_artifacts(notebook_id: str):
     db = get_supabase()
     rows = (
         db.table("nlm_artifacts")
@@ -305,9 +305,7 @@ async def get_notebook_artifacts(notebook_id: str):
 
 
 @router.post("/{notebook_id}/artifacts/download")
-async def download_notebook_artifacts(
-    notebook_id: str, body: BulkDownloadRequest | None = Body(None)
-):
+def download_notebook_artifacts(notebook_id: str, body: BulkDownloadRequest | None = Body(None)):
     """Stream a zip of this notebook's saved artifacts (those downloaded to R2).
 
     Omit ``ids`` to download every saved artifact; pass ``ids`` (portal artifact

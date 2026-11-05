@@ -61,6 +61,9 @@ export const downloadNotebookArtifacts = (notebookId: string, artifactIds?: stri
   downloadZip(`/api/notebooks/${notebookId}/artifacts/download`, artifactIds);
 
 // ---- Notebooks ----
+/** "N corpora · M folios" for the masthead — two row-less counts on the backend. */
+export const getArchiveCounts = () => request<{ corpora: number; folios: number }>("/api/counts");
+
 export const getNotebooks = (opts?: { includeHidden?: boolean }) =>
   request<Notebook[]>(`/api/notebooks${opts?.includeHidden ? "?include_hidden=true" : ""}`);
 export const syncNotebooks = () => request<Notebook[]>("/api/notebooks/sync", { method: "POST" });

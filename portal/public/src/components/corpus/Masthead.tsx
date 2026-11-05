@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LANGUAGES, useLanguage, type Language } from "@/hooks/use-language";
 import { SectionSwitch } from "@/components/corpus/SectionSwitch";
-import { getArtifacts, getLibraryNotebooks } from "@/lib/api";
+import { getArchiveCounts } from "@/lib/api";
 import { useRole } from "@/hooks/use-role";
 
 export function Masthead() {
@@ -81,27 +81,16 @@ function ArchiveCount() {
   const isViewer = useRole().role === "viewer";
   const [counts, setCounts] = useState<{ corpora: number; folios: number } | null>(null);
 
+  // One small request on each navigation. This used to download both full
+  // lists (up to 200 artifacts plus every folio) just to count them, which
+  // also put two heavy requests ahead of every page's own data.
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      isViewer
-        ? Promise.resolve({ items: [], total: 0 })
-        : getArtifacts({ limit: 200 }).catch(() => ({ items: [], total: 0 })),
-      getLibraryNotebooks().catch(() => ({ items: [], total: 0 })),
-    ])
-      .then(([arts, lib]) => {
-        if (cancelled) return;
-        // One "corpus" per distinct notebook that has saved artifacts.
-        const corpora = new Set(
-          arts.items
-            .map((a) => a.notebook_id)
-            .filter((id): id is string => !!id),
-        ).size;
-        const folios = lib.items.length;
-        setCounts({ corpora, folios });
-      });
+    getArchiveCounts()
+      .then((c) => { if (!cancelled) setCounts(c); })
+      .catch(() => { if (!cancelled) setCounts({ corpora: 0, folios: 0 }); });
     return () => { cancelled = true; };
-  }, [pathname, isViewer]);
+  }, [pathname]);
 
   if (!counts) {
     return (
