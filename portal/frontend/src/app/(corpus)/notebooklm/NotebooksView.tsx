@@ -47,6 +47,7 @@ import { EmojiPicker } from "@/components/notebook/EmojiPicker";
 import { emojiFromSeed } from "@/components/notebook/emoji";
 import { pickSwatch } from "@/components/corpus/CorpusCard";
 import { SectionHead } from "@/components/corpus/SectionHead";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 const SWATCH_BG: Record<string, { bg: string; fg: string }> = {
   terracotta: { bg: "#f5e2d4", fg: "var(--color-terracotta)" },
@@ -89,9 +90,13 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onEdit, onHide, onR
   const swatch = pickSwatch(notebook) ?? "terracotta";
   const sw = SWATCH_BG[swatch];
   const num = String(index + 1).padStart(3, "0");
+  const hydrated = useHydrated();
   const date = notebook.nlm_created_at ?? notebook.last_synced_at;
+  // UTC until hydrated so the server-rendered HTML matches, then local time.
   const dateFormatted = date
-    ? new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    ? new Date(date).toLocaleDateString("en-US", {
+        month: "short", day: "numeric", year: "numeric", ...(hydrated ? {} : { timeZone: "UTC" }),
+      })
     : "";
 
   return (
@@ -164,7 +169,7 @@ function NotebookCard({ notebook, index, onOpen, onGenerate, onEdit, onHide, onR
           {notebook.title}
         </h3>
         <div className="mt-3 pt-2.5 border-t border-rule-light flex items-center justify-between font-mono text-[10px] tracking-[0.12em] uppercase text-ink-mute">
-          <span>{dateFormatted}</span>
+          <span suppressHydrationWarning>{dateFormatted}</span>
           <span>{notebook.sources_count} src</span>
         </div>
       </div>
