@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { SourceThumb, type SourceKind } from "@/components/corpus/SourceThumb";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 export type FolioCover = "stitch" | "manila" | "index" | "pinned" | "photo";
 export type FolioStatus = "active" | "draft" | "archived";
@@ -26,6 +27,7 @@ export type FolioCardProps = {
 export function FolioCard({
   folio, title, titleEn, status, cover, sources, excerpt, tags, updated, accent, onClick, selectable, selected,
 }: FolioCardProps) {
+  const hydrated = useHydrated();
   const distinct: SourceKind[] = [];
   for (const s of sources) {
     if (!distinct.includes(s.kind)) distinct.push(s.kind);
@@ -109,8 +111,11 @@ export function FolioCard({
               </span>
             ))}
           </div>
-          <span className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-ink-mute whitespace-nowrap">
-            {formatRelative(updated)}
+          <span
+            suppressHydrationWarning
+            className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-ink-mute whitespace-nowrap"
+          >
+            {formatRelative(updated, hydrated)}
           </span>
         </div>
       </div>
@@ -132,14 +137,19 @@ function StatusChip({ status }: { status: FolioStatus }) {
   );
 }
 
-function formatRelative(s: string) {
+/**
+ * "today", "3d ago", … or a date. In UTC until hydrated, so the browser's first
+ * render matches the server's; then in local time. (suppressHydrationWarning on
+ * the span covers the seconds between the two renders crossing a day.)
+ */
+function formatRelative(s: string, local: boolean) {
   try {
     const d = new Date(s);
     const days = Math.round((Date.now() - d.getTime()) / 86_400_000);
     if (days < 1) return "today";
     if (days < 7) return `${days}d ago`;
     if (days < 30) return `${Math.round(days / 7)}w ago`;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(local ? {} : { timeZone: "UTC" }) });
   } catch { return s; }
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import type { ReactNode } from "react";
 
 export type CorpusCardProps = {
@@ -30,6 +31,7 @@ export function CorpusCard({
 }: CorpusCardProps) {
   const sw = SWATCHES[swatch];
   const num = useMemo(() => String(number).padStart(3, "0"), [number]);
+  const hydrated = useHydrated();
 
   return (
     <article
@@ -63,7 +65,7 @@ export function CorpusCard({
           </div>
         )}
         <div className="mt-3 pt-2.5 border-t border-rule-light flex items-center justify-between font-mono text-[10px] tracking-[0.12em] uppercase text-ink-mute">
-          <span>{formatDate(date)}</span>
+          <span suppressHydrationWarning>{formatDate(date, hydrated)}</span>
           <span>{sources} src</span>
         </div>
       </div>
@@ -81,11 +83,14 @@ function DefaultGlyph() {
   );
 }
 
-function formatDate(s: string) {
+/** In UTC until hydrated (matches the server render), then in local time. */
+function formatDate(s: string, local: boolean) {
   try {
     const d = new Date(s);
     if (Number.isNaN(d.getTime())) return s;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric", ...(local ? {} : { timeZone: "UTC" }),
+    });
   } catch { return s; }
 }
 

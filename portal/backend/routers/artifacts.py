@@ -41,14 +41,14 @@ def _filters(
 
 
 @router.get("", response_model=NLMArtifactListResponse)
-async def list_artifacts(filters: ArtifactFilters = Depends(_filters)):
+def list_artifacts(filters: ArtifactFilters = Depends(_filters)):
     db = get_supabase()
     items, total = repo.list_all(db, filters)
     return {"items": items, "total": total}
 
 
 @router.post("", response_model=NLMArtifactRead, status_code=201)
-async def register_artifact(data: NLMArtifactCreate, background: BackgroundTasks):
+def register_artifact(data: NLMArtifactCreate, background: BackgroundTasks):
     db = get_supabase()
     row = repo.upsert_from_nlm(db, data)
     artifact_id = UUID(row["id"])
@@ -57,7 +57,7 @@ async def register_artifact(data: NLMArtifactCreate, background: BackgroundTasks
 
 
 @router.get("/{artifact_id}", response_model=NLMArtifactRead)
-async def get_artifact(artifact_id: UUID):
+def get_artifact(artifact_id: UUID):
     db = get_supabase()
     row = repo.get(db, artifact_id)
     if not row:
@@ -66,7 +66,7 @@ async def get_artifact(artifact_id: UUID):
 
 
 @router.patch("/{artifact_id}", response_model=NLMArtifactRead)
-async def update_artifact(artifact_id: UUID, data: NLMArtifactUpdate):
+def update_artifact(artifact_id: UUID, data: NLMArtifactUpdate):
     db = get_supabase()
     row = repo.update(db, artifact_id, data)
     if not row:
@@ -75,7 +75,7 @@ async def update_artifact(artifact_id: UUID, data: NLMArtifactUpdate):
 
 
 @router.delete("/{artifact_id}", status_code=204)
-async def delete_artifact(artifact_id: UUID):
+def delete_artifact(artifact_id: UUID):
     db = get_supabase()
     row = repo.get(db, artifact_id)
     if not row:
@@ -88,7 +88,7 @@ async def delete_artifact(artifact_id: UUID):
 
 
 @router.post("/{artifact_id}/retry-download", response_model=NLMArtifactRead)
-async def retry_download(artifact_id: UUID, background: BackgroundTasks):
+def retry_download(artifact_id: UUID, background: BackgroundTasks):
     db = get_supabase()
     row = repo.get(db, artifact_id)
     if not row:
@@ -99,7 +99,7 @@ async def retry_download(artifact_id: UUID, background: BackgroundTasks):
 
 
 @router.get("/{artifact_id}/content")
-async def get_artifact_content(artifact_id: UUID):
+def get_artifact_content(artifact_id: UUID):
     """Stream the raw file bytes from R2 so the browser fetches via the same-origin proxy."""
     from ..storage import get_r2, get_settings
 
@@ -130,7 +130,7 @@ async def get_artifact_content(artifact_id: UUID):
 
 
 @router.post("/{artifact_id}/save-to-library", status_code=201)
-async def save_to_library(artifact_id: UUID):
+def save_to_library(artifact_id: UUID):
     """Copy a downloaded NLM artifact into the Library section."""
     import boto3
 

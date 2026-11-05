@@ -202,6 +202,33 @@ binding) directly — **not** through the VM backend.
   - Wired into folio cards, Free Forms, and — read-only, through
     `/api/artifacts/{id}/content` rather than the public R2 URL — the
     NotebookLM Corpus artifact cards.
+- **List-page loading** (`/library`, `/notebooklm`, both apps). Each list page
+  is a server `page.tsx` that reads the data and hands it to the client view
+  (`LibraryView` / `CorpusView` / `NotebooksView`), so the cards are in the
+  first HTML instead of waiting for HTML → JS → hydrate → `fetch`; a
+  `loading.tsx` skeleton streams first. On the VM the page reads the backend
+  directly (`lib/server-api.ts`, `BACKEND_URL`, default `127.0.0.1:8000`); on
+  the Worker it queries Supabase (`lib/server-data.ts`, shared with the API
+  routes). The client views still fetch when the server read fails, and
+  re-fetch on the "show hidden" toggle. Rules that keep it fast and right:
+  - **Count in Postgres, not by fetching rows.** Folio file counts use the
+    embedded aggregate `select("*, library_items(count)")`; the masthead uses
+    `GET /api/counts` (`count=exact` head requests) instead of loading both
+    full lists on every navigation. Counting by selecting rows silently stops
+    at PostgREST's 1000-row limit — that bug undercounted folio files and
+    dropped NotebookLM notebooks past the newest 200 artifacts.
+  - **Public `/api/corpora`** groups artifacts by notebook on the server, paging
+    with `.range()` over a narrow column list, rather than sending 200 raw rows
+    to the browser.
+  - **Dates on cards** format in UTC until hydrated, then in local time
+    (`hooks/use-hydrated.ts`); formatting in local time during render made the
+    server and browser HTML differ (React #418) for any reader not in UTC.
+  - **Backend handlers that make only synchronous Supabase / boto3 calls are
+    plain `def`**, so FastAPI runs them in its threadpool. As `async def` they
+    ran on the event loop and blocked it: 8 concurrent list requests were
+    served one after another (2.5 s) instead of together (~0.2 s). Async
+    handlers that must call sync I/O (the artifact downloader's R2 upload) wrap
+    it in `asyncio.to_thread`.
 
 ## Upstream (`teng-lin/notebooklm-py`)
 

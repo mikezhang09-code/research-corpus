@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LANGUAGES, useLanguage, type Language } from "@/hooks/use-language";
 import { SectionSwitch } from "@/components/corpus/SectionSwitch";
-import { getLibraryNotebooks, getNotebooks } from "@/lib/api";
+import { getArchiveCounts } from "@/lib/api";
 
 export function Masthead() {
   return (
@@ -83,19 +83,14 @@ function ArchiveCount() {
   const pathname = usePathname();
   const [counts, setCounts] = useState<{ corpora: number; folios: number } | null>(null);
 
+  // One small request on each navigation. This used to download both full
+  // lists just to count them — and the backend served them one at a time, so
+  // every page's own data waited behind the masthead's two requests.
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getNotebooks().catch(() => []),
-      getLibraryNotebooks().catch(() => ({ items: [], total: 0 })),
-    ])
-      .then(([nbs, lib]) => {
-        if (cancelled) return;
-        // Untitled notebooks are placeholders from NotebookLM; don't count them.
-        const corpora = nbs.filter((n) => n.title?.trim()).length;
-        const folios = lib.items.length;
-        setCounts({ corpora, folios });
-      });
+    getArchiveCounts()
+      .then((c) => { if (!cancelled) setCounts(c); })
+      .catch(() => { if (!cancelled) setCounts({ corpora: 0, folios: 0 }); });
     return () => { cancelled = true; };
   }, [pathname]);
 

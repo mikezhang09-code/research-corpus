@@ -6,7 +6,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import artifacts, diagrams, free_forms, library, library_notebooks, notebooks
+from .routers import (
+    artifacts,
+    diagrams,
+    free_forms,
+    library,
+    library_notebooks,
+    notebooks,
+    stats,
+)
 
 
 @asynccontextmanager
@@ -42,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(library_notebooks.router)
     app.include_router(free_forms.router)
     app.include_router(diagrams.router)
+    app.include_router(stats.router)
 
     @app.get("/api/health")
     async def health():

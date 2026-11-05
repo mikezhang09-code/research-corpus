@@ -70,6 +70,23 @@ export const downloadNotebookArtifacts = (notebookId: string, artifactIds?: stri
     ...(artifactIds?.length ? { ids: artifactIds } : {}),
   });
 
+// ---- Masthead counts ----
+
+/** "N corpora · M folios" — two row-less counts on the server. */
+export const getArchiveCounts = () => request<{ corpora: number; folios: number }>("/api/counts");
+
+// ---- NotebookLM corpora (saved artifacts grouped by notebook, server-side) ----
+
+export interface Corpus {
+  notebookId: string;
+  title: string;
+  count: number;
+  /** ISO date of the most recent artifact. */
+  latest: string;
+}
+
+export const getCorpora = () => request<{ items: Corpus[] }>("/api/corpora");
+
 // ---- Library Notebooks ("My Research" folios) ----
 
 export const getLibraryNotebooks = (opts?: { includeHidden?: boolean; tags?: string[] }) => {
