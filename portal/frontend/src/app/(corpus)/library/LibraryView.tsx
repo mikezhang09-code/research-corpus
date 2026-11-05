@@ -343,7 +343,7 @@ export default function LibraryView({ initialFolios }: { initialFolios: LibraryN
   const tagOrder = useMemo(
     () =>
       [...tagTotals.keys()].sort(
-        (a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b)
+        (a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b, "en")
       ),
     [tagTotals]
   );

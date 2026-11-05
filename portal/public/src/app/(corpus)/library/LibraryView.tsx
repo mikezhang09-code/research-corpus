@@ -131,7 +131,7 @@ export default function LibraryView({ initialFolios }: { initialFolios: LibraryN
     () =>
       [...tagTotals.keys()]
         .filter((t) => !(isViewer && t === SHARED_TAG))
-        .sort((a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b)),
+        .sort((a, b) => (tagTotals.get(b)! - tagTotals.get(a)!) || a.localeCompare(b, "en")),
     [tagTotals, isViewer],
   );
 
